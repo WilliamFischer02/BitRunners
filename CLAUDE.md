@@ -2,7 +2,7 @@
 
 ## What this is
 
-Web-first multiplayer ASCII social MMO. See `README.md` and the latest entry in `docs/devlog/` for current state.
+Web-first multiplayer ASCII social MMO. See `README.md` and the latest entry in `docs/devlog/` for current state. **Active roadmap: `docs/devlog/0004-roadmap-revised.md`** — this supersedes the original outline in `0001`.
 
 ## Canonical lore terms
 
