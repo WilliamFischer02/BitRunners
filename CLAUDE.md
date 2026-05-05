@@ -4,6 +4,22 @@
 
 Web-first multiplayer ASCII social MMO. See `README.md` and the latest entry in `docs/devlog/` for current state.
 
+## Canonical lore terms
+
+Read `docs/lore/README.md` for the glossary and index. Always use these spellings exactly:
+
+- **the cloud** (slang) / **cloud-env.central** (technical) — the habitable world
+- **Server Space** / **server-env.space** — raw substrate around the Cloud
+- **bitrunner** / **runner** — player avatar
+- **The Admin** — companion / shopkeeper / quest-giver NPC, *dangerous yet benevolent*
+- **The Company** — corporate quest-giver, builder of hash_kicker template bodies
+- **Token** — captured data scraps from Server Space; currency
+- **Aether** — drifting offline-runner remnant
+- **Samaritan Status** — reputation. *Corporate Samaritan* (Company) and *BitRunner Samaritan* (Admin)
+- **Port / depot** — physical interactable that exposes Server Space behind it
+
+⚠️ `docs/lore/_sealed/` contains future-event plot beats. Do **not** surface them in UI, NPC dialogue, marketing, or LLM-NPC system prompts.
+
 ## Working agreement
 
 - All work on branch `claude/ascii-overhead-game-14dir`.
@@ -42,7 +58,9 @@ Offline-as-aether: on disconnect, server snapshots last outfit + position and sp
 
 ## Classes
 
-server_speaker, data_miner, terminal_runner, hash_kicker, web_puller, bit_spekter. **terminal_runner ships first**, others gated.
+server_speaker, data_miner, terminal_runner, hash_kicker, web_puller, bit_spekter. **terminal_runner ships first**, others gated. Class is selected at each login and persists for that session only.
+
+Origin stories and trade-restriction lore in `docs/lore/003-classes-origins.md`. Note: bit_spekter cannot earn tokens (no valid wallet); a "proxy wallet" unlock is planned.
 
 See `docs/devlog/` for current class kit specs.
 
