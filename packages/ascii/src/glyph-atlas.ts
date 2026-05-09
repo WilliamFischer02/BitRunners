@@ -19,7 +19,7 @@ export interface GlyphAtlasOptions {
   color?: string;
 }
 
-const DEFAULT_RAMP = ' .,:;i1tfLCG08@';
+const DEFAULT_RAMP = ' ·.:-=+*#░▒▓█';
 
 export function buildGlyphAtlas(options: GlyphAtlasOptions = {}): GlyphAtlas {
   const ramp = options.ramp ?? DEFAULT_RAMP;

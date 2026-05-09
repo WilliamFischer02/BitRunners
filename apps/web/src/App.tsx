@@ -7,5 +7,9 @@ export function App(): JSX.Element {
     if (!hostRef.current) return;
     return startScene(hostRef.current);
   }, []);
-  return <div ref={hostRef} className="canvas-host" />;
+  return (
+    <div ref={hostRef} className="canvas-host">
+      <div className="hint">bit_spekter · arrows / wasd / d-pad</div>
+    </div>
+  );
 }

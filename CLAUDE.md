@@ -58,7 +58,7 @@ Offline-as-aether: on disconnect, server snapshots last outfit + position and sp
 
 ## Classes
 
-server_speaker, data_miner, terminal_runner, hash_kicker, web_puller, bit_spekter. **terminal_runner ships first**, others gated. Class is selected at each login and persists for that session only.
+server_speaker, data_miner, terminal_runner, hash_kicker, web_puller, bit_spekter. **bit_spekter ships first** (kit + character design driving Phase 1 visual identity); other 5 gated. Class is selected at each login and persists for that session only.
 
 Origin stories and trade-restriction lore in `docs/lore/003-classes-origins.md`. Note: bit_spekter cannot earn tokens (no valid wallet); a "proxy wallet" unlock is planned.
 

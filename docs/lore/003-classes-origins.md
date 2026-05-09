@@ -29,7 +29,7 @@ Supposedly **incarcerated in real life**. The Data Miner program is a government
 
 ---
 
-### terminal_runner *(ships first)*
+### terminal_runner
 
 **Personified clusters of data.** Said to originate from the same stuff as tokens — but as much larger chunks. Semi-sentient strands that finished their own sentience construction, *bootstrapping themselves into being*.
 
@@ -54,9 +54,11 @@ Volunteers who upload into the Cloud to serve as **hall monitors / good Samarita
 
 ---
 
-### bit_spekter
+### bit_spekter *(ships first — Phase 1 visual identity)*
 
 **IRL hackers** who are not uploaded through any sanctioned path — they exploit / "manipulate" the Cloud's code to enter. No corporate template, no Admin blessing. A controlled exploit.
+
+Design lock: heavy plate armor, helmeted visor with a cross/crosshair mark, blocky silhouette. Reference image owned by project owner; ASCII rendering should lean on extended Unicode block characters (`░▒▓█`, half-blocks, box-drawing) at high glyph density to match the reference fidelity.
 
 - **Trade restriction**: cannot earn tokens because they have **no valid token wallet** — their connection is unsanctioned, so the system refuses to credit them.
 - **Late-game unlock**: after extended play as bit_spekter, players can unlock a **proxy wallet** that finally enables the class's missing abilities. (Unlock conditions TBD.)
