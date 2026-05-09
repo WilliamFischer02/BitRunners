@@ -57,9 +57,27 @@ function buildBitSpekter(): BitSpekterRig {
   hip.position.y = 0.65;
   visual.add(hip);
 
-  const armor = new MeshStandardMaterial({ color: 0xd4d8dc, roughness: 0.55, metalness: 0.25 });
-  const dark = new MeshStandardMaterial({ color: 0x3c4046, roughness: 0.7, metalness: 0.15 });
-  const accent = new MeshStandardMaterial({ color: 0xa6acb4, roughness: 0.8, metalness: 0.1 });
+  const armor = new MeshStandardMaterial({
+    color: 0xe4e8ec,
+    roughness: 0.5,
+    metalness: 0.25,
+    emissive: 0x1a1d22,
+    emissiveIntensity: 0.6,
+  });
+  const dark = new MeshStandardMaterial({
+    color: 0x4c5056,
+    roughness: 0.7,
+    metalness: 0.15,
+    emissive: 0x0a0c10,
+    emissiveIntensity: 0.4,
+  });
+  const accent = new MeshStandardMaterial({
+    color: 0xc6cad2,
+    roughness: 0.7,
+    metalness: 0.2,
+    emissive: 0x223344,
+    emissiveIntensity: 0.5,
+  });
 
   const head = new MeshClass(new SphereGeometry(0.34, 18, 14), armor);
   head.position.y = 0.58;
@@ -194,6 +212,67 @@ export function startScene(host: HTMLElement): () => void {
   portInside.position.set(-6.5, 1.1, -6.29);
   scene.add(portInside);
 
+  const vending = new MeshClass(
+    new BoxGeometry(1.0, 1.7, 0.55),
+    new MeshStandardMaterial({ color: 0xb0b4ba, roughness: 0.55, metalness: 0.3 }),
+  );
+  vending.position.set(6.0, 0.85, -5.5);
+  scene.add(vending);
+  const vendingScreen = new MeshClass(
+    new BoxGeometry(0.7, 0.45, 0.05),
+    new MeshStandardMaterial({
+      color: 0x0c1014,
+      emissive: 0x88aa66,
+      emissiveIntensity: 0.55,
+      roughness: 1,
+    }),
+  );
+  vendingScreen.position.set(6.0, 1.25, -5.21);
+  scene.add(vendingScreen);
+  const vendingSlot = new MeshClass(
+    new BoxGeometry(0.55, 0.12, 0.06),
+    new MeshStandardMaterial({ color: 0x2a2e33, roughness: 1 }),
+  );
+  vendingSlot.position.set(6.0, 0.3, -5.2);
+  scene.add(vendingSlot);
+
+  const monolith = new MeshClass(
+    new BoxGeometry(0.65, 3.6, 0.65),
+    new MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.4, metalness: 0.6 }),
+  );
+  monolith.position.set(5.5, 1.8, 5.5);
+  scene.add(monolith);
+  const monolithGlow = new MeshClass(
+    new BoxGeometry(0.06, 2.8, 0.06),
+    new MeshStandardMaterial({
+      color: 0x000000,
+      emissive: 0xff8844,
+      emissiveIntensity: 0.9,
+      roughness: 1,
+    }),
+  );
+  monolithGlow.position.set(5.5, 1.8, 5.83);
+  scene.add(monolithGlow);
+
+  const terminal = new MeshClass(
+    new BoxGeometry(1.5, 0.9, 0.6),
+    new MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.35 }),
+  );
+  terminal.position.set(-5.5, 0.45, 6.5);
+  scene.add(terminal);
+  const terminalScreen = new MeshClass(
+    new BoxGeometry(1.1, 0.55, 0.05),
+    new MeshStandardMaterial({
+      color: 0x0a0c10,
+      emissive: 0x66ccaa,
+      emissiveIntensity: 0.45,
+      roughness: 1,
+    }),
+  );
+  terminalScreen.position.set(-5.5, 0.55, 6.81);
+  terminalScreen.rotation.x = -0.3;
+  scene.add(terminalScreen);
+
   const rig = buildBitSpekter();
   rig.root.traverse((obj) => {
     obj.layers.set(CHARACTER_LAYER);
@@ -222,7 +301,7 @@ export function startScene(host: HTMLElement): () => void {
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
     characterTexture: characterTarget.texture,
-    backgroundDim: 0.7,
+    backgroundDim: 0.5,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
