@@ -2,7 +2,6 @@ import { buildGlyphAtlas, createAsciiPass, setAsciiPassResolution } from '@bitru
 import {
   BoxGeometry,
   Color,
-  DepthTexture,
   DirectionalLight,
   Group,
   HemisphereLight,
@@ -11,12 +10,9 @@ import {
   MeshStandardMaterial,
   PerspectiveCamera,
   PlaneGeometry,
-  RGBAFormat,
   Scene,
   SphereGeometry,
-  UnsignedShortType,
   Vector3,
-  WebGLRenderTarget,
   WebGLRenderer,
 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -199,15 +195,7 @@ export function startScene(host: HTMLElement): () => void {
     fontSize: 10,
   });
 
-  const depthTexture = new DepthTexture(1, 1);
-  depthTexture.type = UnsignedShortType;
-  const composerTarget = new WebGLRenderTarget(1, 1, {
-    format: RGBAFormat,
-    depthBuffer: true,
-    depthTexture,
-  });
-
-  const composer = new EffectComposer(renderer, composerTarget);
+  const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const asciiPass = createAsciiPass({
     atlas,
@@ -218,10 +206,8 @@ export function startScene(host: HTMLElement): () => void {
     lumBias: 0.04,
     gamma: 1.0,
     dither: 0.6,
-    depthTexture,
-    cameraNear: camera.near,
-    cameraFar: camera.far,
-    edgeThreshold: 0.06,
+    edgeStrength: 1.0,
+    edgeThreshold: 0.22,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
@@ -299,8 +285,6 @@ export function startScene(host: HTMLElement): () => void {
     ro.disconnect();
     input.dispose();
     composer.dispose();
-    composerTarget.dispose();
-    depthTexture.dispose();
     renderer.dispose();
     atlas.texture.dispose();
     if (renderer.domElement.parentNode === host) {
