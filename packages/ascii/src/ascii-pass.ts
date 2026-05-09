@@ -28,6 +28,7 @@ const FRAG = /* glsl */ `
   uniform float uCellSize;
   uniform float uGlyphCount;
   uniform vec3 uTint;
+  uniform vec3 uTintTop;
   uniform vec3 uBackground;
   uniform float uLumGain;
   uniform float uLumBias;
@@ -37,6 +38,7 @@ const FRAG = /* glsl */ `
   uniform float uEdgeThreshold;
   uniform float uHasCharacterMask;
   uniform float uBackgroundDim;
+  uniform float uCharacterGlow;
 
   varying vec2 vUv;
 
@@ -64,10 +66,12 @@ const FRAG = /* glsl */ `
     glyphIdx = clamp(glyphIdx, 0.0, uGlyphCount - 1.0);
 
     float maskWeight = 0.0;
+    float charLum = 0.0;
     if (uHasCharacterMask > 0.5) {
       vec4 cSample = texture2D(tCharacter, cellCenterUv);
       float cMask = max(cSample.a, lumOf(cSample.rgb));
       maskWeight = smoothstep(0.0, 0.04, cMask);
+      charLum = lumOf(cSample.rgb);
     }
 
     if (uEdgeStrength > 0.0 && maskWeight < 0.5) {
@@ -93,11 +97,16 @@ const FRAG = /* glsl */ `
     float bgGlyph = texture2D(tGlyphs, glyphUv).r;
     float chGlyph = texture2D(tGlyphsCharacter, glyphUv).r;
     float glyphMask = mix(bgGlyph, chGlyph, maskWeight);
-    vec3 color = mix(uBackground, uTint, glyphMask);
+
+    float vBlend = smoothstep(0.45, 0.85, vUv.y);
+    vec3 cellTint = mix(uTint, uTintTop, vBlend);
+    vec3 color = mix(uBackground, cellTint, glyphMask);
 
     if (uHasCharacterMask > 0.5) {
       float dim = mix(uBackgroundDim, 1.0, maskWeight);
       color *= dim;
+      float heightBoost = mix(0.95, uCharacterGlow, smoothstep(0.05, 0.55, charLum));
+      color = mix(color, color * heightBoost, maskWeight);
     }
 
     gl_FragColor = vec4(color, 1.0);
@@ -129,6 +138,10 @@ export interface AsciiPassOptions {
   characterTexture?: Texture;
   /** Multiplier applied to non-character pixel output color. Default 1.0 (off). */
   backgroundDim?: number;
+  /** Brightness boost on the highest-lum character cells (e.g. helmet). Default 1.0. */
+  characterGlow?: number;
+  /** Optional secondary tint blended toward the top of the screen. Default = `tint`. */
+  tintTop?: [number, number, number];
 }
 
 function placeholderTexture(): DataTexture {
@@ -151,6 +164,8 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const edgeThreshold = options.edgeThreshold ?? 0.18;
   const characterTexture = options.characterTexture;
   const backgroundDim = options.backgroundDim ?? 1.0;
+  const characterGlow = options.characterGlow ?? 1.0;
+  const tintTop = options.tintTop ?? tint;
 
   const material = new ShaderMaterial({
     uniforms: {
@@ -162,6 +177,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uCellSize: new Uniform(atlas.cellSize),
       uGlyphCount: new Uniform(atlas.glyphCount),
       uTint: new Uniform(new Vector3(tint[0], tint[1], tint[2])),
+      uTintTop: new Uniform(new Vector3(tintTop[0], tintTop[1], tintTop[2])),
       uBackground: new Uniform(new Vector3(background[0], background[1], background[2])),
       uLumGain: new Uniform(lumGain),
       uLumBias: new Uniform(lumBias),
@@ -171,6 +187,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uEdgeThreshold: new Uniform(edgeThreshold),
       uHasCharacterMask: new Uniform(characterTexture ? 1.0 : 0.0),
       uBackgroundDim: new Uniform(backgroundDim),
+      uCharacterGlow: new Uniform(characterGlow),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
