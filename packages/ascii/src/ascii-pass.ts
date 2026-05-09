@@ -1,13 +1,4 @@
-import {
-  DataTexture,
-  RGBAFormat,
-  ShaderMaterial,
-  type Texture,
-  Uniform,
-  UnsignedByteType,
-  Vector2,
-  Vector3,
-} from 'three';
+import { ShaderMaterial, Uniform, Vector2, Vector3 } from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { GlyphAtlas } from './glyph-atlas.js';
 
@@ -22,7 +13,6 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   uniform sampler2D tDiffuse;
   uniform sampler2D tGlyphs;
-  uniform sampler2D tDepth;
   uniform vec2 uResolution;
   uniform float uCellSize;
   uniform float uGlyphCount;
@@ -32,18 +22,13 @@ const FRAG = /* glsl */ `
   uniform float uLumBias;
   uniform float uGamma;
   uniform float uDither;
-  uniform float uCameraNear;
-  uniform float uCameraFar;
+  uniform float uEdgeStrength;
   uniform float uEdgeThreshold;
-  uniform float uEdgeEnabled;
 
   varying vec2 vUv;
 
-  float linearDepth(vec2 uv) {
-    float z = texture2D(tDepth, uv).x;
-    z = z * 2.0 - 1.0;
-    return (2.0 * uCameraNear * uCameraFar) /
-           (uCameraFar + uCameraNear - z * (uCameraFar - uCameraNear));
+  float lumOf(vec3 c) {
+    return dot(c, vec3(0.299, 0.587, 0.114));
   }
 
   float hash(vec2 p) {
@@ -57,26 +42,24 @@ const FRAG = /* glsl */ `
     vec2 cellCenterUv = (cellOrigin + uCellSize * 0.5) / uResolution;
 
     vec3 sceneColor = texture2D(tDiffuse, cellCenterUv).rgb;
-    float lum = dot(sceneColor, vec3(0.299, 0.587, 0.114));
-    lum = pow(clamp(lum * uLumGain + uLumBias, 0.0, 1.0), uGamma);
+    float lumRaw = lumOf(sceneColor);
+    float lum = pow(clamp(lumRaw * uLumGain + uLumBias, 0.0, 1.0), uGamma);
     lum += (hash(cellIdx) - 0.5) * uDither / uGlyphCount;
     lum = clamp(lum, 0.0, 1.0);
 
     float glyphIdx = floor(lum * uGlyphCount);
     glyphIdx = clamp(glyphIdx, 0.0, uGlyphCount - 1.0);
 
-    if (uEdgeEnabled > 0.5) {
+    if (uEdgeStrength > 0.0) {
       vec2 step = vec2(uCellSize) / uResolution;
-      float dC = linearDepth(cellCenterUv);
-      float dL = linearDepth(cellCenterUv - vec2(step.x, 0.0));
-      float dR = linearDepth(cellCenterUv + vec2(step.x, 0.0));
-      float dU = linearDepth(cellCenterUv - vec2(0.0, step.y));
-      float dD = linearDepth(cellCenterUv + vec2(0.0, step.y));
-      float gx = dR - dL;
-      float gy = dD - dU;
-      float edge = sqrt(gx * gx + gy * gy);
-      float edgeRatio = edge / max(dC, 0.001);
-      if (edgeRatio > uEdgeThreshold) {
+      float lL = lumOf(texture2D(tDiffuse, cellCenterUv - vec2(step.x, 0.0)).rgb);
+      float lR = lumOf(texture2D(tDiffuse, cellCenterUv + vec2(step.x, 0.0)).rgb);
+      float lU = lumOf(texture2D(tDiffuse, cellCenterUv - vec2(0.0, step.y)).rgb);
+      float lD = lumOf(texture2D(tDiffuse, cellCenterUv + vec2(0.0, step.y)).rgb);
+      float gx = lR - lL;
+      float gy = lD - lU;
+      float edge = sqrt(gx * gx + gy * gy) * uEdgeStrength;
+      if (edge > uEdgeThreshold) {
         glyphIdx = uGlyphCount - 1.0;
       }
     }
@@ -108,21 +91,10 @@ export interface AsciiPassOptions {
   gamma?: number;
   /** Per-cell luminance noise as a fraction of one glyph step. Default 0.5. */
   dither?: number;
-  /** Optional depth texture for edge detection (Stage B). */
-  depthTexture?: Texture;
-  /** Camera near plane, required if depthTexture provided. */
-  cameraNear?: number;
-  /** Camera far plane, required if depthTexture provided. */
-  cameraFar?: number;
-  /** Depth-gradient threshold for silhouette detection (relative to local depth). Default 0.05. */
+  /** Multiplier on luminance edge. 0 disables silhouette emphasis. Default 0. */
+  edgeStrength?: number;
+  /** Luminance-gradient threshold for silhouette emphasis. Default 0.18. */
   edgeThreshold?: number;
-}
-
-function placeholderTexture(): DataTexture {
-  const data = new Uint8Array([255, 255, 255, 255]);
-  const t = new DataTexture(data, 1, 1, RGBAFormat, UnsignedByteType);
-  t.needsUpdate = true;
-  return t;
 }
 
 export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
@@ -133,17 +105,13 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const lumBias = options.lumBias ?? 0.0;
   const gamma = options.gamma ?? 1.0;
   const dither = options.dither ?? 0.5;
-  const depthTexture = options.depthTexture;
-  const cameraNear = options.cameraNear ?? 0.1;
-  const cameraFar = options.cameraFar ?? 100;
-  const edgeThreshold = options.edgeThreshold ?? 0.05;
-  const edgeEnabled = depthTexture ? 1.0 : 0.0;
+  const edgeStrength = options.edgeStrength ?? 0.0;
+  const edgeThreshold = options.edgeThreshold ?? 0.18;
 
   const material = new ShaderMaterial({
     uniforms: {
       tDiffuse: new Uniform(null),
       tGlyphs: new Uniform(atlas.texture),
-      tDepth: new Uniform(depthTexture ?? placeholderTexture()),
       uResolution: new Uniform(new Vector2(resolution.width, resolution.height)),
       uCellSize: new Uniform(atlas.cellSize),
       uGlyphCount: new Uniform(atlas.glyphCount),
@@ -153,10 +121,8 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uLumBias: new Uniform(lumBias),
       uGamma: new Uniform(gamma),
       uDither: new Uniform(dither),
-      uCameraNear: new Uniform(cameraNear),
-      uCameraFar: new Uniform(cameraFar),
+      uEdgeStrength: new Uniform(edgeStrength),
       uEdgeThreshold: new Uniform(edgeThreshold),
-      uEdgeEnabled: new Uniform(edgeEnabled),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
