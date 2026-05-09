@@ -201,12 +201,14 @@ export function startScene(host: HTMLElement): () => void {
   fill.layers.enableAll();
   scene.add(fill);
 
+  const worldTile = new Group();
+
   const platform = new MeshClass(
     new PlaneGeometry(PLATFORM_HALF * 2, PLATFORM_HALF * 2, 1, 1),
     new MeshStandardMaterial({ color: 0xa8acb2, roughness: 0.95, metalness: 0.05 }),
   );
   platform.rotation.x = -Math.PI / 2;
-  scene.add(platform);
+  worldTile.add(platform);
 
   const gridProto = new MeshClass(
     new BoxGeometry(PLATFORM_HALF * 2 - 0.4, 0.02, 0.06),
@@ -215,11 +217,11 @@ export function startScene(host: HTMLElement): () => void {
   for (let i = -3; i <= 3; i++) {
     const a = gridProto.clone();
     a.position.set(0, 0.01, i * 2.4);
-    scene.add(a);
+    worldTile.add(a);
     const b = gridProto.clone();
     b.rotation.y = Math.PI / 2;
     b.position.set(i * 2.4, 0.01, 0);
-    scene.add(b);
+    worldTile.add(b);
   }
 
   const port = new MeshClass(
@@ -227,7 +229,7 @@ export function startScene(host: HTMLElement): () => void {
     new MeshStandardMaterial({ color: 0xc4c8d0, roughness: 0.4, metalness: 0.4 }),
   );
   port.position.set(-6.5, 1.1, -6.5);
-  scene.add(port);
+  worldTile.add(port);
   const portInsideMaterial = new MeshStandardMaterial({
     color: 0x141820,
     emissive: 0x4477aa,
@@ -236,14 +238,14 @@ export function startScene(host: HTMLElement): () => void {
   });
   const portInside = new MeshClass(new BoxGeometry(0.95, 1.55, 0.05), portInsideMaterial);
   portInside.position.set(-6.5, 1.1, -6.29);
-  scene.add(portInside);
+  worldTile.add(portInside);
 
   const vending = new MeshClass(
     new BoxGeometry(1.0, 1.7, 0.55),
     new MeshStandardMaterial({ color: 0xb0b4ba, roughness: 0.55, metalness: 0.3 }),
   );
   vending.position.set(6.0, 0.85, -5.5);
-  scene.add(vending);
+  worldTile.add(vending);
   const vendingScreen = new MeshClass(
     new BoxGeometry(0.7, 0.45, 0.05),
     new MeshStandardMaterial({
@@ -254,20 +256,20 @@ export function startScene(host: HTMLElement): () => void {
     }),
   );
   vendingScreen.position.set(6.0, 1.25, -5.21);
-  scene.add(vendingScreen);
+  worldTile.add(vendingScreen);
   const vendingSlot = new MeshClass(
     new BoxGeometry(0.55, 0.12, 0.06),
     new MeshStandardMaterial({ color: 0x2a2e33, roughness: 1 }),
   );
   vendingSlot.position.set(6.0, 0.3, -5.2);
-  scene.add(vendingSlot);
+  worldTile.add(vendingSlot);
 
   const monolith = new MeshClass(
     new BoxGeometry(0.65, 3.6, 0.65),
     new MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.4, metalness: 0.6 }),
   );
   monolith.position.set(5.5, 1.8, 5.5);
-  scene.add(monolith);
+  worldTile.add(monolith);
   const monolithGlow = new MeshClass(
     new BoxGeometry(0.06, 2.8, 0.06),
     new MeshStandardMaterial({
@@ -278,14 +280,14 @@ export function startScene(host: HTMLElement): () => void {
     }),
   );
   monolithGlow.position.set(5.5, 1.8, 5.83);
-  scene.add(monolithGlow);
+  worldTile.add(monolithGlow);
 
   const terminal = new MeshClass(
     new BoxGeometry(1.5, 0.9, 0.6),
     new MeshStandardMaterial({ color: 0x9aa0a8, roughness: 0.5, metalness: 0.35 }),
   );
   terminal.position.set(-5.5, 0.45, 6.5);
-  scene.add(terminal);
+  worldTile.add(terminal);
   const terminalScreen = new MeshClass(
     new BoxGeometry(1.1, 0.55, 0.05),
     new MeshStandardMaterial({
@@ -297,7 +299,7 @@ export function startScene(host: HTMLElement): () => void {
   );
   terminalScreen.position.set(-5.5, 0.55, 6.81);
   terminalScreen.rotation.x = -0.3;
-  scene.add(terminalScreen);
+  worldTile.add(terminalScreen);
 
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x6f8458,
@@ -331,7 +333,19 @@ export function startScene(host: HTMLElement): () => void {
     tuft.position.set(cx, 0, cz);
     tufts.add(tuft);
   }
-  scene.add(tufts);
+  worldTile.add(tufts);
+
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      if (dx === 0 && dz === 0) {
+        scene.add(worldTile);
+      } else {
+        const tile = worldTile.clone();
+        tile.position.set(dx * PLATFORM_SIZE, 0, dz * PLATFORM_SIZE);
+        scene.add(tile);
+      }
+    }
+  }
 
   const skyboxMaterial = new ShaderMaterial({
     uniforms: { uTime: new Uniform(0) },
@@ -487,9 +501,15 @@ export function startScene(host: HTMLElement): () => void {
     rig.hip.rotation.z = swing * HIP_ROLL;
     rig.visual.position.y = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
 
-    const dx = rig.root.position.x - port.position.x;
-    const dz = rig.root.position.z - port.position.z;
-    const portDist = Math.sqrt(dx * dx + dz * dz);
+    const portRelX = rig.root.position.x - port.position.x;
+    const portRelZ = rig.root.position.z - port.position.z;
+    const wrappedDx =
+      ((((portRelX + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+      PLATFORM_HALF;
+    const wrappedDz =
+      ((((portRelZ + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+      PLATFORM_HALF;
+    const portDist = Math.sqrt(wrappedDx * wrappedDx + wrappedDz * wrappedDz);
     const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
     const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
     (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
