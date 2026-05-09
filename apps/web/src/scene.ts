@@ -8,6 +8,7 @@ import {
   type Mesh,
   Mesh as MeshClass,
   MeshStandardMaterial,
+  type MeshStandardMaterial as MeshStandardMaterialType,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -174,15 +175,13 @@ export function startScene(host: HTMLElement): () => void {
   );
   port.position.set(-6.5, 1.1, -6.5);
   scene.add(port);
-  const portInside = new MeshClass(
-    new BoxGeometry(0.95, 1.55, 0.05),
-    new MeshStandardMaterial({
-      color: 0x141820,
-      emissive: 0x355577,
-      emissiveIntensity: 0.7,
-      roughness: 1,
-    }),
-  );
+  const portInsideMaterial = new MeshStandardMaterial({
+    color: 0x141820,
+    emissive: 0x4477aa,
+    emissiveIntensity: 0.6,
+    roughness: 1,
+  });
+  const portInside = new MeshClass(new BoxGeometry(0.95, 1.55, 0.05), portInsideMaterial);
   portInside.position.set(-6.5, 1.1, -6.29);
   scene.add(portInside);
 
@@ -191,8 +190,8 @@ export function startScene(host: HTMLElement): () => void {
 
   const atlas = buildGlyphAtlas({
     ramp: ' .·-:;=+*░#▒▓█',
-    cellSize: 8,
-    fontSize: 10,
+    cellSize: 6,
+    fontSize: 8,
   });
 
   const composer = new EffectComposer(renderer);
@@ -202,15 +201,20 @@ export function startScene(host: HTMLElement): () => void {
     resolution: { width: 1, height: 1 },
     tint: [0.86, 0.93, 0.88],
     background: [0.025, 0.04, 0.035],
-    lumGain: 1.2,
+    lumGain: 1.18,
     lumBias: 0.04,
     gamma: 1.0,
-    dither: 0.6,
+    dither: 0.55,
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
+
+  const fpsEl = document.createElement('div');
+  fpsEl.className = 'fps';
+  fpsEl.textContent = '-- fps';
+  host.appendChild(fpsEl);
 
   function resize(): void {
     const w = host.clientWidth || 1;
@@ -238,10 +242,14 @@ export function startScene(host: HTMLElement): () => void {
   let facing = 0;
   let walkPhase = 0;
   let walkActive = 0;
+  let elapsed = 0;
+  let frameCount = 0;
+  let frameWindowStart = last;
 
   function tick(now: number): void {
     const dt = Math.min((now - last) / 1000, 1 / 30);
     last = now;
+    elapsed += dt;
 
     const m = input.intent();
     const moving = m.x !== 0 || m.y !== 0;
@@ -272,10 +280,26 @@ export function startScene(host: HTMLElement): () => void {
     rig.hip.rotation.z = swing * HIP_ROLL;
     rig.visual.position.y = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
 
+    const dx = rig.root.position.x - port.position.x;
+    const dz = rig.root.position.z - port.position.z;
+    const portDist = Math.sqrt(dx * dx + dz * dz);
+    const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
+    const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
+    (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
+
     camera.position.copy(rig.root.position).add(cameraOffset);
     camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
 
     composer.render();
+
+    frameCount++;
+    if (now - frameWindowStart >= 500) {
+      const fps = Math.round((frameCount * 1000) / (now - frameWindowStart));
+      fpsEl.textContent = `${fps} fps`;
+      frameCount = 0;
+      frameWindowStart = now;
+    }
+
     raf = requestAnimationFrame(tick);
   }
   raf = requestAnimationFrame(tick);
@@ -287,6 +311,7 @@ export function startScene(host: HTMLElement): () => void {
     composer.dispose();
     renderer.dispose();
     atlas.texture.dispose();
+    if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (renderer.domElement.parentNode === host) {
       host.removeChild(renderer.domElement);
     }
