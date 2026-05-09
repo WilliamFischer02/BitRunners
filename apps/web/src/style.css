@@ -45,6 +45,18 @@ body,
   text-transform: uppercase;
 }
 
+.fps {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--tint-dim);
+  pointer-events: none;
+  text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+}
+
 .dpad {
   position: absolute;
   bottom: 24px;
