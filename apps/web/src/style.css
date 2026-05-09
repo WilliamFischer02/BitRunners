@@ -57,61 +57,40 @@ body,
   font-variant-numeric: tabular-nums;
 }
 
-.dpad {
+.stick {
   position: absolute;
-  bottom: 24px;
-  left: 24px;
-  width: 168px;
-  height: 168px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 4px;
-  opacity: 0.55;
-  z-index: 10;
-}
-.dpad-btn {
-  appearance: none;
-  background: rgba(20, 28, 24, 0.72);
+  bottom: 28px;
+  left: 28px;
+  width: 148px;
+  height: 148px;
+  border-radius: 50%;
+  background: rgba(20, 28, 24, 0.45);
   border: 1px solid var(--tint-dim);
-  color: var(--tint);
-  font-family: inherit;
-  font-size: 22px;
-  line-height: 1;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
   touch-action: none;
+  z-index: 10;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.dpad-btn:active,
-.dpad-btn.is-down {
-  background: rgba(60, 110, 80, 0.9);
-  color: #eafff0;
-}
-.dpad-up {
-  grid-column: 2;
-  grid-row: 1;
-}
-.dpad-left {
-  grid-column: 1;
-  grid-row: 2;
-}
-.dpad-right {
-  grid-column: 3;
-  grid-row: 2;
-}
-.dpad-down {
-  grid-column: 2;
-  grid-row: 3;
+.stick-thumb {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 60px;
+  margin-top: -30px;
+  margin-left: -30px;
+  border-radius: 50%;
+  background: rgba(60, 110, 80, 0.85);
+  border: 1px solid var(--tint);
+  pointer-events: none;
+  will-change: transform;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .dpad {
-    opacity: 0.3;
+  .stick {
+    opacity: 0.45;
   }
-  .dpad:hover {
-    opacity: 0.7;
+  .stick:hover {
+    opacity: 0.75;
   }
 }

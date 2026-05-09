@@ -9,7 +9,7 @@ export function App(): JSX.Element {
   }, []);
   return (
     <div ref={hostRef} className="canvas-host">
-      <div className="hint">bit_spekter · arrows / wasd / d-pad</div>
+      <div className="hint">bit_spekter · arrows / wasd / stick</div>
     </div>
   );
 }

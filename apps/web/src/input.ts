@@ -8,11 +8,10 @@ export interface InputController {
   dispose(): void;
 }
 
-type Dir = 'up' | 'down' | 'left' | 'right';
+const DEAD_ZONE = 0.08;
 
 export function createInput(host: HTMLElement): InputController {
   const keys = new Set<string>();
-  const touches = new Set<Dir>();
 
   const onKeyDown = (e: KeyboardEvent): void => {
     keys.add(e.key.toLowerCase());
@@ -23,55 +22,138 @@ export function createInput(host: HTMLElement): InputController {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
 
-  const dpad = document.createElement('div');
-  dpad.className = 'dpad';
-  const labels: Record<Dir, string> = { up: '▲', down: '▼', left: '◀', right: '▶' };
-  const dirs: Dir[] = ['up', 'down', 'left', 'right'];
-  for (const dir of dirs) {
-    const b = document.createElement('button');
-    b.className = `dpad-btn dpad-${dir}`;
-    b.type = 'button';
-    b.textContent = labels[dir];
-    b.setAttribute('aria-label', dir);
-    const start = (e: Event): void => {
-      e.preventDefault();
-      touches.add(dir);
-      b.classList.add('is-down');
-    };
-    const end = (e: Event): void => {
-      e.preventDefault();
-      touches.delete(dir);
-      b.classList.remove('is-down');
-    };
-    b.addEventListener('touchstart', start, { passive: false });
-    b.addEventListener('touchend', end, { passive: false });
-    b.addEventListener('touchcancel', end, { passive: false });
-    b.addEventListener('mousedown', start);
-    b.addEventListener('mouseup', end);
-    b.addEventListener('mouseleave', end);
-    dpad.appendChild(b);
+  const stick = document.createElement('div');
+  stick.className = 'stick';
+  const thumb = document.createElement('div');
+  thumb.className = 'stick-thumb';
+  stick.appendChild(thumb);
+  host.appendChild(stick);
+
+  let activeTouchId: number | null = null;
+  let activeMouse = false;
+  let baseCx = 0;
+  let baseCy = 0;
+  let radius = 0;
+  let dx = 0;
+  let dy = 0;
+
+  function updateGeometry(): void {
+    const rect = stick.getBoundingClientRect();
+    baseCx = rect.left + rect.width / 2;
+    baseCy = rect.top + rect.height / 2;
+    radius = rect.width / 2 - 8;
   }
-  host.appendChild(dpad);
+
+  function setThumb(x: number, y: number, springing: boolean): void {
+    thumb.style.transition = springing ? 'transform 110ms ease-out' : 'none';
+    thumb.style.transform = `translate(${x}px, ${y}px)`;
+  }
+
+  function applyPoint(clientX: number, clientY: number): void {
+    if (radius <= 0) updateGeometry();
+    const rawX = clientX - baseCx;
+    const rawY = clientY - baseCy;
+    const len = Math.sqrt(rawX * rawX + rawY * rawY);
+    if (len > radius) {
+      dx = (rawX / len) * radius;
+      dy = (rawY / len) * radius;
+    } else {
+      dx = rawX;
+      dy = rawY;
+    }
+    setThumb(dx, dy, false);
+  }
+
+  function release(): void {
+    activeTouchId = null;
+    activeMouse = false;
+    dx = 0;
+    dy = 0;
+    setThumb(0, 0, true);
+  }
+
+  const onTouchStart = (e: TouchEvent): void => {
+    if (activeTouchId !== null) return;
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    if (!t) return;
+    activeTouchId = t.identifier;
+    updateGeometry();
+    applyPoint(t.clientX, t.clientY);
+  };
+  const onTouchMove = (e: TouchEvent): void => {
+    if (activeTouchId === null) return;
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (!t || t.identifier !== activeTouchId) continue;
+      applyPoint(t.clientX, t.clientY);
+    }
+  };
+  const onTouchEnd = (e: TouchEvent): void => {
+    if (activeTouchId === null) return;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const t = e.changedTouches[i];
+      if (!t || t.identifier !== activeTouchId) continue;
+      e.preventDefault();
+      release();
+    }
+  };
+  const onMouseDown = (e: MouseEvent): void => {
+    e.preventDefault();
+    activeMouse = true;
+    updateGeometry();
+    applyPoint(e.clientX, e.clientY);
+  };
+  const onMouseMove = (e: MouseEvent): void => {
+    if (!activeMouse) return;
+    applyPoint(e.clientX, e.clientY);
+  };
+  const onMouseUp = (): void => {
+    if (!activeMouse) return;
+    release();
+  };
+
+  stick.addEventListener('touchstart', onTouchStart, { passive: false });
+  stick.addEventListener('touchmove', onTouchMove, { passive: false });
+  stick.addEventListener('touchend', onTouchEnd, { passive: false });
+  stick.addEventListener('touchcancel', onTouchEnd, { passive: false });
+  stick.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+  const ro = new ResizeObserver(updateGeometry);
+  ro.observe(stick);
 
   function intent(): MoveIntent {
-    let x = 0;
-    let y = 0;
-    if (keys.has('arrowup') || keys.has('w') || touches.has('up')) y -= 1;
-    if (keys.has('arrowdown') || keys.has('s') || touches.has('down')) y += 1;
-    if (keys.has('arrowleft') || keys.has('a') || touches.has('left')) x -= 1;
-    if (keys.has('arrowright') || keys.has('d') || touches.has('right')) x += 1;
-    if (x !== 0 && y !== 0) {
-      const inv = 1 / Math.SQRT2;
-      x *= inv;
-      y *= inv;
+    let kx = 0;
+    let ky = 0;
+    if (keys.has('arrowup') || keys.has('w')) ky -= 1;
+    if (keys.has('arrowdown') || keys.has('s')) ky += 1;
+    if (keys.has('arrowleft') || keys.has('a')) kx -= 1;
+    if (keys.has('arrowright') || keys.has('d')) kx += 1;
+
+    const jx = radius > 0 ? dx / radius : 0;
+    const jy = radius > 0 ? dy / radius : 0;
+    const jLen = Math.sqrt(jx * jx + jy * jy);
+
+    if (jLen > DEAD_ZONE) {
+      return { x: jx, y: jy };
     }
-    return { x, y };
+
+    if (kx !== 0 && ky !== 0) {
+      const inv = 1 / Math.SQRT2;
+      return { x: kx * inv, y: ky * inv };
+    }
+    return { x: kx, y: ky };
   }
 
   function dispose(): void {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
-    if (dpad.parentNode === host) host.removeChild(dpad);
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    ro.disconnect();
+    if (stick.parentNode === host) host.removeChild(stick);
   }
 
   return { intent, dispose };

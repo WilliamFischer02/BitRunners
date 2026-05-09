@@ -281,8 +281,13 @@ export function startScene(host: HTMLElement): () => void {
 
   const characterTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
 
-  const atlas = buildGlyphAtlas({
+  const worldAtlas = buildGlyphAtlas({
     ramp: ' .·-:;=+*░#▒▓█',
+    cellSize: 6,
+    fontSize: 8,
+  });
+  const characterAtlas = buildGlyphAtlas({
+    ramp: " '.,:;-+=*#%&@",
     cellSize: 6,
     fontSize: 8,
   });
@@ -290,7 +295,8 @@ export function startScene(host: HTMLElement): () => void {
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const asciiPass = createAsciiPass({
-    atlas,
+    atlas: worldAtlas,
+    characterAtlas,
     resolution: { width: 1, height: 1 },
     tint: [0.86, 0.93, 0.88],
     background: [0.025, 0.04, 0.035],
@@ -422,7 +428,8 @@ export function startScene(host: HTMLElement): () => void {
     composer.dispose();
     characterTarget.dispose();
     renderer.dispose();
-    atlas.texture.dispose();
+    worldAtlas.texture.dispose();
+    characterAtlas.texture.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (renderer.domElement.parentNode === host) {
       host.removeChild(renderer.domElement);

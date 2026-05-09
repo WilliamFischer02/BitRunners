@@ -22,6 +22,7 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   uniform sampler2D tDiffuse;
   uniform sampler2D tGlyphs;
+  uniform sampler2D tGlyphsCharacter;
   uniform sampler2D tCharacter;
   uniform vec2 uResolution;
   uniform float uCellSize;
@@ -62,7 +63,14 @@ const FRAG = /* glsl */ `
     float glyphIdx = floor(lum * uGlyphCount);
     glyphIdx = clamp(glyphIdx, 0.0, uGlyphCount - 1.0);
 
-    if (uEdgeStrength > 0.0) {
+    float maskWeight = 0.0;
+    if (uHasCharacterMask > 0.5) {
+      vec4 cSample = texture2D(tCharacter, cellCenterUv);
+      float cMask = max(cSample.a, lumOf(cSample.rgb));
+      maskWeight = smoothstep(0.0, 0.04, cMask);
+    }
+
+    if (uEdgeStrength > 0.0 && maskWeight < 0.5) {
       vec2 step = vec2(uCellSize) / uResolution;
       float lL = lumOf(texture2D(tDiffuse, cellCenterUv - vec2(step.x, 0.0)).rgb);
       float lR = lumOf(texture2D(tDiffuse, cellCenterUv + vec2(step.x, 0.0)).rgb);
@@ -82,13 +90,12 @@ const FRAG = /* glsl */ `
       1.0 - cellLocal.y
     );
 
-    float mask = texture2D(tGlyphs, glyphUv).r;
-    vec3 color = mix(uBackground, uTint, mask);
+    float bgGlyph = texture2D(tGlyphs, glyphUv).r;
+    float chGlyph = texture2D(tGlyphsCharacter, glyphUv).r;
+    float glyphMask = mix(bgGlyph, chGlyph, maskWeight);
+    vec3 color = mix(uBackground, uTint, glyphMask);
 
     if (uHasCharacterMask > 0.5) {
-      vec4 cSample = texture2D(tCharacter, cellCenterUv);
-      float cMask = max(cSample.a, lumOf(cSample.rgb));
-      float maskWeight = smoothstep(0.0, 0.04, cMask);
       float dim = mix(uBackgroundDim, 1.0, maskWeight);
       color *= dim;
     }
@@ -99,6 +106,8 @@ const FRAG = /* glsl */ `
 
 export interface AsciiPassOptions {
   atlas: GlyphAtlas;
+  /** Optional second atlas used inside the character mask. Must match `atlas` in cellSize and glyphCount. */
+  characterAtlas?: GlyphAtlas;
   resolution: { width: number; height: number };
   /** RGB 0..1 for lit glyph pixels. Default phosphor green. */
   tint?: [number, number, number];
@@ -131,6 +140,7 @@ function placeholderTexture(): DataTexture {
 
 export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const { atlas, resolution } = options;
+  const characterAtlas = options.characterAtlas ?? atlas;
   const tint = options.tint ?? [0.55, 0.95, 0.65];
   const background = options.background ?? [0.02, 0.04, 0.03];
   const lumGain = options.lumGain ?? 1.0;
@@ -146,6 +156,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
     uniforms: {
       tDiffuse: new Uniform(null),
       tGlyphs: new Uniform(atlas.texture),
+      tGlyphsCharacter: new Uniform(characterAtlas.texture),
       tCharacter: new Uniform(characterTexture ?? placeholderTexture()),
       uResolution: new Uniform(new Vector2(resolution.width, resolution.height)),
       uCellSize: new Uniform(atlas.cellSize),
