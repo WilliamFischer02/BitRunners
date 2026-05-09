@@ -11,9 +11,11 @@ import {
   type MeshStandardMaterial as MeshStandardMaterialType,
   PerspectiveCamera,
   PlaneGeometry,
+  RGBAFormat,
   Scene,
   SphereGeometry,
   Vector3,
+  WebGLRenderTarget,
   WebGLRenderer,
 } from 'three';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
@@ -28,6 +30,8 @@ const ARM_AMP = 0.55;
 const LEG_AMP = 0.45;
 const CHEST_TWIST = 0.12;
 const HIP_ROLL = 0.05;
+
+const CHARACTER_LAYER = 1;
 
 interface BitSpekterRig {
   root: Group;
@@ -139,13 +143,18 @@ export function startScene(host: HTMLElement): () => void {
 
   const camera = new PerspectiveCamera(38, 1, 0.1, 200);
   const cameraOffset = new Vector3(4.5, 9.5, 4.5);
+  camera.layers.enableAll();
 
-  scene.add(new HemisphereLight(0xffffff, 0x303338, 1.05));
+  const hemi = new HemisphereLight(0xffffff, 0x303338, 1.05);
+  hemi.layers.enableAll();
+  scene.add(hemi);
   const sun = new DirectionalLight(0xffffff, 1.9);
   sun.position.set(6, 10, 4);
+  sun.layers.enableAll();
   scene.add(sun);
   const fill = new DirectionalLight(0x9aaecc, 0.55);
   fill.position.set(-5, 4, -5);
+  fill.layers.enableAll();
   scene.add(fill);
 
   const platform = new MeshClass(
@@ -186,7 +195,12 @@ export function startScene(host: HTMLElement): () => void {
   scene.add(portInside);
 
   const rig = buildBitSpekter();
+  rig.root.traverse((obj) => {
+    obj.layers.set(CHARACTER_LAYER);
+  });
   scene.add(rig.root);
+
+  const characterTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
 
   const atlas = buildGlyphAtlas({
     ramp: ' .·-:;=+*░#▒▓█',
@@ -207,6 +221,8 @@ export function startScene(host: HTMLElement): () => void {
     dither: 0.55,
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
+    characterTexture: characterTarget.texture,
+    backgroundDim: 0.7,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
@@ -221,6 +237,7 @@ export function startScene(host: HTMLElement): () => void {
     const h = host.clientHeight || 1;
     renderer.setSize(w, h, false);
     composer.setSize(w, h);
+    characterTarget.setSize(w, h);
     setAsciiPassResolution(asciiPass, w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -236,6 +253,7 @@ export function startScene(host: HTMLElement): () => void {
   const tempRight = new Vector3();
   const tempMove = new Vector3();
   const worldUp = new Vector3(0, 1, 0);
+  const savedClear = new Color();
 
   let raf = 0;
   let last = performance.now();
@@ -290,6 +308,20 @@ export function startScene(host: HTMLElement): () => void {
     camera.position.copy(rig.root.position).add(cameraOffset);
     camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
 
+    renderer.getClearColor(savedClear);
+    const savedAlpha = renderer.getClearAlpha();
+    renderer.setClearColor(0x000000, 0);
+    camera.layers.set(CHARACTER_LAYER);
+    const sceneBg = scene.background;
+    scene.background = null;
+    renderer.setRenderTarget(characterTarget);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    scene.background = sceneBg;
+    camera.layers.enableAll();
+    renderer.setClearColor(savedClear, savedAlpha);
+
     composer.render();
 
     frameCount++;
@@ -309,6 +341,7 @@ export function startScene(host: HTMLElement): () => void {
     ro.disconnect();
     input.dispose();
     composer.dispose();
+    characterTarget.dispose();
     renderer.dispose();
     atlas.texture.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);

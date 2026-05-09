@@ -1,4 +1,13 @@
-import { ShaderMaterial, Uniform, Vector2, Vector3 } from 'three';
+import {
+  DataTexture,
+  RGBAFormat,
+  ShaderMaterial,
+  type Texture,
+  Uniform,
+  UnsignedByteType,
+  Vector2,
+  Vector3,
+} from 'three';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { GlyphAtlas } from './glyph-atlas.js';
 
@@ -13,6 +22,7 @@ const VERT = /* glsl */ `
 const FRAG = /* glsl */ `
   uniform sampler2D tDiffuse;
   uniform sampler2D tGlyphs;
+  uniform sampler2D tCharacter;
   uniform vec2 uResolution;
   uniform float uCellSize;
   uniform float uGlyphCount;
@@ -24,6 +34,8 @@ const FRAG = /* glsl */ `
   uniform float uDither;
   uniform float uEdgeStrength;
   uniform float uEdgeThreshold;
+  uniform float uHasCharacterMask;
+  uniform float uBackgroundDim;
 
   varying vec2 vUv;
 
@@ -72,6 +84,15 @@ const FRAG = /* glsl */ `
 
     float mask = texture2D(tGlyphs, glyphUv).r;
     vec3 color = mix(uBackground, uTint, mask);
+
+    if (uHasCharacterMask > 0.5) {
+      vec4 cSample = texture2D(tCharacter, cellCenterUv);
+      float cMask = max(cSample.a, lumOf(cSample.rgb));
+      float maskWeight = smoothstep(0.0, 0.04, cMask);
+      float dim = mix(uBackgroundDim, 1.0, maskWeight);
+      color *= dim;
+    }
+
     gl_FragColor = vec4(color, 1.0);
   }
 `;
@@ -95,6 +116,17 @@ export interface AsciiPassOptions {
   edgeStrength?: number;
   /** Luminance-gradient threshold for silhouette emphasis. Default 0.18. */
   edgeThreshold?: number;
+  /** Optional RGBA texture containing a render of the player character only. */
+  characterTexture?: Texture;
+  /** Multiplier applied to non-character pixel output color. Default 1.0 (off). */
+  backgroundDim?: number;
+}
+
+function placeholderTexture(): DataTexture {
+  const data = new Uint8Array([0, 0, 0, 0]);
+  const t = new DataTexture(data, 1, 1, RGBAFormat, UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
 }
 
 export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
@@ -107,11 +139,14 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const dither = options.dither ?? 0.5;
   const edgeStrength = options.edgeStrength ?? 0.0;
   const edgeThreshold = options.edgeThreshold ?? 0.18;
+  const characterTexture = options.characterTexture;
+  const backgroundDim = options.backgroundDim ?? 1.0;
 
   const material = new ShaderMaterial({
     uniforms: {
       tDiffuse: new Uniform(null),
       tGlyphs: new Uniform(atlas.texture),
+      tCharacter: new Uniform(characterTexture ?? placeholderTexture()),
       uResolution: new Uniform(new Vector2(resolution.width, resolution.height)),
       uCellSize: new Uniform(atlas.cellSize),
       uGlyphCount: new Uniform(atlas.glyphCount),
@@ -123,6 +158,8 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uDither: new Uniform(dither),
       uEdgeStrength: new Uniform(edgeStrength),
       uEdgeThreshold: new Uniform(edgeThreshold),
+      uHasCharacterMask: new Uniform(characterTexture ? 1.0 : 0.0),
+      uBackgroundDim: new Uniform(backgroundDim),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
