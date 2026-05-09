@@ -57,34 +57,55 @@ function buildBitSpekter(): BitSpekterRig {
   hip.position.y = 0.65;
   visual.add(hip);
 
-  const armor = new MeshStandardMaterial({
+  const armorHead = new MeshStandardMaterial({
+    color: 0xeef2f6,
+    roughness: 0.45,
+    metalness: 0.3,
+    emissive: 0x3a424c,
+    emissiveIntensity: 1.6,
+  });
+  const armorTorso = new MeshStandardMaterial({
     color: 0xe4e8ec,
     roughness: 0.5,
     metalness: 0.25,
-    emissive: 0x1a1d22,
-    emissiveIntensity: 0.6,
+    emissive: 0x222830,
+    emissiveIntensity: 1.0,
   });
-  const dark = new MeshStandardMaterial({
-    color: 0x4c5056,
-    roughness: 0.7,
-    metalness: 0.15,
-    emissive: 0x0a0c10,
-    emissiveIntensity: 0.4,
+  const armorLegs = new MeshStandardMaterial({
+    color: 0xc8ccd2,
+    roughness: 0.55,
+    metalness: 0.2,
+    emissive: 0x0c0e12,
+    emissiveIntensity: 0.35,
+  });
+  const darkUpper = new MeshStandardMaterial({
+    color: 0x52565c,
+    roughness: 0.6,
+    metalness: 0.2,
+    emissive: 0x1c2028,
+    emissiveIntensity: 0.8,
+  });
+  const darkLower = new MeshStandardMaterial({
+    color: 0x3a3e44,
+    roughness: 0.75,
+    metalness: 0.1,
+    emissive: 0x060810,
+    emissiveIntensity: 0.2,
   });
   const accent = new MeshStandardMaterial({
-    color: 0xc6cad2,
-    roughness: 0.7,
-    metalness: 0.2,
-    emissive: 0x223344,
-    emissiveIntensity: 0.5,
+    color: 0xcfd6e0,
+    roughness: 0.6,
+    metalness: 0.3,
+    emissive: 0x4a5a6e,
+    emissiveIntensity: 1.2,
   });
 
-  const head = new MeshClass(new SphereGeometry(0.34, 18, 14), armor);
+  const head = new MeshClass(new SphereGeometry(0.34, 18, 14), armorHead);
   head.position.y = 0.58;
   head.scale.set(1.0, 1.05, 0.92);
   chest.add(head);
 
-  const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), dark);
+  const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), darkUpper);
   visor.position.set(0, 0.58, 0.31);
   chest.add(visor);
 
@@ -95,55 +116,55 @@ function buildBitSpekter(): BitSpekterRig {
   visorCrossH.position.set(0, 0.62, 0.34);
   chest.add(visorCrossH);
 
-  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armor);
+  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armorTorso);
   torso.position.y = -0.02;
   chest.add(torso);
 
-  const beltSeam = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), dark);
+  const beltSeam = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), darkUpper);
   beltSeam.position.y = -0.38;
   chest.add(beltSeam);
 
-  const chestPlate = new MeshClass(new BoxGeometry(0.5, 0.32, 0.04), dark);
+  const chestPlate = new MeshClass(new BoxGeometry(0.5, 0.32, 0.04), darkUpper);
   chestPlate.position.set(0, 0.05, 0.24);
   chest.add(chestPlate);
 
   const armPivotL = new Group();
   armPivotL.position.set(-0.52, 0.32, 0);
   chest.add(armPivotL);
-  const armMeshL: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armor);
+  const armMeshL: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armorTorso);
   armMeshL.position.y = -0.35;
   armPivotL.add(armMeshL);
-  const handL: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), dark);
+  const handL: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), darkUpper);
   handL.position.y = -0.79;
   armPivotL.add(handL);
 
   const armPivotR = new Group();
   armPivotR.position.set(0.52, 0.32, 0);
   chest.add(armPivotR);
-  const armMeshR: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armor);
+  const armMeshR: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armorTorso);
   armMeshR.position.y = -0.35;
   armPivotR.add(armMeshR);
-  const handR: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), dark);
+  const handR: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), darkUpper);
   handR.position.y = -0.79;
   armPivotR.add(handR);
 
   const legPivotL = new Group();
   legPivotL.position.set(-0.2, -0.03, 0);
   hip.add(legPivotL);
-  const legMeshL: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armor);
+  const legMeshL: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armorLegs);
   legMeshL.position.y = -0.31;
   legPivotL.add(legMeshL);
-  const bootL: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), dark);
+  const bootL: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), darkLower);
   bootL.position.set(0, -0.68, 0.04);
   legPivotL.add(bootL);
 
   const legPivotR = new Group();
   legPivotR.position.set(0.2, -0.03, 0);
   hip.add(legPivotR);
-  const legMeshR: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armor);
+  const legMeshR: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armorLegs);
   legMeshR.position.y = -0.31;
   legPivotR.add(legMeshR);
-  const bootR: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), dark);
+  const bootR: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), darkLower);
   bootR.position.set(0, -0.68, 0.04);
   legPivotR.add(bootR);
 
@@ -307,7 +328,7 @@ export function startScene(host: HTMLElement): () => void {
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
     characterTexture: characterTarget.texture,
-    backgroundDim: 0.5,
+    backgroundDim: 0.42,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
