@@ -1,7 +1,9 @@
 import { buildGlyphAtlas, createAsciiPass, setAsciiPassResolution } from '@bitrunners/ascii';
 import {
+  BackSide,
   BoxGeometry,
   Color,
+  CylinderGeometry,
   DirectionalLight,
   Group,
   HemisphereLight,
@@ -13,7 +15,9 @@ import {
   PlaneGeometry,
   RGBAFormat,
   Scene,
+  ShaderMaterial,
   SphereGeometry,
+  Uniform,
   Vector3,
   WebGLRenderTarget,
   WebGLRenderer,
@@ -25,6 +29,7 @@ import { createInput } from './input.js';
 
 const MOVE_SPEED = 3.2;
 const PLATFORM_HALF = 9.5;
+const PLATFORM_SIZE = PLATFORM_HALF * 2;
 const WALK_RATE = 8.5;
 const ARM_AMP = 0.55;
 const LEG_AMP = 0.45;
@@ -294,6 +299,80 @@ export function startScene(host: HTMLElement): () => void {
   terminalScreen.rotation.x = -0.3;
   scene.add(terminalScreen);
 
+  const tuftMaterial = new MeshStandardMaterial({
+    color: 0x6f8458,
+    emissive: 0x1a2814,
+    emissiveIntensity: 0.5,
+    roughness: 0.9,
+  });
+  const tuftBladeGeom = new BoxGeometry(0.05, 0.32, 0.05);
+  const tufts = new Group();
+  let tuftSeed = 0x5a17;
+  function tuftRand(): number {
+    tuftSeed = (tuftSeed * 1103515245 + 12345) & 0x7fffffff;
+    return tuftSeed / 0x7fffffff;
+  }
+  for (let i = 0; i < 36; i++) {
+    const cx = (tuftRand() - 0.5) * (PLATFORM_SIZE - 1.5);
+    const cz = (tuftRand() - 0.5) * (PLATFORM_SIZE - 1.5);
+    const blades = 3 + Math.floor(tuftRand() * 4);
+    const tuft = new Group();
+    for (let b = 0; b < blades; b++) {
+      const blade = new MeshClass(tuftBladeGeom, tuftMaterial);
+      blade.position.set(
+        (tuftRand() - 0.5) * 0.3,
+        0.16 + tuftRand() * 0.08,
+        (tuftRand() - 0.5) * 0.3,
+      );
+      blade.rotation.y = tuftRand() * Math.PI;
+      blade.scale.y = 0.7 + tuftRand() * 0.6;
+      tuft.add(blade);
+    }
+    tuft.position.set(cx, 0, cz);
+    tufts.add(tuft);
+  }
+  scene.add(tufts);
+
+  const skyboxMaterial = new ShaderMaterial({
+    uniforms: { uTime: new Uniform(0) },
+    vertexShader: /* glsl */ `
+      varying vec2 vUvSky;
+      void main() {
+        vUvSky = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform float uTime;
+      varying vec2 vUvSky;
+
+      float hash1(float x) { return fract(sin(x * 12.9898) * 43758.5453); }
+
+      void main() {
+        float colCount = 96.0;
+        float col = floor(vUvSky.x * colCount);
+        float colSeed = hash1(col + 7.13);
+        float speed = 0.45 + colSeed * 0.7;
+        float v = vUvSky.y * 12.0 - uTime * speed;
+        float row = floor(v);
+        float cellSeed = hash1(col * 17.31 + row * 31.7);
+        float headFrac = fract(v);
+        float onChar = step(0.55, cellSeed);
+        float intensity = onChar * smoothstep(0.0, 0.4, headFrac) * smoothstep(1.0, 0.55, headFrac);
+        float vFade = smoothstep(0.05, 0.35, vUvSky.y) * smoothstep(1.0, 0.6, vUvSky.y);
+        intensity *= vFade;
+        vec3 color = vec3(0.42, 0.28, 0.65) * intensity;
+        gl_FragColor = vec4(color, 1.0);
+      }
+    `,
+    side: BackSide,
+    depthWrite: false,
+    depthTest: true,
+  });
+  const skybox = new MeshClass(new CylinderGeometry(45, 45, 32, 48, 1, true), skyboxMaterial);
+  skybox.position.y = 8;
+  scene.add(skybox);
+
   const rig = buildBitSpekter();
   rig.root.traverse((obj) => {
     obj.layers.set(CHARACTER_LAYER);
@@ -320,6 +399,7 @@ export function startScene(host: HTMLElement): () => void {
     characterAtlas,
     resolution: { width: 1, height: 1 },
     tint: [0.86, 0.93, 0.88],
+    tintTop: [0.72, 0.5, 0.95],
     background: [0.025, 0.04, 0.035],
     lumGain: 1.18,
     lumBias: 0.04,
@@ -328,7 +408,8 @@ export function startScene(host: HTMLElement): () => void {
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
     characterTexture: characterTarget.texture,
-    backgroundDim: 0.42,
+    backgroundDim: 0.55,
+    characterGlow: 1.55,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
@@ -384,8 +465,10 @@ export function startScene(host: HTMLElement): () => void {
       tempMove.set(0, 0, 0).addScaledVector(tempFwd, -m.y).addScaledVector(tempRight, m.x);
       if (tempMove.lengthSq() > 1) tempMove.normalize();
       rig.root.position.addScaledVector(tempMove, MOVE_SPEED * dt);
-      rig.root.position.x = Math.max(-PLATFORM_HALF, Math.min(PLATFORM_HALF, rig.root.position.x));
-      rig.root.position.z = Math.max(-PLATFORM_HALF, Math.min(PLATFORM_HALF, rig.root.position.z));
+      if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
+      else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
+      if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
+      else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
       facing = Math.atan2(tempMove.x, tempMove.z);
       walkPhase += dt * WALK_RATE;
     }
@@ -413,6 +496,11 @@ export function startScene(host: HTMLElement): () => void {
 
     camera.position.copy(rig.root.position).add(cameraOffset);
     camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
+
+    skybox.position.x = rig.root.position.x;
+    skybox.position.z = rig.root.position.z;
+    const uTimeUniform = skyboxMaterial.uniforms.uTime as Uniform<number> | undefined;
+    if (uTimeUniform) uTimeUniform.value = elapsed;
 
     renderer.getClearColor(savedClear);
     const savedAlpha = renderer.getClearAlpha();
@@ -448,6 +536,7 @@ export function startScene(host: HTMLElement): () => void {
     input.dispose();
     composer.dispose();
     characterTarget.dispose();
+    skyboxMaterial.dispose();
     renderer.dispose();
     worldAtlas.texture.dispose();
     characterAtlas.texture.dispose();
