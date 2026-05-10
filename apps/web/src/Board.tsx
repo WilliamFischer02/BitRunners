@@ -1,4 +1,8 @@
+import Underline from '@tiptap/extension-underline';
+import { type Editor, EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Markdown } from 'tiptap-markdown';
 
 interface BoardProps {
   slug: string;
@@ -8,13 +12,68 @@ const SAVE_DEBOUNCE_MS = 2500;
 const PRIMER_FALLBACK_URL = '/PRIMER-FOR-WRITERS.md';
 
 export function Board({ slug }: BoardProps): JSX.Element {
-  const [content, setContent] = useState('');
   const [status, setStatus] = useState('Loading…');
   const [loaded, setLoaded] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [, setTick] = useState(0);
+  const dirtyRef = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3, 4] },
+      }),
+      Underline,
+      Markdown.configure({
+        html: true,
+        tightLists: true,
+        linkify: true,
+        breaks: false,
+      }),
+    ],
+    content: '',
+    editorProps: {
+      attributes: {
+        class: 'board-prose',
+        spellcheck: 'false',
+      },
+    },
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    const onUpdate = (): void => {
+      dirtyRef.current = true;
+      setStatus('Editing…');
+      setTick((n) => n + 1);
+    };
+    const onSelection = (): void => setTick((n) => n + 1);
+    editor.on('update', onUpdate);
+    editor.on('selectionUpdate', onSelection);
+    editor.on('transaction', onSelection);
+    return () => {
+      editor.off('update', onUpdate);
+      editor.off('selectionUpdate', onSelection);
+      editor.off('transaction', onSelection);
+    };
+  }, [editor]);
+
+  const getMarkdown = useCallback((): string => {
+    const md = editor?.storage.markdown?.getMarkdown?.() as string | undefined;
+    return md ?? '';
+  }, [editor]);
+
+  const setMarkdown = useCallback(
+    (md: string) => {
+      if (!editor) return;
+      editor.commands.setContent(md, false);
+      dirtyRef.current = false;
+    },
+    [editor],
+  );
+
   const load = useCallback(async () => {
+    if (!editor) return;
     try {
       const res = await fetch(`/api/board/${encodeURIComponent(slug)}`, {
         headers: { 'cache-control': 'no-store' },
@@ -33,30 +92,30 @@ export function Board({ slug }: BoardProps): JSX.Element {
           const primerRes = await fetch(PRIMER_FALLBACK_URL);
           if (primerRes.ok) {
             const primer = await primerRes.text();
-            setContent(primer);
+            setMarkdown(primer);
             setStatus('Loaded primer (not yet saved)');
-            setDirty(true);
+            dirtyRef.current = true;
             setLoaded(true);
             return;
           }
         } catch {
-          // ignore — fall through to empty
+          // fall through
         }
-        setContent('');
+        setMarkdown('');
         setStatus('Empty board — start writing');
       } else {
-        setContent(text);
+        setMarkdown(text);
         setStatus('Loaded');
       }
       setLoaded(true);
     } catch (err) {
       setStatus(`Load failed: ${(err as Error).message}`);
     }
-  }, [slug]);
+  }, [editor, slug, setMarkdown]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (editor) void load();
+  }, [editor, load]);
 
   const save = useCallback(
     async (text: string) => {
@@ -71,12 +130,12 @@ export function Board({ slug }: BoardProps): JSX.Element {
           setStatus(`Save failed (${res.status})`);
           return;
         }
-        const time = new Date();
-        const hh = String(time.getHours()).padStart(2, '0');
-        const mm = String(time.getMinutes()).padStart(2, '0');
-        const ss = String(time.getSeconds()).padStart(2, '0');
+        const t = new Date();
+        const hh = String(t.getHours()).padStart(2, '0');
+        const mm = String(t.getMinutes()).padStart(2, '0');
+        const ss = String(t.getSeconds()).padStart(2, '0');
         setStatus(`Saved ${hh}:${mm}:${ss}`);
-        setDirty(false);
+        dirtyRef.current = false;
       } catch (err) {
         setStatus(`Save failed: ${(err as Error).message}`);
       }
@@ -85,29 +144,25 @@ export function Board({ slug }: BoardProps): JSX.Element {
   );
 
   useEffect(() => {
-    if (!dirty || !loaded) return;
+    if (!loaded || !editor) return;
+    if (!dirtyRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      void save(content);
+      void save(getMarkdown());
     }, SAVE_DEBOUNCE_MS);
     return () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
     };
-  }, [content, dirty, loaded, save]);
-
-  const onChange = (e: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    setContent(e.target.value);
-    setDirty(true);
-    setStatus('Editing…');
-  };
+  });
 
   const onSaveClick = (): void => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    void save(content);
+    void save(getMarkdown());
   };
 
   const onDownload = (): void => {
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+    const md = getMarkdown();
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -115,6 +170,8 @@ export function Board({ slug }: BoardProps): JSX.Element {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const charCount = editor?.storage.characterCount?.characters?.() ?? getMarkdown().length;
 
   return (
     <div className="board">
@@ -128,19 +185,127 @@ export function Board({ slug }: BoardProps): JSX.Element {
           download .md
         </button>
       </header>
-      <textarea
-        className="board-textarea"
-        value={content}
-        onChange={onChange}
-        spellCheck={false}
-        placeholder="Write here. Auto-saves a few seconds after you stop typing."
-      />
+      <Toolbar editor={editor} />
+      <div className="board-editor-wrap">
+        <EditorContent editor={editor} className="board-editor" />
+      </div>
       <footer className="board-footer">
         <span>
           Markdown · auto-saves every {Math.round(SAVE_DEBOUNCE_MS / 1000)}s of idle ·{' '}
-          {content.length.toLocaleString()} chars
+          {charCount.toLocaleString()} chars
         </span>
       </footer>
+    </div>
+  );
+}
+
+interface ToolbarProps {
+  editor: Editor | null;
+}
+
+function Toolbar({ editor }: ToolbarProps): JSX.Element {
+  if (!editor) return <div className="board-toolbar" />;
+  const isActive = (name: string, attrs?: Record<string, unknown>): string =>
+    editor.isActive(name, attrs) ? 'tb-btn is-active' : 'tb-btn';
+  const run =
+    (cb: () => void) =>
+    (e: React.MouseEvent): void => {
+      e.preventDefault();
+      cb();
+    };
+  return (
+    <div className="board-toolbar">
+      <button
+        type="button"
+        className={isActive('bold')}
+        onMouseDown={run(() => editor.chain().focus().toggleBold().run())}
+        title="Bold (Cmd/Ctrl+B)"
+      >
+        <strong>B</strong>
+      </button>
+      <button
+        type="button"
+        className={isActive('italic')}
+        onMouseDown={run(() => editor.chain().focus().toggleItalic().run())}
+        title="Italic (Cmd/Ctrl+I)"
+      >
+        <em>I</em>
+      </button>
+      <button
+        type="button"
+        className={isActive('underline')}
+        onMouseDown={run(() => editor.chain().focus().toggleUnderline().run())}
+        title="Underline (Cmd/Ctrl+U)"
+      >
+        <u>U</u>
+      </button>
+      <span className="tb-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className={isActive('heading', { level: 1 })}
+        onMouseDown={run(() => editor.chain().focus().toggleHeading({ level: 1 }).run())}
+        title="Heading 1"
+      >
+        H1
+      </button>
+      <button
+        type="button"
+        className={isActive('heading', { level: 2 })}
+        onMouseDown={run(() => editor.chain().focus().toggleHeading({ level: 2 }).run())}
+        title="Heading 2"
+      >
+        H2
+      </button>
+      <button
+        type="button"
+        className={isActive('heading', { level: 3 })}
+        onMouseDown={run(() => editor.chain().focus().toggleHeading({ level: 3 }).run())}
+        title="Heading 3"
+      >
+        H3
+      </button>
+      <button
+        type="button"
+        className={isActive('heading', { level: 4 })}
+        onMouseDown={run(() => editor.chain().focus().toggleHeading({ level: 4 }).run())}
+        title="Subheading"
+      >
+        H4
+      </button>
+      <span className="tb-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className={isActive('blockquote')}
+        onMouseDown={run(() => editor.chain().focus().toggleBlockquote().run())}
+        title="Quote"
+      >
+        ❝
+      </button>
+      <button
+        type="button"
+        className={isActive('bulletList')}
+        onMouseDown={run(() => editor.chain().focus().toggleBulletList().run())}
+        title="Bulleted list"
+      >
+        •
+      </button>
+      <button
+        type="button"
+        className={isActive('orderedList')}
+        onMouseDown={run(() => editor.chain().focus().toggleOrderedList().run())}
+        title="Numbered list"
+      >
+        1.
+      </button>
+      <span className="tb-sep" aria-hidden="true" />
+      <button
+        type="button"
+        className="tb-btn"
+        onMouseDown={run(() => editor.chain().focus().setParagraph().run())}
+        title="Plain paragraph"
+      >
+        ¶
+      </button>
     </div>
   );
 }
