@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { Board } from './Board.js';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { startScene } from './scene.js';
+
+const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
 const BOARD_HASH_PREFIX = '#board/';
 
@@ -21,7 +22,20 @@ export function App(): JSX.Element {
   }, []);
 
   if (slug) {
-    return <Board slug={slug} />;
+    return (
+      <Suspense
+        fallback={
+          <div className="board">
+            <header className="board-header">
+              <span className="board-title">bitrunners · writer board</span>
+              <span className="board-status">loading editor…</span>
+            </header>
+          </div>
+        }
+      >
+        <Board slug={slug} />
+      </Suspense>
+    );
   }
 
   return <Game />;

@@ -23,10 +23,13 @@ const FRAG = /* glsl */ `
   uniform sampler2D tDiffuse;
   uniform sampler2D tGlyphs;
   uniform sampler2D tGlyphsCharacter;
+  uniform sampler2D tEdgeGlyphs;
   uniform sampler2D tCharacter;
+  uniform sampler2D tNormals;
   uniform vec2 uResolution;
   uniform float uCellSize;
   uniform float uGlyphCount;
+  uniform float uEdgeGlyphCount;
   uniform vec3 uTint;
   uniform vec3 uTintTop;
   uniform vec3 uBackground;
@@ -39,6 +42,7 @@ const FRAG = /* glsl */ `
   uniform float uHasCharacterMask;
   uniform float uBackgroundDim;
   uniform float uCharacterGlow;
+  uniform float uHasNormals;
 
   varying vec2 vUv;
 
@@ -74,6 +78,7 @@ const FRAG = /* glsl */ `
       charLum = lumOf(cSample.rgb);
     }
 
+    bool isEdge = false;
     if (uEdgeStrength > 0.0 && maskWeight < 0.5) {
       vec2 step = vec2(uCellSize) / uResolution;
       float lL = lumOf(texture2D(tDiffuse, cellCenterUv - vec2(step.x, 0.0)).rgb);
@@ -84,23 +89,43 @@ const FRAG = /* glsl */ `
       float gy = lD - lU;
       float edge = sqrt(gx * gx + gy * gy) * uEdgeStrength;
       if (edge > uEdgeThreshold) {
+        isEdge = true;
         glyphIdx = uGlyphCount - 1.0;
       }
     }
 
     vec2 cellLocal = (pixel - cellOrigin) / uCellSize;
-    vec2 glyphUv = vec2(
-      (glyphIdx + cellLocal.x) / uGlyphCount,
-      1.0 - cellLocal.y
-    );
-
-    float bgGlyph = texture2D(tGlyphs, glyphUv).r;
-    float chGlyph = texture2D(tGlyphsCharacter, glyphUv).r;
-    float glyphMask = mix(bgGlyph, chGlyph, maskWeight);
 
     float vBlend = smoothstep(0.45, 0.85, vUv.y);
     vec3 cellTint = mix(uTint, uTintTop, vBlend);
-    vec3 color = mix(uBackground, cellTint, glyphMask);
+
+    vec3 color;
+    if (isEdge && uHasNormals > 0.5) {
+      vec3 n = texture2D(tNormals, cellCenterUv).rgb * 2.0 - 1.0;
+      float ax = abs(n.x);
+      float ay = abs(n.y);
+      float dirIdx;
+      if (ay > ax) {
+        dirIdx = n.y > 0.0 ? 1.0 : 2.0;
+      } else {
+        dirIdx = n.x > 0.0 ? 4.0 : 3.0;
+      }
+      vec2 edgeUv = vec2(
+        (dirIdx + cellLocal.x) / uEdgeGlyphCount,
+        1.0 - cellLocal.y
+      );
+      float edgeMask = texture2D(tEdgeGlyphs, edgeUv).r;
+      color = mix(uBackground, cellTint, edgeMask);
+    } else {
+      vec2 glyphUv = vec2(
+        (glyphIdx + cellLocal.x) / uGlyphCount,
+        1.0 - cellLocal.y
+      );
+      float bgGlyph = texture2D(tGlyphs, glyphUv).r;
+      float chGlyph = texture2D(tGlyphsCharacter, glyphUv).r;
+      float glyphMask = mix(bgGlyph, chGlyph, maskWeight);
+      color = mix(uBackground, cellTint, glyphMask);
+    }
 
     if (uHasCharacterMask > 0.5) {
       float dim = mix(uBackgroundDim, 1.0, maskWeight);
@@ -142,6 +167,10 @@ export interface AsciiPassOptions {
   characterGlow?: number;
   /** Optional secondary tint blended toward the top of the screen. Default = `tint`. */
   tintTop?: [number, number, number];
+  /** Optional atlas of directional edge glyphs (space ▀ ▄ ▌ ▐ at indices 0..4). */
+  edgeAtlas?: GlyphAtlas;
+  /** Optional RGBA texture of scene normals (MeshNormalMaterial pass). Enables Stage B v0.2. */
+  normalsTexture?: Texture;
 }
 
 function placeholderTexture(): DataTexture {
@@ -166,16 +195,21 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const backgroundDim = options.backgroundDim ?? 1.0;
   const characterGlow = options.characterGlow ?? 1.0;
   const tintTop = options.tintTop ?? tint;
+  const edgeAtlas = options.edgeAtlas ?? atlas;
+  const normalsTexture = options.normalsTexture;
 
   const material = new ShaderMaterial({
     uniforms: {
       tDiffuse: new Uniform(null),
       tGlyphs: new Uniform(atlas.texture),
       tGlyphsCharacter: new Uniform(characterAtlas.texture),
+      tEdgeGlyphs: new Uniform(edgeAtlas.texture),
       tCharacter: new Uniform(characterTexture ?? placeholderTexture()),
+      tNormals: new Uniform(normalsTexture ?? placeholderTexture()),
       uResolution: new Uniform(new Vector2(resolution.width, resolution.height)),
       uCellSize: new Uniform(atlas.cellSize),
       uGlyphCount: new Uniform(atlas.glyphCount),
+      uEdgeGlyphCount: new Uniform(edgeAtlas.glyphCount),
       uTint: new Uniform(new Vector3(tint[0], tint[1], tint[2])),
       uTintTop: new Uniform(new Vector3(tintTop[0], tintTop[1], tintTop[2])),
       uBackground: new Uniform(new Vector3(background[0], background[1], background[2])),
@@ -188,6 +222,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uHasCharacterMask: new Uniform(characterTexture ? 1.0 : 0.0),
       uBackgroundDim: new Uniform(backgroundDim),
       uCharacterGlow: new Uniform(characterGlow),
+      uHasNormals: new Uniform(normalsTexture ? 1.0 : 0.0),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
