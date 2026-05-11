@@ -9,6 +9,7 @@ import {
   HemisphereLight,
   type Mesh,
   Mesh as MeshClass,
+  MeshNormalMaterial,
   MeshStandardMaterial,
   type MeshStandardMaterial as MeshStandardMaterialType,
   PerspectiveCamera,
@@ -405,12 +406,28 @@ export function startScene(host: HTMLElement): () => void {
     cellSize: 6,
     fontSize: 8,
   });
+  const edgeAtlas = buildGlyphAtlas({
+    ramp: ' ▀▄▌▐█',
+    cellSize: 6,
+    fontSize: 8,
+  });
+
+  const useNormals =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('normals') === 'on';
+  let normalsTarget: WebGLRenderTarget | null = null;
+  let normalsMaterial: MeshNormalMaterial | null = null;
+  if (useNormals) {
+    normalsTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
+    normalsMaterial = new MeshNormalMaterial();
+  }
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   const asciiPass = createAsciiPass({
     atlas: worldAtlas,
     characterAtlas,
+    edgeAtlas,
     resolution: { width: 1, height: 1 },
     tint: [0.86, 0.93, 0.88],
     tintTop: [0.72, 0.5, 0.95],
@@ -424,6 +441,7 @@ export function startScene(host: HTMLElement): () => void {
     characterTexture: characterTarget.texture,
     backgroundDim: 0.55,
     characterGlow: 1.55,
+    normalsTexture: normalsTarget?.texture,
   });
   composer.addPass(asciiPass);
   composer.addPass(new OutputPass());
@@ -439,6 +457,7 @@ export function startScene(host: HTMLElement): () => void {
     renderer.setSize(w, h, false);
     composer.setSize(w, h);
     characterTarget.setSize(w, h);
+    normalsTarget?.setSize(w, h);
     setAsciiPassResolution(asciiPass, w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -536,6 +555,21 @@ export function startScene(host: HTMLElement): () => void {
     camera.layers.enableAll();
     renderer.setClearColor(savedClear, savedAlpha);
 
+    if (normalsTarget && normalsMaterial) {
+      const prevOverride = scene.overrideMaterial;
+      scene.overrideMaterial = normalsMaterial;
+      const prevBg = scene.background;
+      scene.background = null;
+      renderer.setClearColor(0x808080, 1);
+      renderer.setRenderTarget(normalsTarget);
+      renderer.clear();
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(null);
+      scene.overrideMaterial = prevOverride;
+      scene.background = prevBg;
+      renderer.setClearColor(savedClear, savedAlpha);
+    }
+
     composer.render();
 
     frameCount++;
@@ -556,10 +590,13 @@ export function startScene(host: HTMLElement): () => void {
     input.dispose();
     composer.dispose();
     characterTarget.dispose();
+    normalsTarget?.dispose();
+    normalsMaterial?.dispose();
     skyboxMaterial.dispose();
     renderer.dispose();
     worldAtlas.texture.dispose();
     characterAtlas.texture.dispose();
+    edgeAtlas.texture.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (renderer.domElement.parentNode === host) {
       host.removeChild(renderer.domElement);
