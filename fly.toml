@@ -3,8 +3,8 @@
 # Real Colyseus + auth + persistence come in Phase 2 — this is the
 # deploy-pipeline rehearsal (per docs/devlog/0004 Phase 1 OPS).
 
-app = "bitrunners-server"
-primary_region = "sea"
+app = "bitrunners"
+primary_region = "sjc"
 
 [build]
   dockerfile = "apps/server/Dockerfile"

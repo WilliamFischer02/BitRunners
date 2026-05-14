@@ -217,7 +217,12 @@ function buildBitSpekter(): BitSpekterRig {
   return { root, visual, chest, hip, armPivotL, armPivotR, legPivotL, legPivotR };
 }
 
-export function startScene(host: HTMLElement): () => void {
+export interface SceneControls {
+  dispose(): void;
+  triggerEmote(text: string): void;
+}
+
+export function startScene(host: HTMLElement, _className: string): SceneControls {
   const renderer = new WebGLRenderer({ antialias: false });
   renderer.setPixelRatio(1);
   renderer.toneMappingExposure = 1.15;
@@ -665,7 +670,20 @@ export function startScene(host: HTMLElement): () => void {
   }
   raf = requestAnimationFrame(tick);
 
-  return () => {
+  function triggerEmote(text: string): void {
+    const bubble = document.createElement('div');
+    bubble.className = 'emote-float';
+    bubble.textContent = text;
+    host.appendChild(bubble);
+    requestAnimationFrame(() => {
+      bubble.classList.add('emote-float--rise');
+    });
+    setTimeout(() => {
+      if (bubble.parentNode === host) host.removeChild(bubble);
+    }, 1400);
+  }
+
+  const dispose = (): void => {
     cancelAnimationFrame(raf);
     ro.disconnect();
     input.dispose();
@@ -690,4 +708,6 @@ export function startScene(host: HTMLElement): () => void {
       host.removeChild(renderer.domElement);
     }
   };
+
+  return { dispose, triggerEmote };
 }

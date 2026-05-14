@@ -28,6 +28,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
       - name: Ensure Fly app exists
-        run: flyctl apps create bitrunners-server --org personal || echo "app already exists"
+        run: flyctl apps create bitrunners --org personal || echo "app already exists"
       - name: Deploy
-        run: flyctl deploy --remote-only --config fly.toml --app bitrunners-server
+        run: flyctl deploy --remote-only --config fly.toml --app bitrunners --strategy immediate

@@ -16,19 +16,17 @@ COPY apps/server apps/server
 COPY packages/shared packages/shared
 COPY packages/game-core packages/game-core
 
+# esbuild bundles all workspace deps + node_modules into a single dist/index.js.
+# Output is self-contained — runtime container needs only Node + this file.
 RUN pnpm --filter @bitrunners/server build
-
-# Strip dev dependencies; keep production-only node_modules
-RUN pnpm --filter @bitrunners/server deploy --prod --legacy /out
 
 # ---- runtime ----
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=8080
-COPY --from=builder /out/node_modules ./node_modules
-COPY --from=builder /repo/apps/server/dist ./dist
+COPY --from=builder /repo/apps/server/dist/index.js ./index.js
 EXPOSE 8080
-HEALTHCHECK --interval=20s --timeout=3s --start-period=10s \
+HEALTHCHECK --interval=20s --timeout=3s --start-period=15s \
   CMD wget -qO- http://127.0.0.1:8080/health || exit 1
-CMD ["node", "dist/index.js"]
+CMD ["node", "index.js"]
