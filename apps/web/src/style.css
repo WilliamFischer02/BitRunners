@@ -342,7 +342,7 @@ body,
 .boot-screen {
   position: fixed;
   inset: 0;
-  background: #050608;
+  background: radial-gradient(ellipse at 50% 42%, #0d0b18 0%, #060507 55%, #020205 100%);
   color: #d4ecdd;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
   font-size: 15px;
@@ -350,11 +350,56 @@ body,
   overflow: hidden;
   z-index: 100;
 }
+.boot-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(180, 139, 255, 0) 0px,
+    rgba(180, 139, 255, 0) 2px,
+    rgba(180, 139, 255, 0.045) 3px,
+    rgba(180, 139, 255, 0) 4px
+  );
+  mix-blend-mode: screen;
+  animation: boot-scan 5s linear infinite;
+}
+.boot-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at 50% 38%,
+    rgba(147, 224, 177, 0.18) 0%,
+    rgba(180, 139, 255, 0.1) 22%,
+    transparent 60%
+  );
+  animation: boot-halo 3.6s ease-in-out infinite;
+}
+@keyframes boot-scan {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 -120px;
+  }
+}
+@keyframes boot-halo {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 .boot-grid-bg {
   position: absolute;
   inset: 0;
-  background-image: linear-gradient(rgba(120, 80, 200, 0.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(120, 80, 200, 0.06) 1px, transparent 1px);
+  background-image: linear-gradient(rgba(120, 80, 200, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 80, 200, 0.09) 1px, transparent 1px);
   background-size: 32px 32px;
   mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.9), transparent 70%);
   pointer-events: none;
@@ -364,30 +409,44 @@ body,
   width: min(900px, 92vw);
   margin: 8vh auto 0;
   padding: 0 18px;
+  z-index: 1;
 }
 .boot-banner {
-  color: #b48bff;
+  color: #c8a8ff;
   text-transform: uppercase;
   letter-spacing: 0.18em;
   font-size: 11px;
   margin-bottom: 22px;
-  opacity: 0.8;
+  text-shadow: 0 0 12px rgba(180, 139, 255, 0.65), 0 0 22px rgba(180, 139, 255, 0.3);
+  animation: boot-banner-pulse 2.8s ease-in-out infinite;
+}
+@keyframes boot-banner-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 .boot-line {
-  color: #93e0b1;
+  color: #a8f0c0;
   white-space: pre-wrap;
   word-break: break-word;
   min-height: 1.7em;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55), 0 0 18px rgba(147, 224, 177, 0.25);
 }
 .boot-line--cue {
-  color: #b48bff;
+  color: #d6b8ff;
   margin-top: 12px;
+  text-shadow: 0 0 10px rgba(180, 139, 255, 0.7), 0 0 22px rgba(180, 139, 255, 0.35);
 }
 .boot-caret {
   display: inline-block;
   margin-left: 2px;
-  color: #93e0b1;
-  animation: boot-blink 1s steps(1, end) infinite;
+  color: #c0ffd6;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.9), 0 0 18px rgba(147, 224, 177, 0.5);
+  animation: boot-blink 0.9s steps(1, end) infinite;
 }
 @keyframes boot-blink {
   50% {
@@ -400,10 +459,12 @@ body,
   width: min(1080px, 94vw);
   margin: 6vh auto 0;
   padding: 0 24px 32px;
+  z-index: 1;
 }
 .boot-select-prompt {
-  color: #93e0b1;
+  color: #a8f0c0;
   margin: 4px 0 18px;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
 }
 .boot-grid {
   display: grid;
@@ -413,7 +474,7 @@ body,
 .boot-tile {
   appearance: none;
   background: rgba(20, 30, 40, 0.55);
-  border: 1px solid #2a3340;
+  border: 1px solid #3a4658;
   color: inherit;
   font-family: inherit;
   text-align: left;
@@ -423,23 +484,46 @@ body,
   display: flex;
   flex-direction: column;
   gap: 6px;
-  transition: border-color 120ms ease-out, background 120ms ease-out, transform 120ms ease-out;
+  position: relative;
+  transition: border-color 140ms ease-out, background 140ms ease-out, transform 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+.boot-tile--active {
+  border-color: #93e0b1;
+  box-shadow: 0 0 0 1px rgba(147, 224, 177, 0.2), 0 0 24px rgba(147, 224, 177, 0.25), inset 0 0 16px
+    rgba(147, 224, 177, 0.06);
+  animation: tile-breathe 2.4s ease-in-out infinite;
+}
+@keyframes tile-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(147, 224, 177, 0.18), 0 0 18px rgba(147, 224, 177, 0.2), inset 0 0
+      14px rgba(147, 224, 177, 0.05);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(147, 224, 177, 0.32), 0 0 30px rgba(147, 224, 177, 0.4), inset 0 0
+      18px rgba(147, 224, 177, 0.09);
+  }
 }
 .boot-tile:hover:not(:disabled) {
-  border-color: #93e0b1;
-  background: rgba(60, 110, 80, 0.18);
+  border-color: #c0ffd6;
+  background: rgba(60, 110, 80, 0.22);
   transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(192, 255, 214, 0.35), 0 0 30px rgba(147, 224, 177, 0.45);
 }
 .boot-tile--active .boot-tile-name {
-  color: #c0ffd6;
+  color: #d6ffe6;
+  text-shadow: 0 0 10px rgba(147, 224, 177, 0.55);
 }
 .boot-tile--active .boot-tile-status {
   color: #93e0b1;
+  text-shadow: 0 0 6px rgba(147, 224, 177, 0.45);
 }
 .boot-tile--locked {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.42;
   border-style: dashed;
+  filter: grayscale(0.4);
 }
 .boot-tile--locked .boot-tile-name {
   color: #7a8390;
