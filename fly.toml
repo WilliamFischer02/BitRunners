@@ -1,39 +1,39 @@
-# Fly.io config for the bitrunners game server.
-# Deploys the Fastify health-check skeleton from apps/server.
-# Real Colyseus + auth + persistence come in Phase 2 — this is the
-# deploy-pipeline rehearsal (per docs/devlog/0004 Phase 1 OPS).
+# fly.toml app configuration file generated for bitrunners on 2026-05-14T10:35:04Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app = "bitrunners"
-primary_region = "sjc"
+app = 'bitrunners'
+primary_region = 'sjc'
 
 [build]
-  dockerfile = "apps/server/Dockerfile"
+  dockerfile = 'apps/server/Dockerfile'
 
 [env]
-  PORT = "8080"
-  LOG_LEVEL = "info"
+  LOG_LEVEL = 'info'
+  PORT = '8080'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
-  processes = ["app"]
+  processes = ['app']
 
   [http_service.concurrency]
-    type = "requests"
-    soft_limit = 200
+    type = 'requests'
     hard_limit = 250
+    soft_limit = 200
 
   [[http_service.checks]]
-    interval = "20s"
-    timeout = "3s"
-    grace_period = "10s"
-    method = "GET"
-    path = "/health"
+    interval = '20s'
+    timeout = '3s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  cpu_kind = "shared"
+  cpu_kind = 'shared'
   cpus = 1
   memory_mb = 256
