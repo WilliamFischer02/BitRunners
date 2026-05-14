@@ -61,8 +61,8 @@ body,
   position: absolute;
   bottom: 28px;
   left: 28px;
-  width: 148px;
-  height: 148px;
+  width: 118px;
+  height: 118px;
   border-radius: 50%;
   background: rgba(20, 28, 24, 0.45);
   border: 1px solid var(--tint-dim);
@@ -75,10 +75,10 @@ body,
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 60px;
-  height: 60px;
-  margin-top: -30px;
-  margin-left: -30px;
+  width: 48px;
+  height: 48px;
+  margin-top: -24px;
+  margin-left: -24px;
   border-radius: 50%;
   background: rgba(60, 110, 80, 0.85);
   border: 1px solid var(--tint);
