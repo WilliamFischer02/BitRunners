@@ -5,16 +5,16 @@ interface BootProps {
 }
 
 const BOOT_LINES: { text: string; pause: number }[] = [
-  { text: '$ init bitrunners.v0.20', pause: 180 },
-  { text: '$ probing cloud-env.central ............. ok', pause: 240 },
-  { text: '$ negotiating handshake with server-env.space ... ok', pause: 240 },
-  { text: '$ scanning network for upstream session id', pause: 460 },
-  { text: '!! no user_id detected ............... ', pause: 820 },
-  { text: '$ loading class registry [bit_spekter,*]', pause: 380 },
+  { text: '$ init bitrunners.v0.20', pause: 90 },
+  { text: '$ probing cloud-env.central ............. ok', pause: 110 },
+  { text: '$ negotiating handshake with server-env.space ... ok', pause: 110 },
+  { text: '$ scanning network for upstream session id', pause: 200 },
+  { text: '!! no user_id detected ............... ', pause: 480 },
+  { text: '$ loading class registry [bit_spekter,*]', pause: 180 },
 ];
 
-const CHAR_DELAY_MS = 14;
-const LINE_DELAY_MS = 80;
+const CHAR_DELAY_MS = 7;
+const LINE_DELAY_MS = 35;
 
 interface ClassDef {
   id: string;
@@ -81,13 +81,13 @@ export function Boot({ onSelect }: BootProps): JSX.Element {
       const charIdx = charIdxRef.current;
       if (lineIdx >= BOOT_LINES.length) {
         setDone(true);
-        timerRef.current = setTimeout(() => setStage('select'), 520);
+        timerRef.current = setTimeout(() => setStage('select'), 260);
         return;
       }
       const def = BOOT_LINES[lineIdx];
       if (!def) {
         setDone(true);
-        timerRef.current = setTimeout(() => setStage('select'), 520);
+        timerRef.current = setTimeout(() => setStage('select'), 260);
         return;
       }
       if (charIdx < def.text.length) {
@@ -107,7 +107,7 @@ export function Boot({ onSelect }: BootProps): JSX.Element {
       timerRef.current = setTimeout(tick, def.pause + LINE_DELAY_MS);
     };
 
-    timerRef.current = setTimeout(tick, 280);
+    timerRef.current = setTimeout(tick, 140);
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
