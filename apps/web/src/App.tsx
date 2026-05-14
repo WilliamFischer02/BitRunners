@@ -1,5 +1,9 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react';
-import { startScene } from './scene.js';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Boot } from './Boot.js';
+import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
+import { ProfileIcon } from './ProfileIcon.js';
+import { TransitionRain } from './TransitionRain.js';
+import { type SceneControls, startScene } from './scene.js';
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
@@ -11,6 +15,8 @@ function readSlug(): string | null {
   const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
   return slug.length > 0 ? slug : null;
 }
+
+type Phase = 'boot' | 'transition' | 'game';
 
 export function App(): JSX.Element {
   const [slug, setSlug] = useState<string | null>(() => readSlug());
@@ -38,18 +44,63 @@ export function App(): JSX.Element {
     );
   }
 
-  return <Game />;
+  return <Shell />;
 }
 
-function Game(): JSX.Element {
+function Shell(): JSX.Element {
+  const [phase, setPhase] = useState<Phase>('boot');
+  const [chosenClass, setChosenClass] = useState<string>('bit_spekter');
+
+  const onSelect = useCallback((className: string) => {
+    setChosenClass(className);
+    setPhase('transition');
+  }, []);
+
+  const onTransitionDone = useCallback(() => {
+    setPhase('game');
+  }, []);
+
+  return (
+    <>
+      {phase === 'boot' && <Boot onSelect={onSelect} />}
+      {phase === 'transition' && (
+        <>
+          <Game className={chosenClass} />
+          <TransitionRain onDone={onTransitionDone} />
+        </>
+      )}
+      {phase === 'game' && <Game className={chosenClass} />}
+    </>
+  );
+}
+
+interface GameProps {
+  className: string;
+}
+
+function Game({ className }: GameProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<SceneControls | null>(null);
+
   useEffect(() => {
     if (!hostRef.current) return;
-    return startScene(hostRef.current);
+    const controls = startScene(hostRef.current, className);
+    controlsRef.current = controls;
+    return () => {
+      controlsRef.current = null;
+      controls.dispose();
+    };
+  }, [className]);
+
+  const onEmote = useCallback((id: EmoteId) => {
+    controlsRef.current?.triggerEmote(EMOTE_GLYPHS[id]);
   }, []);
+
   return (
     <div ref={hostRef} className="canvas-host">
-      <div className="hint">bit_spekter · arrows / wasd / stick</div>
+      <div className="hint">{className} · arrows / wasd / stick</div>
+      <ProfileIcon className={className} />
+      <EmoteWheel onEmote={onEmote} />
     </div>
   );
 }
