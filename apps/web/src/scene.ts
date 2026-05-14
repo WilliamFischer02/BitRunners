@@ -518,7 +518,20 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   let netSession: NetworkSession | null = null;
   let lastNetSend = 0;
   const serverUrl = getServerUrl();
-  if (serverUrl) {
+
+  const netEl = document.createElement('div');
+  netEl.className = 'net-status';
+  host.appendChild(netEl);
+  function setNet(text: string, kind: 'idle' | 'connecting' | 'ok' | 'error' = 'idle'): void {
+    netEl.textContent = text;
+    netEl.dataset.kind = kind;
+  }
+
+  console.info('[bitrunners] VITE_SERVER_URL =', serverUrl ?? '(unset)');
+  if (!serverUrl) {
+    setNet('net: offline · VITE_SERVER_URL unset', 'idle');
+  } else {
+    setNet(`net: connecting · ${serverUrl}`, 'connecting');
     void (async () => {
       try {
         const session = await joinSphere(serverUrl, 'bit_spekter', {
@@ -529,12 +542,14 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
             avatar.rotation.y = p.rotY;
             scene.add(avatar);
             remoteAvatars.set(p.id, avatar);
+            setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
           },
           onLeave(id) {
             const avatar = remoteAvatars.get(id);
             if (!avatar) return;
             scene.remove(avatar);
             remoteAvatars.delete(id);
+            setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
           },
           onUpdate(p) {
             const avatar = remoteAvatars.get(p.id);
@@ -544,8 +559,12 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
           },
         });
         netSession = session;
+        setNet(`net: connected · session ${session.sessionId.slice(0, 6)}`, 'ok');
+        console.info('[bitrunners] joined sphere as', session.sessionId);
       } catch (err) {
+        const msg = (err as Error)?.message ?? String(err);
         console.warn('[bitrunners] multiplayer disabled — connect failed:', err);
+        setNet(`net: error · ${msg.slice(0, 80)}`, 'error');
       }
     })();
   }
@@ -704,6 +723,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     characterAtlas.texture.dispose();
     edgeAtlas.texture.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
+    if (netEl.parentNode === host) host.removeChild(netEl);
     if (renderer.domElement.parentNode === host) {
       host.removeChild(renderer.domElement);
     }

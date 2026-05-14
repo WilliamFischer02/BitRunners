@@ -874,3 +874,41 @@ body,
   transform: translate(-50%, -260%);
   opacity: 0;
 }
+
+/* ──────────── multiplayer status badge ──────────── */
+.net-status {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  color: #8aa597;
+  pointer-events: none;
+  z-index: 12;
+  white-space: nowrap;
+  max-width: 80vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.net-status[data-kind="connecting"] {
+  color: #c8a8ff;
+  border-color: #4a3a78;
+  text-shadow: 0 0 8px rgba(180, 139, 255, 0.5);
+}
+.net-status[data-kind="ok"] {
+  color: #a8f0c0;
+  border-color: #3a6850;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
+}
+.net-status[data-kind="error"] {
+  color: #ff9b8b;
+  border-color: #6a3a30;
+  text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
+}
