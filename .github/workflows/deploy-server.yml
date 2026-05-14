@@ -1,0 +1,33 @@
+name: Deploy server
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/server/**'
+      - 'packages/shared/**'
+      - 'packages/game-core/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'fly.toml'
+      - '.github/workflows/deploy-server.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLYIO_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Ensure Fly app exists
+        run: flyctl apps create bitrunners-server --org personal || echo "app already exists"
+      - name: Deploy
+        run: flyctl deploy --remote-only --config fly.toml --app bitrunners-server

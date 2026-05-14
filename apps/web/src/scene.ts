@@ -27,6 +27,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { createInput } from './input.js';
+import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 
 const MOVE_SPEED = 3.2;
 const PLATFORM_HALF = 9.5;
@@ -38,6 +39,45 @@ const CHEST_TWIST = 0.12;
 const HIP_ROLL = 0.05;
 
 const CHARACTER_LAYER = 1;
+
+const NET_SEND_HZ = 15;
+const NET_SEND_MS = 1000 / NET_SEND_HZ;
+
+function buildRemoteAvatar(): Group {
+  const g = new Group();
+  const armor = new MeshStandardMaterial({
+    color: 0xa8acb4,
+    roughness: 0.7,
+    metalness: 0.2,
+    emissive: 0x141820,
+    emissiveIntensity: 0.35,
+  });
+  const dark = new MeshStandardMaterial({
+    color: 0x404448,
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), armor);
+  head.position.y = 1.58;
+  head.scale.set(1.0, 1.05, 0.92);
+  g.add(head);
+  const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), dark);
+  visor.position.set(0, 1.58, 0.31);
+  g.add(visor);
+  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armor);
+  torso.position.y = 0.98;
+  g.add(torso);
+  const belt = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), dark);
+  belt.position.y = 0.62;
+  g.add(belt);
+  const legs = new MeshClass(new BoxGeometry(0.68, 0.6, 0.32), armor);
+  legs.position.y = 0.32;
+  g.add(legs);
+  const boots = new MeshClass(new BoxGeometry(0.74, 0.12, 0.36), dark);
+  boots.position.set(0, 0.06, 0.04);
+  g.add(boots);
+  return g;
+}
 
 interface BitSpekterRig {
   root: Group;
@@ -469,6 +509,42 @@ export function startScene(host: HTMLElement): () => void {
 
   const input = createInput(host);
 
+  const remoteAvatars = new Map<string, Group>();
+  let netSession: NetworkSession | null = null;
+  let lastNetSend = 0;
+  const serverUrl = getServerUrl();
+  if (serverUrl) {
+    void (async () => {
+      try {
+        const session = await joinSphere(serverUrl, 'bit_spekter', {
+          onJoin(p) {
+            if (remoteAvatars.has(p.id)) return;
+            const avatar = buildRemoteAvatar();
+            avatar.position.set(p.x, 0, p.z);
+            avatar.rotation.y = p.rotY;
+            scene.add(avatar);
+            remoteAvatars.set(p.id, avatar);
+          },
+          onLeave(id) {
+            const avatar = remoteAvatars.get(id);
+            if (!avatar) return;
+            scene.remove(avatar);
+            remoteAvatars.delete(id);
+          },
+          onUpdate(p) {
+            const avatar = remoteAvatars.get(p.id);
+            if (!avatar) return;
+            avatar.position.set(p.x, 0, p.z);
+            avatar.rotation.y = p.rotY;
+          },
+        });
+        netSession = session;
+      } catch (err) {
+        console.warn('[bitrunners] multiplayer disabled — connect failed:', err);
+      }
+    })();
+  }
+
   const tempFwd = new Vector3();
   const tempRight = new Vector3();
   const tempMove = new Vector3();
@@ -536,6 +612,11 @@ export function startScene(host: HTMLElement): () => void {
     camera.position.copy(rig.root.position).add(cameraOffset);
     camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
 
+    if (netSession && now - lastNetSend >= NET_SEND_MS) {
+      netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
+      lastNetSend = now;
+    }
+
     skybox.position.x = rig.root.position.x;
     skybox.position.z = rig.root.position.z;
     const uTimeUniform = skyboxMaterial.uniforms.uTime as Uniform<number> | undefined;
@@ -588,6 +669,13 @@ export function startScene(host: HTMLElement): () => void {
     cancelAnimationFrame(raf);
     ro.disconnect();
     input.dispose();
+    if (netSession) {
+      void netSession.dispose();
+    }
+    for (const avatar of remoteAvatars.values()) {
+      scene.remove(avatar);
+    }
+    remoteAvatars.clear();
     composer.dispose();
     characterTarget.dispose();
     normalsTarget?.dispose();
