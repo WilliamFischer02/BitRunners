@@ -251,7 +251,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
   const platform = new MeshClass(
     new PlaneGeometry(PLATFORM_HALF * 2, PLATFORM_HALF * 2, 1, 1),
-    new MeshStandardMaterial({ color: 0xa8acb2, roughness: 0.95, metalness: 0.05 }),
+    new MeshStandardMaterial({ color: 0x1a2a1c, roughness: 0.95, metalness: 0.05 }),
   );
   platform.rotation.x = -Math.PI / 2;
   worldTile.add(platform);
@@ -296,8 +296,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     new BoxGeometry(0.7, 0.45, 0.05),
     new MeshStandardMaterial({
       color: 0x0c1014,
-      emissive: 0x88aa66,
-      emissiveIntensity: 0.55,
+      emissive: 0xff8844,
+      emissiveIntensity: 0.7,
       roughness: 1,
     }),
   );
@@ -338,8 +338,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     new BoxGeometry(1.1, 0.55, 0.05),
     new MeshStandardMaterial({
       color: 0x0a0c10,
-      emissive: 0x66ccaa,
-      emissiveIntensity: 0.45,
+      emissive: 0xff8844,
+      emissiveIntensity: 0.55,
       roughness: 1,
     }),
   );
@@ -348,11 +348,36 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   worldTile.add(terminalScreen);
 
   const tuftMaterial = new MeshStandardMaterial({
-    color: 0x6f8458,
-    emissive: 0x1a2814,
-    emissiveIntensity: 0.5,
+    color: 0x88c466,
+    emissive: 0x2a4818,
+    emissiveIntensity: 0.65,
     roughness: 0.9,
   });
+
+  const traceMaterial = new MeshStandardMaterial({
+    color: 0x6a3a1a,
+    emissive: 0xff6a20,
+    emissiveIntensity: 0.55,
+    metalness: 0.7,
+    roughness: 0.4,
+  });
+  const traceGeom = new BoxGeometry(1, 0.03, 0.08);
+  let traceSeed = 0xa3c1;
+  function traceRand(): number {
+    traceSeed = (traceSeed * 1103515245 + 12345) & 0x7fffffff;
+    return traceSeed / 0x7fffffff;
+  }
+  for (let i = 0; i < 14; i++) {
+    const trace = new MeshClass(traceGeom, traceMaterial);
+    trace.position.set(
+      (traceRand() - 0.5) * (PLATFORM_SIZE - 1.5),
+      0.025,
+      (traceRand() - 0.5) * (PLATFORM_SIZE - 1.5),
+    );
+    if (traceRand() < 0.5) trace.rotation.y = Math.PI / 2;
+    trace.scale.x = 0.6 + traceRand() * 2.4;
+    worldTile.add(trace);
+  }
   const tuftBladeGeom = new BoxGeometry(0.05, 0.32, 0.05);
   const tufts = new Group();
   let tuftSeed = 0x5a17;
@@ -496,6 +521,18 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   fpsEl.textContent = '-- fps';
   host.appendChild(fpsEl);
 
+  // Random 6-char [A-Z0-9] session code shown above the player when no account is wired.
+  const playerCode = (() => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 6; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
+    return out;
+  })();
+  const playerTagEl = document.createElement('div');
+  playerTagEl.className = 'player-tag';
+  playerTagEl.innerHTML = `<span class="player-tag-name">${playerCode}</span><span class="player-tag-sub">// session</span>`;
+  host.appendChild(playerTagEl);
+
   function resize(): void {
     const w = host.clientWidth || 1;
     const h = host.clientHeight || 1;
@@ -583,9 +620,18 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   let elapsed = 0;
   let frameCount = 0;
   let frameWindowStart = last;
+  let hoverY = 0;
+  const HOVER_HEIGHT = 0.45;
+  const FRAME_INTERVAL_MS = 1000 / 18;
+  const tempTag = new Vector3();
 
   function tick(now: number): void {
-    const dt = Math.min((now - last) / 1000, 1 / 30);
+    const sinceLast = now - last;
+    if (sinceLast < FRAME_INTERVAL_MS - 1) {
+      raf = requestAnimationFrame(tick);
+      return;
+    }
+    const dt = Math.min(sinceLast / 1000, 1 / 12);
     last = now;
     elapsed += dt;
 
@@ -618,7 +664,10 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     rig.chest.rotation.y = -swing * CHEST_TWIST;
     rig.hip.rotation.y = swing * CHEST_TWIST * 0.6;
     rig.hip.rotation.z = swing * HIP_ROLL;
-    rig.visual.position.y = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
+    const targetHover = moving ? HOVER_HEIGHT : 0;
+    hoverY += (targetHover - hoverY) * Math.min(dt * 5, 1);
+    const bob = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
+    rig.visual.position.y = bob + hoverY;
 
     const portRelX = rig.root.position.x - port.position.x;
     const portRelZ = rig.root.position.z - port.position.z;
@@ -677,6 +726,15 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
     composer.render();
 
+    // Project the player code badge to screen space (above the head).
+    tempTag.set(rig.root.position.x, rig.root.position.y + 2.55 + hoverY, rig.root.position.z);
+    tempTag.project(camera);
+    const tagX = (tempTag.x * 0.5 + 0.5) * (host.clientWidth || 1);
+    const tagY = (-tempTag.y * 0.5 + 0.5) * (host.clientHeight || 1);
+    const visible = tempTag.z > -1 && tempTag.z < 1;
+    playerTagEl.style.opacity = visible ? '1' : '0';
+    playerTagEl.style.transform = `translate(${tagX}px, ${tagY}px) translate(-50%, -100%)`;
+
     frameCount++;
     if (now - frameWindowStart >= 500) {
       const fps = Math.round((frameCount * 1000) / (now - frameWindowStart));
@@ -724,6 +782,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     edgeAtlas.texture.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (netEl.parentNode === host) host.removeChild(netEl);
+    if (playerTagEl.parentNode === host) host.removeChild(playerTagEl);
     if (renderer.domElement.parentNode === host) {
       host.removeChild(renderer.domElement);
     }

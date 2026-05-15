@@ -10,6 +10,15 @@ export interface InputController {
 
 const DEAD_ZONE = 0.08;
 
+function joystickEnabled(): boolean {
+  try {
+    const v = localStorage.getItem('bitrunners.settings.joystick');
+    return v === null || v === 'true';
+  } catch {
+    return true;
+  }
+}
+
 export function createInput(host: HTMLElement): InputController {
   const keys = new Set<string>();
 
@@ -23,7 +32,12 @@ export function createInput(host: HTMLElement): InputController {
   window.addEventListener('keyup', onKeyUp);
 
   const stick = document.createElement('div');
-  stick.className = 'stick';
+  stick.className = joystickEnabled() ? 'stick' : 'stick is-hidden';
+
+  const onSettingsChanged = (): void => {
+    stick.className = joystickEnabled() ? 'stick' : 'stick is-hidden';
+  };
+  window.addEventListener('bitrunners:settings-changed', onSettingsChanged);
   const thumb = document.createElement('div');
   thumb.className = 'stick-thumb';
   stick.appendChild(thumb);
@@ -152,6 +166,7 @@ export function createInput(host: HTMLElement): InputController {
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('mousemove', onMouseMove);
     window.removeEventListener('mouseup', onMouseUp);
+    window.removeEventListener('bitrunners:settings-changed', onSettingsChanged);
     ro.disconnect();
     if (stick.parentNode === host) host.removeChild(stick);
   }
