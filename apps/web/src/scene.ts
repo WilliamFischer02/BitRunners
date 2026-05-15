@@ -517,6 +517,144 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   });
   scene.add(rig.root);
 
+  // ─── Admin shadow figure (hidden until encounter) ────────────────────
+  // Shadow/silhouette of a hunched man made of black/dark gray boxes,
+  // appears beside the obelisk during the "admin hacks user" event (item 13).
+  const adminShadow = new Group();
+  const adminMat = new MeshStandardMaterial({
+    color: 0x06060a,
+    roughness: 1,
+    metalness: 0,
+    emissive: 0x0c0820,
+    emissiveIntensity: 0.35,
+  });
+  const adminDark = new MeshStandardMaterial({
+    color: 0x121420,
+    roughness: 1,
+    metalness: 0,
+    emissive: 0x080414,
+    emissiveIntensity: 0.25,
+  });
+  const adminTorso = new MeshClass(new BoxGeometry(0.5, 0.62, 0.36), adminMat);
+  adminTorso.position.set(0, 0.95, 0.04);
+  adminTorso.rotation.x = 0.32;
+  adminShadow.add(adminTorso);
+  const adminHead = new MeshClass(new SphereGeometry(0.18, 12, 8), adminMat);
+  adminHead.position.set(0, 1.4, 0.18);
+  adminShadow.add(adminHead);
+  const adminHood = new MeshClass(new BoxGeometry(0.32, 0.26, 0.28), adminDark);
+  adminHood.position.set(0, 1.46, 0.16);
+  adminHood.rotation.x = 0.42;
+  adminShadow.add(adminHood);
+  const adminArmL = new MeshClass(new BoxGeometry(0.13, 0.7, 0.14), adminMat);
+  adminArmL.position.set(-0.3, 0.78, 0.16);
+  adminArmL.rotation.x = 0.18;
+  adminShadow.add(adminArmL);
+  const adminArmR = adminArmL.clone();
+  adminArmR.position.x = 0.3;
+  adminShadow.add(adminArmR);
+  const adminLegL = new MeshClass(new BoxGeometry(0.16, 0.6, 0.2), adminMat);
+  adminLegL.position.set(-0.12, 0.32, 0);
+  adminShadow.add(adminLegL);
+  const adminLegR = adminLegL.clone();
+  adminLegR.position.x = 0.12;
+  adminShadow.add(adminLegR);
+  adminShadow.visible = false;
+  scene.add(adminShadow);
+
+  // ─── Tendril particle pool (item 3c) ────────────────────────────────
+  // Thin vertical streaks that spawn at random ground positions near the
+  // player and rise toward the body. Spawn rate scales with player motion.
+  const TENDRIL_POOL = 36;
+  const tendrilGeom = new BoxGeometry(0.05, 0.42, 0.05);
+  const tendrilMaterial = new MeshStandardMaterial({
+    color: 0x6a4aa8,
+    emissive: 0xb48bff,
+    emissiveIntensity: 1.6,
+    roughness: 0.6,
+    metalness: 0.1,
+    transparent: true,
+    opacity: 1,
+  });
+  interface Tendril {
+    mesh: Mesh;
+    active: boolean;
+    velocity: number;
+    lifetime: number;
+    age: number;
+  }
+  const tendrils: Tendril[] = [];
+  for (let i = 0; i < TENDRIL_POOL; i++) {
+    const mesh = new MeshClass(tendrilGeom, tendrilMaterial);
+    mesh.visible = false;
+    scene.add(mesh);
+    tendrils.push({ mesh, active: false, velocity: 0, lifetime: 0, age: 0 });
+  }
+  let tendrilSpawnAcc = 0;
+
+  function spawnTendril(): void {
+    const slot = tendrils.find((t) => !t.active);
+    if (!slot) return;
+    const radius = 0.4 + Math.random() * 1.6;
+    const angle = Math.random() * Math.PI * 2;
+    slot.mesh.position.set(
+      rig.root.position.x + Math.cos(angle) * radius,
+      0.21,
+      rig.root.position.z + Math.sin(angle) * radius,
+    );
+    slot.mesh.scale.set(1, 1, 1);
+    slot.mesh.rotation.y = Math.random() * Math.PI;
+    slot.mesh.visible = true;
+    slot.active = true;
+    slot.velocity = 0.8 + Math.random() * 0.9;
+    slot.lifetime = 1.1 + Math.random() * 0.7;
+    slot.age = 0;
+  }
+
+  function updateTendrils(dt: number, isMoving: boolean): void {
+    const targetRate = isMoving ? 14 : 1.6;
+    tendrilSpawnAcc += dt * targetRate;
+    while (tendrilSpawnAcc >= 1) {
+      tendrilSpawnAcc -= 1;
+      spawnTendril();
+    }
+    for (const t of tendrils) {
+      if (!t.active) continue;
+      t.age += dt;
+      if (t.age >= t.lifetime) {
+        t.active = false;
+        t.mesh.visible = false;
+        continue;
+      }
+      t.mesh.position.y += t.velocity * dt;
+      const lifeT = t.age / t.lifetime;
+      t.mesh.scale.y = Math.max(0.05, 1 - lifeT * 0.7);
+    }
+  }
+
+  // ─── Obelisk approach event (item 13) ───────────────────────────────
+  let adminEncountered = false;
+  const OBELISK_X = 5.5;
+  const OBELISK_Z = 5.5;
+  const OBELISK_TRIGGER_DIST = 2.6;
+  function checkObeliskApproach(): void {
+    if (adminEncountered) return;
+    const dx = rig.root.position.x - OBELISK_X;
+    const dz = rig.root.position.z - OBELISK_Z;
+    const wdx =
+      ((((dx + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) - PLATFORM_HALF;
+    const wdz =
+      ((((dz + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) - PLATFORM_HALF;
+    const dist = Math.sqrt(wdx * wdx + wdz * wdz);
+    if (dist < OBELISK_TRIGGER_DIST) {
+      adminEncountered = true;
+      adminShadow.position.set(OBELISK_X - 1.6, 0, OBELISK_Z - 0.2);
+      adminShadow.lookAt(rig.root.position.x, 0, rig.root.position.z);
+      adminShadow.visible = true;
+      window.dispatchEvent(new CustomEvent('bitrunners:admin-encounter'));
+    }
+  }
+
   const characterTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
 
   const worldAtlas = buildGlyphAtlas({
@@ -721,6 +859,9 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     hoverY += (targetHover - hoverY) * Math.min(dt * 5, 1);
     const bob = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
     rig.visual.position.y = bob + hoverY;
+
+    updateTendrils(dt, moving || hoverY > 0.05);
+    checkObeliskApproach();
 
     const portRelX = rig.root.position.x - port.position.x;
     const portRelZ = rig.root.position.z - port.position.z;
