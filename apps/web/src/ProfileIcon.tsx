@@ -122,10 +122,52 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
           </div>
         </section>
 
+        <SettingsSection />
+
         <footer className="panel-footer">
           press [esc] or click outside to close · placeholder until account system lands
         </footer>
       </div>
     </div>
+  );
+}
+
+function readJoystick(): boolean {
+  try {
+    const v = localStorage.getItem('bitrunners.settings.joystick');
+    return v === null || v === 'true';
+  } catch {
+    return true;
+  }
+}
+
+function SettingsSection(): JSX.Element {
+  const [joystick, setJoystick] = useState<boolean>(readJoystick);
+
+  const toggleJoystick = (): void => {
+    const next = !joystick;
+    setJoystick(next);
+    try {
+      localStorage.setItem('bitrunners.settings.joystick', String(next));
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new CustomEvent('bitrunners:settings-changed'));
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ settings</div>
+      <div className="panel-row">
+        <span className="panel-key">on-screen joystick</span>
+        <button
+          type="button"
+          className={joystick ? 'panel-toggle is-on' : 'panel-toggle'}
+          onClick={toggleJoystick}
+        >
+          {joystick ? '[ on ]' : '[ off ]'}
+        </button>
+      </div>
+    </section>
   );
 }

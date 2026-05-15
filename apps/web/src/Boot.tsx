@@ -15,6 +15,8 @@ const BOOT_LINES: { text: string; pause: number }[] = [
 
 const CHAR_DELAY_MS = 7;
 const LINE_DELAY_MS = 35;
+const CHAR_DELAY_FAST_MS = 1;
+const LINE_DELAY_FAST_MS = 12;
 
 interface ClassDef {
   id: string;
@@ -72,6 +74,32 @@ export function Boot({ onSelect }: BootProps): JSX.Element {
   const lineIdxRef = useRef(0);
   const charIdxRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const heldRef = useRef(false);
+
+  useEffect(() => {
+    if (stage !== 'scroll') return;
+    const setHeld = (v: boolean) => () => {
+      heldRef.current = v;
+    };
+    const down = setHeld(true);
+    const up = setHeld(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    window.addEventListener('mousedown', down);
+    window.addEventListener('mouseup', up);
+    window.addEventListener('touchstart', down, { passive: true });
+    window.addEventListener('touchend', up, { passive: true });
+    window.addEventListener('touchcancel', up, { passive: true });
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+      window.removeEventListener('mousedown', down);
+      window.removeEventListener('mouseup', up);
+      window.removeEventListener('touchstart', down);
+      window.removeEventListener('touchend', up);
+      window.removeEventListener('touchcancel', up);
+    };
+  }, [stage]);
 
   useEffect(() => {
     if (stage !== 'scroll') return;
@@ -98,13 +126,15 @@ export function Boot({ onSelect }: BootProps): JSX.Element {
           return copy;
         });
         charIdxRef.current = charIdx + 1;
-        timerRef.current = setTimeout(tick, CHAR_DELAY_MS);
+        const delay = heldRef.current ? CHAR_DELAY_FAST_MS : CHAR_DELAY_MS;
+        timerRef.current = setTimeout(tick, delay);
         return;
       }
       lineIdxRef.current = lineIdx + 1;
       charIdxRef.current = 0;
       setLines((prev) => [...prev, '']);
-      timerRef.current = setTimeout(tick, def.pause + LINE_DELAY_MS);
+      const linePause = heldRef.current ? LINE_DELAY_FAST_MS : def.pause + LINE_DELAY_MS;
+      timerRef.current = setTimeout(tick, linePause);
     };
 
     timerRef.current = setTimeout(tick, 140);
