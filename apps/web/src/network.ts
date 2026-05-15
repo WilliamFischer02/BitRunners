@@ -1,4 +1,4 @@
-import { Client, type Room } from 'colyseus.js';
+import { Client, type Room, getStateCallbacks } from 'colyseus.js';
 
 export interface RemotePlayer {
   id: string;
@@ -22,23 +22,23 @@ export interface NetworkSession {
   dispose(): Promise<void>;
 }
 
-interface PlayerLike {
+interface PlayerSchema {
   id: string;
   className: string;
   x: number;
   y: number;
   z: number;
   rotY: number;
-  onChange?: (cb: () => void) => void;
 }
 
-function snapshot(p: PlayerLike): RemotePlayer {
+function snapshot(p: PlayerSchema): RemotePlayer {
   return { id: p.id, className: p.className, x: p.x, y: p.y, z: p.z, rotY: p.rotY };
 }
 
 /**
- * Connect to a Colyseus sphere room. Pass the server URL — when missing, callers
- * should skip calling this entirely and run in single-player mode.
+ * Connect to a Colyseus sphere room. When `serverUrl` is missing, callers should
+ * skip calling this entirely and run in single-player mode. Throws if the
+ * connection or initial state sync fails.
  */
 export async function joinSphere(
   serverUrl: string,
@@ -48,28 +48,32 @@ export async function joinSphere(
   const client = new Client(serverUrl);
   const room: Room = await client.joinOrCreate('sphere', { className });
 
-  // Subscribe to the players map. Schema callbacks API varies slightly across
-  // @colyseus/schema versions; we use the generic state.players.onAdd/.onRemove
-  // pattern that has been stable since 0.15.
-  const players = (room.state as { players: Map<string, PlayerLike> }).players;
+  // Wait for the first state sync so room.state is populated.
+  await new Promise<void>((resolve) => {
+    room.onStateChange.once(() => resolve());
+  });
 
-  if (typeof (players as unknown as { onAdd?: unknown }).onAdd === 'function') {
-    (players as unknown as { onAdd: (cb: (p: PlayerLike, id: string) => void) => void }).onAdd(
-      (p, id) => {
-        if (id === room.sessionId) return;
-        callbacks.onJoin?.(snapshot(p));
-        if (typeof p.onChange === 'function') {
-          p.onChange(() => callbacks.onUpdate?.(snapshot(p)));
-        }
-      },
-    );
-  }
-  if (typeof (players as unknown as { onRemove?: unknown }).onRemove === 'function') {
-    (
-      players as unknown as { onRemove: (cb: (_p: PlayerLike, id: string) => void) => void }
-    ).onRemove((_p, id) => {
-      if (id === room.sessionId) return;
-      callbacks.onLeave?.(id);
+  // Schema 3.x requires the getStateCallbacks helper for tree-shaking compat.
+  // The state shape is opaque to the client compiler (we don't share schema types
+  // between server and client yet), so cast through `any` for the callback proxy.
+  // biome-ignore lint/suspicious/noExplicitAny: schema callbacks rely on dynamic typing
+  const $ = getStateCallbacks(room) as any;
+  const playersHandle = $(room.state).players;
+
+  if (playersHandle && typeof playersHandle.onAdd === 'function') {
+    playersHandle.onAdd((player: PlayerSchema, sessionId: string) => {
+      if (sessionId === room.sessionId) return;
+      callbacks.onJoin?.(snapshot(player));
+      const playerCb = $(player);
+      if (playerCb && typeof playerCb.onChange === 'function') {
+        playerCb.onChange(() => {
+          callbacks.onUpdate?.(snapshot(player));
+        });
+      }
+    });
+    playersHandle.onRemove((_player: PlayerSchema, sessionId: string) => {
+      if (sessionId === room.sessionId) return;
+      callbacks.onLeave?.(sessionId);
     });
   }
 
