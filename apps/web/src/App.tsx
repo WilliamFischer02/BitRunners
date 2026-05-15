@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { AdminDialogue } from './AdminDialogue.js';
 import { Boot } from './Boot.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { ProfileIcon } from './ProfileIcon.js';
@@ -81,6 +82,7 @@ interface GameProps {
 function Game({ className }: GameProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<SceneControls | null>(null);
+  const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -92,6 +94,12 @@ function Game({ className }: GameProps): JSX.Element {
     };
   }, [className]);
 
+  useEffect(() => {
+    const onEncounter = (): void => setAdminDialogueOpen(true);
+    window.addEventListener('bitrunners:admin-encounter', onEncounter);
+    return () => window.removeEventListener('bitrunners:admin-encounter', onEncounter);
+  }, []);
+
   const onEmote = useCallback((id: EmoteId) => {
     controlsRef.current?.triggerEmote(EMOTE_GLYPHS[id]);
   }, []);
@@ -101,6 +109,7 @@ function Game({ className }: GameProps): JSX.Element {
       <div className="hint">{className} · arrows / wasd / stick</div>
       <ProfileIcon className={className} />
       <EmoteWheel onEmote={onEmote} />
+      {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
     </div>
   );
 }
