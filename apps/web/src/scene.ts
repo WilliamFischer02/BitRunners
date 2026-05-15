@@ -32,11 +32,9 @@ import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 const MOVE_SPEED = 3.2;
 const PLATFORM_HALF = 9.5;
 const PLATFORM_SIZE = PLATFORM_HALF * 2;
-const WALK_RATE = 8.5;
-const ARM_AMP = 0.55;
-const LEG_AMP = 0.45;
-const CHEST_TWIST = 0.12;
-const HIP_ROLL = 0.05;
+const TRAIL_ARM = -0.65;
+const TRAIL_LEG = -0.45;
+const LEAN_CHEST = 0.16;
 
 const CHARACTER_LAYER = 1;
 
@@ -659,18 +657,18 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
   const worldAtlas = buildGlyphAtlas({
     ramp: ' .·-:;=+*░#▒▓█',
-    cellSize: 6,
-    fontSize: 8,
+    cellSize: 5,
+    fontSize: 7,
   });
   const characterAtlas = buildGlyphAtlas({
     ramp: " '.,:;-+=*#%&@",
-    cellSize: 6,
-    fontSize: 8,
+    cellSize: 5,
+    fontSize: 7,
   });
   const edgeAtlas = buildGlyphAtlas({
     ramp: ' ▀▄▌▐█',
-    cellSize: 6,
-    fontSize: 8,
+    cellSize: 5,
+    fontSize: 7,
   });
 
   const useNormals =
@@ -806,7 +804,6 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   let raf = 0;
   let last = performance.now();
   let facing = 0;
-  let walkPhase = 0;
   let walkActive = 0;
   let elapsed = 0;
   let frameCount = 0;
@@ -840,25 +837,32 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
       if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
       else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
       facing = Math.atan2(tempMove.x, tempMove.z);
-      walkPhase += dt * WALK_RATE;
     }
     rig.root.rotation.y = facing;
 
     const targetActive = moving ? 1 : 0;
-    walkActive += (targetActive - walkActive) * Math.min(dt * 14, 1);
+    walkActive += (targetActive - walkActive) * Math.min(dt * 6, 1);
+    const idleAmt = 1 - walkActive;
 
-    const swing = Math.sin(walkPhase) * walkActive;
-    rig.legPivotL.rotation.x = swing * LEG_AMP;
-    rig.legPivotR.rotation.x = -swing * LEG_AMP;
-    rig.armPivotL.rotation.x = -swing * ARM_AMP;
-    rig.armPivotR.rotation.x = swing * ARM_AMP;
-    rig.chest.rotation.y = -swing * CHEST_TWIST;
-    rig.hip.rotation.y = swing * CHEST_TWIST * 0.6;
-    rig.hip.rotation.z = swing * HIP_ROLL;
+    // Levitate trail: arms/legs sweep backward, body leans forward while moving.
+    rig.armPivotL.rotation.x = walkActive * TRAIL_ARM;
+    rig.armPivotR.rotation.x = walkActive * TRAIL_ARM;
+    rig.legPivotL.rotation.x = walkActive * TRAIL_LEG;
+    rig.legPivotR.rotation.x = walkActive * TRAIL_LEG;
+    rig.chest.rotation.x = walkActive * LEAN_CHEST;
+
+    // Idle drift: subtle sway and arm flutter when still.
+    rig.chest.rotation.y = Math.sin(elapsed * 0.9) * 0.035 * idleAmt;
+    rig.hip.rotation.z = Math.sin(elapsed * 0.6) * 0.022 * idleAmt;
+    const idleFlutter = Math.sin(elapsed * 1.4) * 0.04 * idleAmt;
+    rig.armPivotL.rotation.z = idleFlutter;
+    rig.armPivotR.rotation.z = -idleFlutter;
+    rig.hip.rotation.y = 0;
+
     const targetHover = moving ? HOVER_HEIGHT : 0;
     hoverY += (targetHover - hoverY) * Math.min(dt * 5, 1);
-    const bob = Math.abs(Math.cos(walkPhase)) * 0.05 * walkActive;
-    rig.visual.position.y = bob + hoverY;
+    const idleBreathe = Math.sin(elapsed * 1.1) * 0.018 * idleAmt;
+    rig.visual.position.y = hoverY + idleBreathe;
 
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();

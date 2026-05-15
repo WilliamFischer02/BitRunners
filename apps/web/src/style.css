@@ -1355,3 +1355,146 @@ body,
   letter-spacing: 0.08em;
   color: #b48bff;
 }
+
+/* ──────────── mobile + safe-area pass ──────────── */
+.canvas-host {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  box-sizing: border-box;
+}
+.canvas-host canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.hint {
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  max-width: 56vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile {
+  top: max(10px, env(safe-area-inset-top, 0px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  min-width: 130px;
+  max-width: 200px;
+}
+.fps {
+  top: auto;
+  bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 48px));
+  right: max(10px, env(safe-area-inset-right, 0px));
+  font-size: 10px;
+}
+.net-status {
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  max-width: 72vw;
+}
+.stick {
+  bottom: max(22px, calc(env(safe-area-inset-bottom, 0px) + 22px));
+  left: max(22px, env(safe-area-inset-left, 0px));
+}
+.emote {
+  bottom: max(22px, calc(env(safe-area-inset-bottom, 0px) + 22px));
+  right: max(22px, env(safe-area-inset-right, 0px));
+}
+
+@media (max-width: 540px) {
+  .hint {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .profile {
+    min-width: 116px;
+    max-width: 156px;
+  }
+  .profile-box {
+    padding: 6px 8px;
+  }
+  .profile-label,
+  .profile-status {
+    font-size: 9px;
+  }
+  .profile-class {
+    font-size: 12px;
+  }
+  .profile-rain {
+    font-size: 9px;
+  }
+  .fps {
+    font-size: 9px;
+  }
+  .net-status {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+  }
+  .stick {
+    width: 96px;
+    height: 96px;
+  }
+  .stick-thumb {
+    width: 40px;
+    height: 40px;
+    margin-top: -20px;
+    margin-left: -20px;
+  }
+  .emote {
+    width: 116px;
+    height: 116px;
+  }
+  .emote-btn {
+    width: 44px;
+    height: 44px;
+  }
+  .emote-glyph {
+    font-size: 11px;
+  }
+  .emote-label {
+    font-size: 7px;
+  }
+  .player-tag {
+    font-size: 10px;
+    padding: 2px 6px;
+  }
+  .player-tag-name {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+  }
+  .player-tag-sub {
+    font-size: 7px;
+  }
+  .dialogue-frame {
+    width: calc(100vw - 24px);
+    margin: 0 12px 16px;
+    padding: 10px 12px 12px;
+  }
+  .dialogue-line {
+    font-size: 18px;
+  }
+  .dialogue-name {
+    font-size: 11px;
+  }
+  .dialogue-emote-grid {
+    gap: 6px;
+  }
+  .dialogue-emote-btn {
+    padding: 8px 4px;
+  }
+}
+
+@media (max-width: 380px) {
+  .hint {
+    display: none;
+  }
+  .profile {
+    min-width: 100px;
+  }
+  .profile-class {
+    font-size: 11px;
+  }
+}
