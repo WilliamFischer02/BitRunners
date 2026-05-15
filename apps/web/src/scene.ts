@@ -32,8 +32,8 @@ import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 const MOVE_SPEED = 3.2;
 const PLATFORM_HALF = 9.5;
 const PLATFORM_SIZE = PLATFORM_HALF * 2;
-const TRAIL_ARM = -0.65;
-const TRAIL_LEG = -0.45;
+const TRAIL_ARM = 0.65;
+const TRAIL_LEG = 0.45;
 const LEAN_CHEST = 0.16;
 
 const CHARACTER_LAYER = 1;
