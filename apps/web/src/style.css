@@ -1104,3 +1104,92 @@ body,
   color: var(--tint-dim);
   text-transform: uppercase;
 }
+
+/* ──────────── auth UI in profile panel ──────────── */
+.auth-providers {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.auth-btn {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.55);
+  border: 1px solid #3a4a40;
+  color: #c0ffd6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 6px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+  text-align: center;
+}
+.auth-btn:hover:not(:disabled) {
+  border-color: #93e0b1;
+  background: rgba(60, 110, 80, 0.35);
+}
+.auth-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.auth-google {
+  border-color: #5a8870;
+}
+.auth-github {
+  border-color: #b48bff;
+}
+.auth-microsoft {
+  border-color: #c8a8ff;
+}
+.auth-or {
+  text-align: center;
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.12em;
+  margin: 6px 0;
+}
+.auth-email-row {
+  display: flex;
+  gap: 6px;
+}
+.auth-email-row .auth-btn {
+  flex: 1;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth-input {
+  appearance: none;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid #3a4a40;
+  color: #d4ecdd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  outline: none;
+}
+.auth-input:focus {
+  border-color: #93e0b1;
+  box-shadow: 0 0 8px rgba(147, 224, 177, 0.3);
+}
+.auth-form-row {
+  display: flex;
+  gap: 6px;
+}
+.auth-form-row .auth-btn {
+  flex: 1;
+}
+.auth-submit {
+  background: rgba(60, 110, 80, 0.45);
+  color: #eafff0;
+}
+.auth-error {
+  color: #ff9b8b;
+  font-size: 11px;
+  margin-top: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}

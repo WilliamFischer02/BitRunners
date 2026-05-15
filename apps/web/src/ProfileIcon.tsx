@@ -1,4 +1,13 @@
 import { useEffect, useState } from 'react';
+import {
+  type AuthSnapshot,
+  isAuthConfigured,
+  signInWithEmail,
+  signInWithProvider,
+  signOut,
+  signUpWithEmail,
+  subscribeAuth,
+} from './supabase.js';
 
 interface ProfileIconProps {
   className: string;
@@ -87,14 +96,9 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
           </div>
         </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ account</div>
-          <div className="panel-stub">
-            ─── login system not wired yet. email magic-link auth lands in phase 2.
-          </div>
-          <button type="button" className="panel-action" disabled>
-            sign in [coming soon]
-          </button>
+        <AccountSection />
+        <section className="panel-section" hidden>
+          <div className="panel-section-title">$ account-stub</div>
         </section>
 
         <section className="panel-section">
@@ -129,6 +133,171 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
         </footer>
       </div>
     </div>
+  );
+}
+
+function AccountSection(): JSX.Element {
+  const [auth, setAuth] = useState<AuthSnapshot>({ status: 'guest' });
+  const [mode, setMode] = useState<'idle' | 'email-in' | 'email-up'>('idle');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const configured = isAuthConfigured();
+
+  useEffect(() => {
+    return subscribeAuth(setAuth);
+  }, []);
+
+  if (!configured) {
+    return (
+      <section className="panel-section">
+        <div className="panel-section-title">$ account</div>
+        <div className="panel-stub">
+          ─── auth not configured. owner: set VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY in
+          Cloudflare Pages env and redeploy. see devlog 0026.
+        </div>
+        <button type="button" className="panel-action" disabled>
+          sign in [pending env]
+        </button>
+      </section>
+    );
+  }
+
+  if (auth.status === 'authenticated') {
+    return (
+      <section className="panel-section">
+        <div className="panel-section-title">$ account</div>
+        <div className="panel-row">
+          <span className="panel-key">email</span>
+          <span className="panel-val">{auth.user?.email ?? '─'}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">user id</span>
+          <span className="panel-val">{auth.user?.id?.slice(0, 8) ?? '─'}</span>
+        </div>
+        <button
+          type="button"
+          className="panel-action"
+          onClick={() => {
+            void signOut();
+          }}
+        >
+          sign out
+        </button>
+      </section>
+    );
+  }
+
+  const oauth = (provider: 'google' | 'github' | 'azure') => async () => {
+    setBusy(true);
+    setError(null);
+    const res = await signInWithProvider(provider);
+    if (res.error) setError(res.error);
+    setBusy(false);
+  };
+
+  const submitEmail = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    const action = mode === 'email-up' ? signUpWithEmail : signInWithEmail;
+    const res = await action(email, password);
+    if (res.error) setError(res.error);
+    setBusy(false);
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ account</div>
+      <div className="auth-providers">
+        <button
+          type="button"
+          className="auth-btn auth-google"
+          onClick={oauth('google')}
+          disabled={busy}
+        >
+          [ google ]
+        </button>
+        <button
+          type="button"
+          className="auth-btn auth-github"
+          onClick={oauth('github')}
+          disabled={busy}
+        >
+          [ github ]
+        </button>
+        <button
+          type="button"
+          className="auth-btn auth-microsoft"
+          onClick={oauth('azure')}
+          disabled={busy}
+        >
+          [ microsoft ]
+        </button>
+      </div>
+      <div className="auth-or">─── or ───</div>
+      {mode === 'idle' && (
+        <div className="auth-email-row">
+          <button
+            type="button"
+            className="auth-btn"
+            onClick={() => setMode('email-in')}
+            disabled={busy}
+          >
+            sign in (email)
+          </button>
+          <button
+            type="button"
+            className="auth-btn"
+            onClick={() => setMode('email-up')}
+            disabled={busy}
+          >
+            create account
+          </button>
+        </div>
+      )}
+      {mode !== 'idle' && (
+        <form className="auth-form" onSubmit={submitEmail}>
+          <input
+            type="email"
+            className="auth-input"
+            placeholder="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+          />
+          <input
+            type="password"
+            className="auth-input"
+            placeholder="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === 'email-up' ? 'new-password' : 'current-password'}
+            minLength={8}
+            required
+          />
+          <div className="auth-form-row">
+            <button type="submit" className="auth-btn auth-submit" disabled={busy}>
+              {mode === 'email-up' ? 'create' : 'sign in'}
+            </button>
+            <button
+              type="button"
+              className="auth-btn"
+              onClick={() => {
+                setMode('idle');
+                setError(null);
+              }}
+            >
+              cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {error && <div className="auth-error">! {error}</div>}
+    </section>
   );
 }
 
