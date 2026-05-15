@@ -12,6 +12,7 @@
   "dependencies": {
     "@bitrunners/ascii": "workspace:*",
     "@bitrunners/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.47.10",
     "@tiptap/extension-underline": "^2.10.4",
     "@tiptap/pm": "^2.10.4",
     "@tiptap/react": "^2.10.4",

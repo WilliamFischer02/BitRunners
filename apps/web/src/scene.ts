@@ -146,72 +146,125 @@ function buildBitSpekter(): BitSpekterRig {
     emissiveIntensity: 1.2,
   });
 
-  const head = new MeshClass(new SphereGeometry(0.34, 18, 14), armorHead);
+  // Skinnier, more angular robot rig (Marathon-Rook-inspired, miniaturized).
+  // Narrower torso, thinner limbs, antenna, segmented chest plate, knee
+  // sections, ankle wedges. Per devlog 0026 item 5.
+
+  const head = new MeshClass(new SphereGeometry(0.26, 14, 10), armorHead);
   head.position.y = 0.58;
-  head.scale.set(1.0, 1.05, 0.92);
+  head.scale.set(0.95, 1.08, 0.88);
   chest.add(head);
 
-  const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), darkUpper);
-  visor.position.set(0, 0.58, 0.31);
+  const antenna = new MeshClass(new BoxGeometry(0.04, 0.22, 0.04), accent);
+  antenna.position.set(0.08, 0.86, -0.04);
+  chest.add(antenna);
+  const antennaTip = new MeshClass(new BoxGeometry(0.07, 0.05, 0.07), accent);
+  antennaTip.position.set(0.08, 0.99, -0.04);
+  chest.add(antennaTip);
+
+  const visor = new MeshClass(new BoxGeometry(0.42, 0.12, 0.04), darkUpper);
+  visor.position.set(0, 0.6, 0.24);
   chest.add(visor);
 
-  const visorCrossV = new MeshClass(new BoxGeometry(0.06, 0.5, 0.04), accent);
-  visorCrossV.position.set(0, 0.45, 0.34);
+  const visorCrossV = new MeshClass(new BoxGeometry(0.05, 0.42, 0.03), accent);
+  visorCrossV.position.set(0, 0.5, 0.27);
   chest.add(visorCrossV);
-  const visorCrossH = new MeshClass(new BoxGeometry(0.42, 0.06, 0.04), accent);
-  visorCrossH.position.set(0, 0.62, 0.34);
+  const visorCrossH = new MeshClass(new BoxGeometry(0.36, 0.05, 0.03), accent);
+  visorCrossH.position.set(0, 0.62, 0.27);
   chest.add(visorCrossH);
 
-  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armorTorso);
-  torso.position.y = -0.02;
+  const neck = new MeshClass(new BoxGeometry(0.18, 0.1, 0.18), darkUpper);
+  neck.position.set(0, 0.42, 0);
+  chest.add(neck);
+
+  const torso = new MeshClass(new BoxGeometry(0.55, 0.62, 0.32), armorTorso);
+  torso.position.y = 0.05;
   chest.add(torso);
 
-  const beltSeam = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), darkUpper);
-  beltSeam.position.y = -0.38;
+  const torsoSeam = new MeshClass(new BoxGeometry(0.57, 0.04, 0.34), darkUpper);
+  torsoSeam.position.y = 0.05;
+  chest.add(torsoSeam);
+
+  const chestPlateTop = new MeshClass(new BoxGeometry(0.38, 0.18, 0.04), accent);
+  chestPlateTop.position.set(0, 0.18, 0.17);
+  chest.add(chestPlateTop);
+  const chestPlateBot = new MeshClass(new BoxGeometry(0.32, 0.16, 0.04), darkUpper);
+  chestPlateBot.position.set(0, -0.04, 0.17);
+  chest.add(chestPlateBot);
+
+  const shoulderL = new MeshClass(new BoxGeometry(0.18, 0.16, 0.22), darkUpper);
+  shoulderL.position.set(-0.4, 0.3, 0);
+  chest.add(shoulderL);
+  const shoulderR = shoulderL.clone();
+  shoulderR.position.x = 0.4;
+  chest.add(shoulderR);
+
+  const beltSeam = new MeshClass(new BoxGeometry(0.62, 0.08, 0.36), darkUpper);
+  beltSeam.position.y = -0.32;
   chest.add(beltSeam);
 
-  const chestPlate = new MeshClass(new BoxGeometry(0.5, 0.32, 0.04), darkUpper);
-  chestPlate.position.set(0, 0.05, 0.24);
-  chest.add(chestPlate);
-
   const armPivotL = new Group();
-  armPivotL.position.set(-0.52, 0.32, 0);
+  armPivotL.position.set(-0.4, 0.24, 0);
   chest.add(armPivotL);
-  const armMeshL: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armorTorso);
-  armMeshL.position.y = -0.35;
-  armPivotL.add(armMeshL);
-  const handL: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), darkUpper);
-  handL.position.y = -0.79;
+  const armUpperL: Mesh = new MeshClass(new BoxGeometry(0.13, 0.34, 0.16), armorTorso);
+  armUpperL.position.y = -0.18;
+  armPivotL.add(armUpperL);
+  const elbowL: Mesh = new MeshClass(new BoxGeometry(0.15, 0.08, 0.18), darkUpper);
+  elbowL.position.y = -0.38;
+  armPivotL.add(elbowL);
+  const armLowerL: Mesh = new MeshClass(new BoxGeometry(0.11, 0.32, 0.14), armorTorso);
+  armLowerL.position.y = -0.58;
+  armPivotL.add(armLowerL);
+  const handL: Mesh = new MeshClass(new BoxGeometry(0.16, 0.14, 0.18), darkUpper);
+  handL.position.y = -0.81;
   armPivotL.add(handL);
 
   const armPivotR = new Group();
-  armPivotR.position.set(0.52, 0.32, 0);
+  armPivotR.position.set(0.4, 0.24, 0);
   chest.add(armPivotR);
-  const armMeshR: Mesh = new MeshClass(new BoxGeometry(0.2, 0.7, 0.24), armorTorso);
-  armMeshR.position.y = -0.35;
-  armPivotR.add(armMeshR);
-  const handR: Mesh = new MeshClass(new BoxGeometry(0.22, 0.18, 0.26), darkUpper);
-  handR.position.y = -0.79;
+  const armUpperR: Mesh = new MeshClass(new BoxGeometry(0.13, 0.34, 0.16), armorTorso);
+  armUpperR.position.y = -0.18;
+  armPivotR.add(armUpperR);
+  const elbowR: Mesh = new MeshClass(new BoxGeometry(0.15, 0.08, 0.18), darkUpper);
+  elbowR.position.y = -0.38;
+  armPivotR.add(elbowR);
+  const armLowerR: Mesh = new MeshClass(new BoxGeometry(0.11, 0.32, 0.14), armorTorso);
+  armLowerR.position.y = -0.58;
+  armPivotR.add(armLowerR);
+  const handR: Mesh = new MeshClass(new BoxGeometry(0.16, 0.14, 0.18), darkUpper);
+  handR.position.y = -0.81;
   armPivotR.add(handR);
 
   const legPivotL = new Group();
-  legPivotL.position.set(-0.2, -0.03, 0);
+  legPivotL.position.set(-0.16, -0.05, 0);
   hip.add(legPivotL);
-  const legMeshL: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armorLegs);
-  legMeshL.position.y = -0.31;
-  legPivotL.add(legMeshL);
-  const bootL: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), darkLower);
-  bootL.position.set(0, -0.68, 0.04);
+  const thighL: Mesh = new MeshClass(new BoxGeometry(0.17, 0.32, 0.2), armorLegs);
+  thighL.position.y = -0.17;
+  legPivotL.add(thighL);
+  const kneeL: Mesh = new MeshClass(new BoxGeometry(0.19, 0.09, 0.22), darkLower);
+  kneeL.position.y = -0.36;
+  legPivotL.add(kneeL);
+  const shinL: Mesh = new MeshClass(new BoxGeometry(0.15, 0.3, 0.18), armorLegs);
+  shinL.position.y = -0.56;
+  legPivotL.add(shinL);
+  const bootL: Mesh = new MeshClass(new BoxGeometry(0.22, 0.09, 0.3), darkLower);
+  bootL.position.set(0, -0.74, 0.04);
   legPivotL.add(bootL);
 
   const legPivotR = new Group();
-  legPivotR.position.set(0.2, -0.03, 0);
+  legPivotR.position.set(0.16, -0.05, 0);
   hip.add(legPivotR);
-  const legMeshR: Mesh = new MeshClass(new BoxGeometry(0.24, 0.62, 0.28), armorLegs);
-  legMeshR.position.y = -0.31;
-  legPivotR.add(legMeshR);
-  const bootR: Mesh = new MeshClass(new BoxGeometry(0.28, 0.12, 0.36), darkLower);
-  bootR.position.set(0, -0.68, 0.04);
+  const thighR: Mesh = new MeshClass(new BoxGeometry(0.17, 0.32, 0.2), armorLegs);
+  thighR.position.y = -0.17;
+  legPivotR.add(thighR);
+  const kneeR: Mesh = new MeshClass(new BoxGeometry(0.19, 0.09, 0.22), darkLower);
+  kneeR.position.y = -0.36;
+  legPivotR.add(kneeR);
+  const shinR: Mesh = new MeshClass(new BoxGeometry(0.15, 0.3, 0.18), armorLegs);
+  shinR.position.y = -0.56;
+  legPivotR.add(shinR);
+  const bootR: Mesh = new MeshClass(new BoxGeometry(0.22, 0.09, 0.3), darkLower);
+  bootR.position.set(0, -0.74, 0.04);
   legPivotR.add(bootR);
 
   return { root, visual, chest, hip, armPivotL, armPivotR, legPivotL, legPivotR };
