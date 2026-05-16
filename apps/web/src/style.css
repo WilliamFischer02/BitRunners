@@ -920,7 +920,7 @@ body,
 
 /* ──────────── profile menu glowing frame ──────────── */
 .profile {
-  position: relative;
+  position: absolute;
   overflow: visible;
 }
 .profile::before,
