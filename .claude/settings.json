@@ -103,44 +103,4 @@
       "Bash(curl:* -d:*)"
     ]
   }
-}{
-  "permissions": {
-    "allow": [
-      "Bash(pnpm:*)",
-      "Bash(npx:*)",
-      "Bash(node:*)",
-      "Bash(npm:*)",
-      "Bash(git status)",
-      "Bash(git status:*)",
-      "Bash(git diff:*)",
-      "Bash(git log:*)",
-      "Bash(git branch:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
-      "Bash(git fetch:*)",
-      "Bash(git pull:*)",
-      "Bash(git show:*)",
-      "Bash(git restore:*)",
-      "Bash(git switch:*)",
-      "Bash(git checkout:*)",
-      "Bash(git remote -v)",
-      "Bash(git config --get:*)",
-      "Bash(ls:*)",
-      "Bash(mkdir:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(rg:*)",
-      "Bash(cat:*)",
-      "Bash(tsc:*)",
-      "Bash(vitest:*)",
-      "Bash(biome:*)",
-      "Bash(eslint:*)",
-      "Bash(vite:*)",
-      "Bash(turbo:*)",
-      "Bash(fly:*)",
-      "Bash(flyctl:*)",
-      "Bash(wrangler:*)"
-    ]
-  }
 }

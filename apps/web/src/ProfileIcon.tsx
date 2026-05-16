@@ -310,14 +310,34 @@ function readJoystick(): boolean {
   }
 }
 
+function readRun(): boolean {
+  try {
+    return localStorage.getItem('bitrunners.settings.run') === 'true';
+  } catch {
+    return false;
+  }
+}
+
 function SettingsSection(): JSX.Element {
   const [joystick, setJoystick] = useState<boolean>(readJoystick);
+  const [run, setRun] = useState<boolean>(readRun);
 
   const toggleJoystick = (): void => {
     const next = !joystick;
     setJoystick(next);
     try {
       localStorage.setItem('bitrunners.settings.joystick', String(next));
+    } catch {
+      // ignore
+    }
+    window.dispatchEvent(new CustomEvent('bitrunners:settings-changed'));
+  };
+
+  const toggleRun = (): void => {
+    const next = !run;
+    setRun(next);
+    try {
+      localStorage.setItem('bitrunners.settings.run', String(next));
     } catch {
       // ignore
     }
@@ -335,6 +355,16 @@ function SettingsSection(): JSX.Element {
           onClick={toggleJoystick}
         >
           {joystick ? '[ on ]' : '[ off ]'}
+        </button>
+      </div>
+      <div className="panel-row">
+        <span className="panel-key">run speed</span>
+        <button
+          type="button"
+          className={run ? 'panel-toggle is-on' : 'panel-toggle'}
+          onClick={toggleRun}
+        >
+          {run ? '[ on ]' : '[ off ]'}
         </button>
       </div>
     </section>

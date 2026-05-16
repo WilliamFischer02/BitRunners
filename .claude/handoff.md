@@ -1,60 +1,63 @@
-# Handoff — 2026-05-16, session tendril-rework-ship
+# Handoff — 2026-05-16, session run-toggle + settings-fix
 
 ## State of the build
 
-- **Live web (bitrunners.app):** Single-player bit_spekter scene with ASCII pipeline, levitate-trail body animation, multiplayer live ("NET: CONNECTED"), profile/emote/boot UI. Tendril particles just changed to thin ground dashes — Cloudflare Pages deploy from `main` SHA `6e694ea` was triggered ~00:46 UTC; visual not yet eyeballed on the live site.
-- **Live server (bitrunners.fly.dev):** Colyseus + Fastify, single sphere, 15 Hz, scale-to-zero. No server-path changes this session, so no Fly redeploy expected (deploy-server.yml only fires on server-path diffs). Last known state: working multiplayer.
-- **Local repo branch:** `claude/ascii-overhead-game-14dir` @ `43fe526` — "feat: rework tendril particles — ground dashes, sparse, fade in place".
-- **Uncommitted changes:** clean.
-- **CI status:** green. PR #31 check runs: `ci` ×2 success, Cloudflare Pages success, Supabase Preview skipped (expected). Merged into `main` via merge commit `6e694ea`.
+- **Live web (bitrunners.app):** Single-player bit_spekter scene, ASCII pipeline, levitate-trail body anim, multiplayer live, profile/emote/boot UI, reworked ground-dash tendrils. No new deploy this session — work is on `claude/bitrunners-collaboration-EcqBv`, not merged to `main`.
+- **Live server (bitrunners.fly.dev):** Unchanged. No server-path changes this session; no Fly redeploy expected.
+- **Local repo branch:** `claude/bitrunners-collaboration-EcqBv` — reset to the work-branch history (`7734455`) + this session's run-toggle/settings-fix/devlog commit on top.
+- **Uncommitted changes:** none after the session commit; pushed, draft PR opened.
+- **CI status:** local gates green — lint clean (39 files), typecheck 8/8, build 5/5. Repo has no test suite (`vitest run` exits 1 on "no tests" — pre-existing, not a regression).
 
 ## What I did this session
 
-- Reviewed the staged tendril diff in `apps/web/src/scene.ts` against devlog 0029 to confirm parity before committing.
-- Committed the tendril rework + `docs/devlog/0029-tendrils-reworked.md` (commit `43fe526`) and pushed to `claude/ascii-overhead-game-14dir`.
-- Opened PR #31 (`claude/ascii-overhead-game-14dir` → `main`) via GitHub MCP, polled check runs to green, merged with `merge_method: merge` (merge SHA `6e694ea`), which triggers the Pages prod deploy.
-- Subscribed this session to PR #31 activity; verified post-merge there are zero unresolved review comments and all 4 checks passed — no action required.
+- **Branch reconciliation:** `claude/bitrunners-collaboration-EcqBv` was `main`'s merge bubbles, tree-identical to `claude/ascii-overhead-game-14dir` except missing the two `.claude/` files (zero unique content). Reset it to `origin/claude/ascii-overhead-game-14dir` so it carries full history + continuity/guardrails. Recorded in `.claude/decisions.md`.
+- **Found + fixed a real bug:** `.claude/settings.json` was two concatenated JSON objects (invalid JSON) — a hardened block followed by a leftover permissive one with no `deny`. The mechanical guardrails were NOT being enforced (Biome flagged it). Collapsed to the single hardened object. Lint now clean. Recorded in `.claude/decisions.md` + devlog 0030.
+- **Shipped the run-speed toggle** (handoff item 2 / backlog 11 remainder): `$ settings` panel row `run speed [on]/[off]`, mirrors the joystick-toggle pattern (localStorage `bitrunners.settings.run`, default off, `bitrunners:settings-changed` event). Scene swaps `WALK_SPEED 3.2` / `RUN_SPEED 5.6` live.
+- Wrote `docs/devlog/0030-run-toggle-and-settings-fix.md`; created `.claude/decisions.md` (did not exist before).
 
 ## What's blocking forward progress right now
 
-- Owner-side service wiring (Supabase project keys, Resend DNS verification, OAuth client IDs) is not yet plugged into env. The account system is scaffolded and env-gated but inert until the owner provides credentials. This blocks: display-name input, owner approval queue, persisted "met The Admin"/inventory/achievements/samaritan.
-- 20-achievements design is blocked on a faction-reward Q&A with the owner (not yet held).
+- Unchanged from 0029: owner-side service wiring (Supabase keys, Resend DNS, OAuth client IDs) blocks the account system, display-name input/approval queue, persisted "met The Admin"/inventory/achievements.
+- 20-achievements design still blocked on the faction-reward Q&A with the owner.
 
-## What the owner is doing in parallel (their action items)
+## What the owner is doing in parallel
 
-- Wiring Supabase + Resend + OAuth ("tomorrow", per their last message before this session). Step-by-step guide is in `docs/devlog/0026`.
-- Owns prod deploy approvals — standing auto-merge-to-`main` confirmation was given for THIS conversation only; a fresh session must re-confirm before pushing to `main`.
+- Wiring Supabase + Resend + OAuth (guide in devlog 0026).
+- Owns prod deploy approvals. No `main` push happened or is requested this session.
 
 ## What I would do next, in priority order
 
-1. Eyeball bitrunners.app once the Pages deploy settles (~1–2 min after merge) — confirm dashes read as thin `-`/`:` slivers under the runner, sparse while moving, near-invisible idle. If they read wrong, iterate geometry/rates in `scene.ts` tendril block.
-2. Run-toggle button (backlog item 11 remainder) — a UI toggle to switch walk/run movement speed. Self-contained, no owner deps.
-3. Once owner confirms Supabase/Resend/OAuth env is live: wire display-name input + owner approval queue, then persisted "met The Admin" flag (currently per-session only).
-4. Hold the faction-reward Q&A with the owner, then design the 20 achievements (backlog item 12).
+1. Eyeball the run toggle on a deployed build: flips speed live without reload, persists across reload, default = walk. (Couldn't browser-test from this headless env — logic verified via typecheck/lint/build + mirrors the working joystick toggle.)
+2. Still open from 0029: confirm reworked tendrils read correctly on bitrunners.app.
+3. Once owner confirms Supabase/Resend/OAuth env: wire display-name input + approval queue, then persisted "met The Admin".
+4. Faction-reward Q&A → design the 20 achievements (backlog 12).
 
 ## Files touched this session
 
-- `apps/web/src/scene.ts` — tendril pool reworked: geometry `BoxGeometry(0.26,0.014,0.045)` flat dash, spawn radius `0.12+rand*0.42` under `rig.root` at y `0.045`, no velocity (stationary), per-particle `MeshStandardMaterial`, fade `1 − lifeT²` on emissiveIntensity+opacity, rates `4`/sec moving · `0.35`/sec idle, pool 36→24, disposal of geom + 24 mats on teardown.
-- `docs/devlog/0029-tendrils-reworked.md` — new devlog documenting the before/after.
+- `apps/web/src/scene.ts` — `MOVE_SPEED` split into `WALK_SPEED 3.2` / `RUN_SPEED 5.6`; `readRunEnabled()` (default off); `runEnabled` state + `bitrunners:settings-changed` listener (removed in `dispose()`); move tick uses the selected speed.
+- `apps/web/src/ProfileIcon.tsx` — `readRun()` + `run speed` toggle row in `$ settings`, mirrors joystick row.
+- `.claude/settings.json` — collapsed from two concatenated objects to the single hardened object (integrity fix).
+- `.claude/decisions.md` — created; settings-fix + branch-reset decisions.
+- `.claude/handoff.md` — this file.
+- `docs/devlog/0030-run-toggle-and-settings-fix.md` — new devlog.
 
 ## Do NOT do these things (specific to right now)
 
-- Don't push to `main` from a fresh session without re-confirming with the owner — the standing auto-merge approval was scoped to the prior conversation only.
-- Don't rely on a backgrounded curl/`GITHUB_TOKEN` poller to gate a merge — `GITHUB_TOKEN` is not in the shell env here. Use `mcp__github__pull_request_read` with `get_check_runs`.
-- Don't gate merges on `get_status` — this repo uses GitHub Actions Check Runs, not the legacy Statuses API, so `get_status` returns `total_count:0`/pending forever. Use `get_check_runs`.
-- Don't reintroduce a shared tendril material — the rework deliberately uses per-particle materials so each dash fades on its own clock; a shared material breaks independent in-place fade.
-- Don't add `DepthTexture` render targets to the ASCII pipeline — iOS Safari breaks (devlog 0008).
-- Don't deploy to Fly from a session shell — the GitHub Actions workflow owns deploys.
+- Don't push to `main` without explicit owner confirmation in the live conversation. Active branch is `claude/bitrunners-collaboration-EcqBv`.
+- Don't prepend/append a new permissions object to `.claude/settings.json` — *replace* it, and confirm it's a single valid JSON object (`pnpm lint` catches concatenation). Editing it correctly prompts the owner; that gate is intended.
+- Don't rely on a curl/`GITHUB_TOKEN` poller to gate merges — token not in shell env. Use `mcp__github__pull_request_read` with `get_check_runs` (NOT `get_status` — this repo uses Check Runs; `get_status` is `total_count:0` forever).
+- Don't reintroduce a shared tendril material; don't add `DepthTexture` render targets (iOS Safari, devlog 0008); don't deploy Fly from a session shell.
 
 ## Open questions for the owner
 
-- Faction-reward model for the 20-achievements design — needed before that work can start.
-- Confirm the new tendril look is right on the live site, or specify adjustments (count, length, fade speed, spawn radius).
-- Re-confirm auto-merge-to-`main` if you want the next session to keep shipping without per-PR approval.
+- Run-speed values OK? Walk 3.2 (unchanged), Run 5.6 (1.75×). Easy to retune in `scene.ts`.
+- Confirm run toggle behaves right on a live build (couldn't browser-test here).
+- Faction-reward model for the 20-achievements design.
+- Re-confirm auto-merge-to-`main` if you want future sessions to ship without per-PR approval.
+- Tendril look from 0029 still needs a live eyeball / adjustment call.
 
-## Diagnostic retrospective (not sycophantic)
+## Retrospective (not sycophantic)
 
-- The ship subagent spun up a backgrounded curl-based check poller that silently failed auth (`GITHUB_TOKEN` absent) and emitted an unreliable "all concluded" signal. It was caught and overridden by an authoritative MCP `get_check_runs` call, but a less careful run could have merged on a bogus signal. Future ship agents should not use curl polling at all.
-- `get_status` is a trap on this repo: it always reports `total_count:0`/pending because CI is wired as Check Runs, not legacy commit Statuses. Anyone gating a merge on `get_status` will either hang forever or merge blind. `get_check_runs` is the only correct gate here.
-- No architectural decisions were made — this was a pure visual/feature iteration plus the standard ship cycle, so `decisions.md` and `CLAUDE.md` were intentionally left untouched. Resisting the urge to log non-decisions keeps those files signal-dense.
-- `.claude/handoff.md` and `.claude/decisions.md` did not exist despite `CLAUDE.md` prescribing them as session-continuity reads. This handoff is the first; a fresh session should not expect a `decisions.md` yet.
+- The settings.json corruption is the headline: a file CLAUDE.md treats as the *enforced* safety layer was silently inert (invalid JSON) and shipped that way across two commits + a merge to `main`. It was only caught because lint runs on `.claude/**`. Keep `pnpm lint` in the standard gate precisely so config corruption surfaces; a session that skipped lint would have inherited dead guardrails again.
+- Reset-vs-rebase: reset was correct here only because the branch had provably zero unique content and the old tip equals `origin/main`. That equivalence is what made it non-destructive — don't generalize "reset to reconcile" without re-verifying both conditions.
+- No browser verification was possible from this environment; said so plainly rather than claiming the UI works. The toggle rides a pattern already proven in prod (joystick), which is the basis for confidence — not a visual check.
