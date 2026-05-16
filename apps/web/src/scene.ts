@@ -41,6 +41,17 @@ function readRunEnabled(): boolean {
 }
 const PLATFORM_HALF = 9.5;
 const PLATFORM_SIZE = PLATFORM_HALF * 2;
+
+// Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
+// grid, so a remote player must be drawn at the periodic image nearest the
+// local player or they vanish across the seam (devlog 0031).
+function wrapDelta(d: number): number {
+  return ((((d + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) - PLATFORM_HALF;
+}
+// Exponential-smoothing rate for remote avatars (frame-rate independent).
+const REMOTE_LERP_K = 14;
+const EMOTE_MS = 1400;
+
 const TRAIL_ARM = 0.65;
 const TRAIL_LEG = 0.45;
 const LEAN_CHEST = 0.16;
@@ -761,7 +772,34 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   };
   window.addEventListener('bitrunners:settings-changed', onRunSettingChanged);
 
-  const remoteAvatars = new Map<string, Group>();
+  interface RemoteAvatar {
+    group: Group;
+    tx: number;
+    tz: number;
+    trotY: number;
+  }
+  const remoteAvatars = new Map<string, RemoteAvatar>();
+  interface TrackedEmote {
+    anchor: HTMLDivElement;
+    group: Group;
+    until: number;
+  }
+  const trackedEmotes: TrackedEmote[] = [];
+
+  function spawnRemoteEmote(group: Group, text: string): void {
+    const anchor = document.createElement('div');
+    anchor.className = 'emote-anchor';
+    const bubble = document.createElement('div');
+    bubble.className = 'emote-float';
+    bubble.textContent = text;
+    anchor.appendChild(bubble);
+    host.appendChild(anchor);
+    requestAnimationFrame(() => {
+      bubble.classList.add('emote-float--rise');
+    });
+    trackedEmotes.push({ anchor, group, until: performance.now() + EMOTE_MS });
+  }
+
   let netSession: NetworkSession | null = null;
   let lastNetSend = 0;
   const serverUrl = getServerUrl();
@@ -784,25 +822,38 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
         const session = await joinSphere(serverUrl, 'bit_spekter', {
           onJoin(p) {
             if (remoteAvatars.has(p.id)) return;
-            const avatar = buildRemoteAvatar();
-            avatar.position.set(p.x, 0, p.z);
-            avatar.rotation.y = p.rotY;
-            scene.add(avatar);
-            remoteAvatars.set(p.id, avatar);
+            const group = buildRemoteAvatar();
+            const dx = wrapDelta(p.x - rig.root.position.x);
+            const dz = wrapDelta(p.z - rig.root.position.z);
+            group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
+            group.rotation.y = p.rotY;
+            scene.add(group);
+            remoteAvatars.set(p.id, { group, tx: p.x, tz: p.z, trotY: p.rotY });
             setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
           },
           onLeave(id) {
-            const avatar = remoteAvatars.get(id);
-            if (!avatar) return;
-            scene.remove(avatar);
+            const ra = remoteAvatars.get(id);
+            if (!ra) return;
+            scene.remove(ra.group);
             remoteAvatars.delete(id);
+            for (let i = trackedEmotes.length - 1; i >= 0; i--) {
+              const te = trackedEmotes[i];
+              if (!te || te.group !== ra.group) continue;
+              if (te.anchor.parentNode === host) host.removeChild(te.anchor);
+              trackedEmotes.splice(i, 1);
+            }
             setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
           },
           onUpdate(p) {
-            const avatar = remoteAvatars.get(p.id);
-            if (!avatar) return;
-            avatar.position.set(p.x, 0, p.z);
-            avatar.rotation.y = p.rotY;
+            const ra = remoteAvatars.get(p.id);
+            if (!ra) return;
+            ra.tx = p.x;
+            ra.tz = p.z;
+            ra.trotY = p.rotY;
+          },
+          onEmote(id, text) {
+            const ra = remoteAvatars.get(id);
+            if (ra) spawnRemoteEmote(ra.group, text);
           },
         });
         netSession = session;
@@ -833,6 +884,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   const HOVER_HEIGHT = 0.45;
   const FRAME_INTERVAL_MS = 1000 / 18;
   const tempTag = new Vector3();
+  const tempEmote = new Vector3();
 
   function tick(now: number): void {
     const sinceLast = now - last;
@@ -904,6 +956,29 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     camera.position.copy(rig.root.position).add(cameraOffset);
     camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
 
+    // Remote avatars: draw at the periodic image nearest the local player,
+    // then exponential-smooth toward it (server only sends ~15 Hz). A jump
+    // bigger than half the board is a seam wrap by either player — snap, since
+    // the 3x3 tiles are visually identical there anyway.
+    if (remoteAvatars.size > 0) {
+      const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
+      for (const ra of remoteAvatars.values()) {
+        const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
+        const desZ = rig.root.position.z + wrapDelta(ra.tz - rig.root.position.z);
+        const ddx = desX - ra.group.position.x;
+        const ddz = desZ - ra.group.position.z;
+        if (Math.abs(ddx) > PLATFORM_HALF || Math.abs(ddz) > PLATFORM_HALF) {
+          ra.group.position.set(desX, 0, desZ);
+        } else {
+          ra.group.position.x += ddx * lerpA;
+          ra.group.position.z += ddz * lerpA;
+        }
+        let dr = ra.trotY - ra.group.rotation.y;
+        dr = Math.atan2(Math.sin(dr), Math.cos(dr));
+        ra.group.rotation.y += dr * lerpA;
+      }
+    }
+
     if (netSession && now - lastNetSend >= NET_SEND_MS) {
       netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
       lastNetSend = now;
@@ -954,6 +1029,24 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     playerTagEl.style.opacity = visible ? '1' : '0';
     playerTagEl.style.transform = `translate(${tagX}px, ${tagY}px) translate(-50%, -100%)`;
 
+    // Anchor remote emote bubbles above their avatar's projected screen point.
+    for (let i = trackedEmotes.length - 1; i >= 0; i--) {
+      const te = trackedEmotes[i];
+      if (!te) continue;
+      if (now >= te.until) {
+        if (te.anchor.parentNode === host) host.removeChild(te.anchor);
+        trackedEmotes.splice(i, 1);
+        continue;
+      }
+      tempEmote.set(te.group.position.x, 2.35, te.group.position.z);
+      tempEmote.project(camera);
+      const ex = (tempEmote.x * 0.5 + 0.5) * (host.clientWidth || 1);
+      const ey = (-tempEmote.y * 0.5 + 0.5) * (host.clientHeight || 1);
+      const onScreen = tempEmote.z > -1 && tempEmote.z < 1;
+      te.anchor.style.opacity = onScreen ? '1' : '0';
+      te.anchor.style.transform = `translate(${ex}px, ${ey}px)`;
+    }
+
     frameCount++;
     if (now - frameWindowStart >= 500) {
       const fps = Math.round((frameCount * 1000) / (now - frameWindowStart));
@@ -967,6 +1060,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   raf = requestAnimationFrame(tick);
 
   function triggerEmote(text: string): void {
+    netSession?.sendEmote(text);
     const bubble = document.createElement('div');
     bubble.className = 'emote-float';
     bubble.textContent = text;
@@ -976,7 +1070,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     });
     setTimeout(() => {
       if (bubble.parentNode === host) host.removeChild(bubble);
-    }, 1400);
+    }, EMOTE_MS);
   }
 
   const dispose = (): void => {
@@ -987,10 +1081,14 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     if (netSession) {
       void netSession.dispose();
     }
-    for (const avatar of remoteAvatars.values()) {
-      scene.remove(avatar);
+    for (const ra of remoteAvatars.values()) {
+      scene.remove(ra.group);
     }
     remoteAvatars.clear();
+    for (const te of trackedEmotes) {
+      if (te.anchor.parentNode === host) host.removeChild(te.anchor);
+    }
+    trackedEmotes.length = 0;
     composer.dispose();
     characterTarget.dispose();
     normalsTarget?.dispose();

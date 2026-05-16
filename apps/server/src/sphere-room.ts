@@ -1,4 +1,5 @@
 import { TICK_HZ } from '@bitrunners/game-core';
+import { isValidEmote } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { PlayerState, SphereState } from './state.js';
 
@@ -35,6 +36,15 @@ export class SphereRoom extends Room<SphereState> {
       p.x = wrapAxis(msg.x);
       p.z = wrapAxis(msg.z);
       p.rotY = typeof msg.rotY === 'number' ? msg.rotY : p.rotY;
+    });
+
+    this.onMessage('emote', (client: Client, msg: { text?: unknown }) => {
+      const p = this.state.players.get(client.sessionId);
+      if (!p) return;
+      // Allowlist only — rejects free-text / tampered clients (moderation rule).
+      if (!isValidEmote(msg?.text)) return;
+      p.emote = msg.text;
+      p.emoteSeq++;
     });
 
     this.onMessage('class', (client: Client, msg: { name?: string }) => {

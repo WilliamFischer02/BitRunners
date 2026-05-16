@@ -7,17 +7,21 @@ export interface RemotePlayer {
   y: number;
   z: number;
   rotY: number;
+  emote: string;
+  emoteSeq: number;
 }
 
 export interface NetworkCallbacks {
   onJoin?(p: RemotePlayer): void;
   onLeave?(id: string): void;
   onUpdate?(p: RemotePlayer): void;
+  onEmote?(id: string, text: string): void;
 }
 
 export interface NetworkSession {
   sessionId: string;
   sendMove(x: number, z: number, rotY: number): void;
+  sendEmote(text: string): void;
   setClass(name: string): void;
   dispose(): Promise<void>;
 }
@@ -29,10 +33,21 @@ interface PlayerSchema {
   y: number;
   z: number;
   rotY: number;
+  emote: string;
+  emoteSeq: number;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
-  return { id: p.id, className: p.className, x: p.x, y: p.y, z: p.z, rotY: p.rotY };
+  return {
+    id: p.id,
+    className: p.className,
+    x: p.x,
+    y: p.y,
+    z: p.z,
+    rotY: p.rotY,
+    emote: p.emote,
+    emoteSeq: p.emoteSeq,
+  };
 }
 
 /**
@@ -60,19 +75,30 @@ export async function joinSphere(
   const $ = getStateCallbacks(room) as any;
   const playersHandle = $(room.state).players;
 
+  // Last emoteSeq seen per remote player. We fire onEmote only when the
+  // counter advances, so a player can repeat the same glyph and still retrigger.
+  const lastEmoteSeq = new Map<string, number>();
+
   if (playersHandle && typeof playersHandle.onAdd === 'function') {
     playersHandle.onAdd((player: PlayerSchema, sessionId: string) => {
       if (sessionId === room.sessionId) return;
+      lastEmoteSeq.set(sessionId, player.emoteSeq ?? 0);
       callbacks.onJoin?.(snapshot(player));
       const playerCb = $(player);
       if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
+          const seq = player.emoteSeq ?? 0;
+          if (seq > (lastEmoteSeq.get(sessionId) ?? 0)) {
+            lastEmoteSeq.set(sessionId, seq);
+            if (player.emote) callbacks.onEmote?.(sessionId, player.emote);
+          }
           callbacks.onUpdate?.(snapshot(player));
         });
       }
     });
     playersHandle.onRemove((_player: PlayerSchema, sessionId: string) => {
       if (sessionId === room.sessionId) return;
+      lastEmoteSeq.delete(sessionId);
       callbacks.onLeave?.(sessionId);
     });
   }
@@ -81,6 +107,9 @@ export async function joinSphere(
     sessionId: room.sessionId,
     sendMove(x, z, rotY) {
       room.send('move', { x, z, rotY });
+    },
+    sendEmote(text) {
+      room.send('emote', { text });
     },
     setClass(name) {
       room.send('class', { name });

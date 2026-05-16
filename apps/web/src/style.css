@@ -874,6 +874,16 @@ body,
   transform: translate(-50%, -260%);
   opacity: 0;
 }
+/* Remote-player emote: JS positions this anchor at the avatar's projected
+   screen point each frame; the .emote-float child keeps its own rise/fade. */
+.emote-anchor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
 
 /* ──────────── multiplayer status badge ──────────── */
 .net-status {

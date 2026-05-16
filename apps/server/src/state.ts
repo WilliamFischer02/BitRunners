@@ -7,6 +7,10 @@ export class PlayerState extends Schema {
   @type('number') y = 0;
   @type('number') z = 0;
   @type('number') rotY = 0;
+  // Last emoticron glyph + a monotonic counter. Clients react to emoteSeq
+  // increasing (so the same glyph twice still re-triggers the bubble).
+  @type('string') emote = '';
+  @type('number') emoteSeq = 0;
   // Reserved fields for Phase 3 (per docs/devlog/0004 schema-reservation principle).
   // Pre-allocating now avoids breaking schema migrations later.
   @type('number') samaritanCorporate = 0;
