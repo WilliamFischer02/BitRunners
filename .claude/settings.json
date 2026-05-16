@@ -58,7 +58,9 @@
       "Edit(package.json)",
       "Edit(pnpm-workspace.yaml)",
       "Edit(.claude/handoff.md)",
-      "Edit(.claude/decisions.md)"
+      "Edit(.claude/decisions.md)",
+      "Edit(fly.toml)",
+      "Edit(supabase/migrations/**)"
     ],
     "ask": [
       "Bash(git push origin main:*)",
