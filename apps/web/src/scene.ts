@@ -29,7 +29,16 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 
-const MOVE_SPEED = 3.2;
+const WALK_SPEED = 3.2;
+const RUN_SPEED = 5.6;
+
+function readRunEnabled(): boolean {
+  try {
+    return localStorage.getItem('bitrunners.settings.run') === 'true';
+  } catch {
+    return false;
+  }
+}
 const PLATFORM_HALF = 9.5;
 const PLATFORM_SIZE = PLATFORM_HALF * 2;
 const TRAIL_ARM = 0.65;
@@ -746,6 +755,12 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
   const input = createInput(host);
 
+  let runEnabled = readRunEnabled();
+  const onRunSettingChanged = (): void => {
+    runEnabled = readRunEnabled();
+  };
+  window.addEventListener('bitrunners:settings-changed', onRunSettingChanged);
+
   const remoteAvatars = new Map<string, Group>();
   let netSession: NetworkSession | null = null;
   let lastNetSend = 0;
@@ -837,7 +852,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
       tempRight.crossVectors(tempFwd, worldUp).normalize();
       tempMove.set(0, 0, 0).addScaledVector(tempFwd, -m.y).addScaledVector(tempRight, m.x);
       if (tempMove.lengthSq() > 1) tempMove.normalize();
-      rig.root.position.addScaledVector(tempMove, MOVE_SPEED * dt);
+      rig.root.position.addScaledVector(tempMove, (runEnabled ? RUN_SPEED : WALK_SPEED) * dt);
       if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
       else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
       if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
@@ -967,6 +982,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   const dispose = (): void => {
     cancelAnimationFrame(raf);
     ro.disconnect();
+    window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
     input.dispose();
     if (netSession) {
       void netSession.dispose();
