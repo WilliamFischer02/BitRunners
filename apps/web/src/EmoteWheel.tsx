@@ -1,11 +1,7 @@
-export type EmoteId = 'happy' | 'tired' | 'okay' | 'help';
+import { EMOTE_GLYPHS, type EmoteId } from '@bitrunners/shared';
 
-export const EMOTE_GLYPHS: Record<EmoteId, string> = {
-  happy: '^_^',
-  tired: 'z z z',
-  okay: '[ok]',
-  help: '!? !?',
-};
+export { EMOTE_GLYPHS };
+export type { EmoteId };
 
 interface EmoteWheelProps {
   onEmote(id: EmoteId): void;

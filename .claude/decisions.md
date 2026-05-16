@@ -5,6 +5,14 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-05-16 — Multiplayer fixes: client-side toroidal rendering, protocol bump, server emote allowlist
+
+**Decision (a) — fix "small visibility radius" purely client-side via nearest-image rendering, add no server AOI.** The symptom was the 3×3 world-wrap drawing remote avatars at their single raw coord; fixed by rendering each at `local + wrapDelta(remote − local)`. Considered and rejected adding a server-side area-of-interest radius: there is none today, the board is only 19×19, and an AOI would *add* bandwidth/CPU on the 256 MB Fly box for zero benefit at current scale. Cost posture unchanged.
+
+**Decision (b) — interpolation snaps on seam wraps; accept the remote-crosses-seam pop.** Local-wrap seamlessness (happens constantly while roaming) is prioritised over smoothing a remote player's seam crossing (rare, usually off-screen). Documented in devlog 0031; revisit only if it reads badly live.
+
+**Decision (c) — `PROTOCOL_VERSION` 0→1, and the emote allowlist lives in `@bitrunners/shared`.** The bump is safe: protocol is only in the `/health` payload, not a join handshake, and web+server deploy together from `main`. The canonical glyph set was moved to shared so the server can reject anything not in it — this is what makes the "no free-text input anywhere" moderation rule actually enforced server-side, not just a client convention.
+
 ## 2026-05-16 — Collapse corrupt `.claude/settings.json` to the single hardened object
 
 **Decision:** `.claude/settings.json` was two concatenated JSON objects (invalid JSON): a hardened `allow`/`ask`/`deny` config followed by a leftover permissive one with no `deny`. Rewrote the file as the single hardened object only.
