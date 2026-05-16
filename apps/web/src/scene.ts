@@ -561,56 +561,60 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   scene.add(adminShadow);
 
   // ─── Tendril particle pool (item 3c) ────────────────────────────────
-  // Thin vertical streaks that spawn at random ground positions near the
-  // player and rise toward the body. Spawn rate scales with player motion.
-  const TENDRIL_POOL = 36;
-  const tendrilGeom = new BoxGeometry(0.05, 0.42, 0.05);
-  const tendrilMaterial = new MeshStandardMaterial({
-    color: 0x6a4aa8,
-    emissive: 0xb48bff,
-    emissiveIntensity: 1.6,
-    roughness: 0.6,
-    metalness: 0.1,
-    transparent: true,
-    opacity: 1,
-  });
+  // Thin dash/line marks that spawn on the ground directly under the
+  // runner, stay where they spawn, and fade in place. Sparse — almost
+  // invisible when idle, a light scatter while moving.
+  const TENDRIL_POOL = 24;
+  const tendrilGeom = new BoxGeometry(0.26, 0.014, 0.045);
   interface Tendril {
     mesh: Mesh;
+    mat: MeshStandardMaterial;
     active: boolean;
-    velocity: number;
     lifetime: number;
     age: number;
   }
   const tendrils: Tendril[] = [];
   for (let i = 0; i < TENDRIL_POOL; i++) {
-    const mesh = new MeshClass(tendrilGeom, tendrilMaterial);
+    const mat = new MeshStandardMaterial({
+      color: 0x6a4aa8,
+      emissive: 0xb48bff,
+      emissiveIntensity: 1.4,
+      roughness: 0.6,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 1,
+    });
+    const mesh = new MeshClass(tendrilGeom, mat);
     mesh.visible = false;
     scene.add(mesh);
-    tendrils.push({ mesh, active: false, velocity: 0, lifetime: 0, age: 0 });
+    tendrils.push({ mesh, mat, active: false, lifetime: 0, age: 0 });
   }
   let tendrilSpawnAcc = 0;
 
   function spawnTendril(): void {
     const slot = tendrils.find((t) => !t.active);
     if (!slot) return;
-    const radius = 0.4 + Math.random() * 1.6;
+    // Confined to the surface area directly under the character.
+    const radius = 0.12 + Math.random() * 0.42;
     const angle = Math.random() * Math.PI * 2;
     slot.mesh.position.set(
       rig.root.position.x + Math.cos(angle) * radius,
-      0.21,
+      0.045,
       rig.root.position.z + Math.sin(angle) * radius,
     );
-    slot.mesh.scale.set(1, 1, 1);
-    slot.mesh.rotation.y = Math.random() * Math.PI;
+    slot.mesh.rotation.set(0, Math.random() * Math.PI, 0);
+    slot.mesh.scale.set(0.7 + Math.random() * 0.7, 1, 1);
     slot.mesh.visible = true;
+    slot.mat.emissiveIntensity = 1.4;
+    slot.mat.opacity = 1;
     slot.active = true;
-    slot.velocity = 0.8 + Math.random() * 0.9;
-    slot.lifetime = 1.1 + Math.random() * 0.7;
+    slot.lifetime = 1.4 + Math.random() * 1.1;
     slot.age = 0;
   }
 
   function updateTendrils(dt: number, isMoving: boolean): void {
-    const targetRate = isMoving ? 14 : 1.6;
+    // Far fewer; near-zero when still.
+    const targetRate = isMoving ? 4 : 0.35;
     tendrilSpawnAcc += dt * targetRate;
     while (tendrilSpawnAcc >= 1) {
       tendrilSpawnAcc -= 1;
@@ -624,9 +628,11 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
         t.mesh.visible = false;
         continue;
       }
-      t.mesh.position.y += t.velocity * dt;
+      // Stay where spawned; fade emissive + opacity over the lifetime.
       const lifeT = t.age / t.lifetime;
-      t.mesh.scale.y = Math.max(0.05, 1 - lifeT * 0.7);
+      const fade = 1 - lifeT * lifeT;
+      t.mat.emissiveIntensity = 1.4 * fade;
+      t.mat.opacity = Math.max(0, fade);
     }
   }
 
@@ -978,6 +984,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     worldAtlas.texture.dispose();
     characterAtlas.texture.dispose();
     edgeAtlas.texture.dispose();
+    tendrilGeom.dispose();
+    for (const t of tendrils) t.mat.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (netEl.parentNode === host) host.removeChild(netEl);
     if (playerTagEl.parentNode === host) host.removeChild(playerTagEl);
