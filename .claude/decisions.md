@@ -5,6 +5,32 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-05-16 — `docs/setup/SERVICES.md` is the canonical setup source; Neon deprecated; Stripe deferred; Steam needs a Worker
+
+**Decision:** Created `docs/setup/SERVICES.md` as the single canonical service-
+setup reference. It supersedes the setup steps in devlogs 0020/0021/0026 (those
+remain immutable history). Within it:
+
+- **Neon → DEPRECATED.** Zero code references anywhere; Supabase Postgres is the
+  committed DB (devlog 0026 schema + RLS). Running both = two DBs to keep alive
+  for no benefit. Guide instructs: do not provision/wire Neon; safe to delete a
+  stray exploration project once Supabase is confirmed.
+- **Stripe → deferred** from setup scope (owner answered "defer"). Not in the
+  service list; drags legal scaffolding (ToS/refund/tax). Separate doc later.
+- **Steam → custom Cloudflare Worker required.** Supabase Auth has no Steam
+  provider (OpenID 2.0). Documented as a build task (OpenID handshake → mint
+  Supabase session via service-role key, server-side), not a dashboard toggle.
+
+**Why it matters:** the guide's secret-placement column is derived from an
+actual config-surface scan, not assumption — only 6 secrets/bindings are wired
+today; everything else is labelled ACCOUNT-ONLY so account setup is never
+mistaken for feature activation.
+
+**Caution for future sessions:** the in-chat "passcode-gated diagnostics/tester
+menu" + Stripe stack proposal was an accidental prompt — explicitly out of
+scope. It never entered a committed file. Do not build it; keep SERVICES.md
+verification manual.
+
 ## 2026-05-16 — Multiplayer fixes: client-side toroidal rendering, protocol bump, server emote allowlist
 
 **Decision (a) — fix "small visibility radius" purely client-side via nearest-image rendering, add no server AOI.** The symptom was the 3×3 world-wrap drawing remote avatars at their single raw coord; fixed by rendering each at `local + wrapDelta(remote − local)`. Considered and rejected adding a server-side area-of-interest radius: there is none today, the board is only 19×19, and an AOI would *add* bandwidth/CPU on the 256 MB Fly box for zero benefit at current scale. Cost posture unchanged.
