@@ -5,9 +5,10 @@ export type { EmoteId };
 
 interface EmoteWheelProps {
   onEmote(id: EmoteId): void;
+  onInventory?(): void;
 }
 
-export function EmoteWheel({ onEmote }: EmoteWheelProps): JSX.Element {
+export function EmoteWheel({ onEmote, onInventory }: EmoteWheelProps): JSX.Element {
   return (
     <div className="emote">
       <button
@@ -58,6 +59,20 @@ export function EmoteWheel({ onEmote }: EmoteWheelProps): JSX.Element {
         <span className="emote-glyph">!?</span>
         <span className="emote-label">help</span>
       </button>
+      {onInventory && (
+        <button
+          type="button"
+          className="emote-btn emote-center"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onInventory();
+          }}
+          title="inventory"
+        >
+          <span className="emote-glyph">▦</span>
+          <span className="emote-label">inv</span>
+        </button>
+      )}
     </div>
   );
 }

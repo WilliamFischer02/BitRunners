@@ -1,9 +1,12 @@
 // Shop framework for the Data Scrape mini-game.
 //
-// Three item kinds:
+// Cosmetics only — Credits-priced:
 //   clothing — head/chest/legs, 3 rarities (escalating features)
 //   pet      — floating code-sparks etc.; priced well above clothing
-//   upgrade  — raises a rate (e.g. bits per SCRAPE); repeatable to maxLevel
+//
+// Rate upgrades used to live here as a third kind; they now live in the
+// passcode-priced skill tree (skilltree.ts). Keeping the two currencies
+// separate keeps progression coherent: Credits buy looks, passcodes buy power.
 //
 // Rarity escalation (mechanical, not lore): normal = recolor only · rare =
 // + a visual effect · ultra = + effect + texture + colour effect. Visual
@@ -14,18 +17,10 @@
 // and any lore are an open owner Q&A — see docs/design/clicker-minigame.md §14
 // and docs/lore/007. Token-priced goods stay hard-locked (canon: bit_spekter
 // has no Server-Space wallet). Isolated: no scene/network/server imports.
-import {
-  type EquipSlot,
-  getEconomy,
-  getUpgradeLevel,
-  hasFreeSlot,
-  ownsItem,
-  purchaseItem,
-  purchaseUpgrade,
-} from './economy.js';
+import { type EquipSlot, getEconomy, hasFreeSlot, ownsItem, purchaseItem } from './economy.js';
 
 export type Rarity = 'normal' | 'rare' | 'ultra';
-export type ItemKind = 'clothing' | 'pet' | 'upgrade';
+export type ItemKind = 'clothing' | 'pet';
 
 export interface ClothingVisual {
   palette: string;
@@ -42,8 +37,8 @@ export interface ShopItem {
   rarity?: Rarity;
   slot?: EquipSlot;
   visual?: ClothingVisual;
-  upgradeKey?: string;
-  maxLevel?: number;
+  // Canon hook: a Token-priced cosmetic can ship hard-locked (bit_spekter has
+  // no Server-Space wallet; proxy-wallet planned, lore 003/007).
   locked?: boolean;
   lockReason?: string;
 }
@@ -106,33 +101,6 @@ export const SHOP_CATALOG: ShopItem[] = [
     slot: 'pet',
     visual: { palette: 'aurora', effect: 'orbit', texture: 'glyph' },
   },
-  {
-    id: 'upg.scrape',
-    name: 'scrape tuning',
-    blurb: '+1 bit per SCRAPE per level',
-    kind: 'upgrade',
-    cost: 40,
-    upgradeKey: 'scrape',
-    maxLevel: 8,
-  },
-  {
-    id: 'upg.tabulate',
-    name: 'tabulate cache',
-    blurb: 'faster refining (effect wired in a later pass)',
-    kind: 'upgrade',
-    cost: 120,
-    upgradeKey: 'tabulate',
-    maxLevel: 4,
-  },
-  {
-    id: 'token.proxy_wallet',
-    name: 'proxy wallet',
-    blurb: 'unlocks Token-priced goods',
-    kind: 'upgrade',
-    cost: 1,
-    locked: true,
-    lockReason: 'no valid wallet — proxy-wallet unlock is planned (lore 003/007)',
-  },
 ];
 
 const BY_ID = new Map<string, ShopItem>(SHOP_CATALOG.map((i) => [i.id, i]));
@@ -141,14 +109,8 @@ export function getShopItem(id: string): ShopItem | undefined {
   return BY_ID.get(id);
 }
 
-function upgradeCost(item: ShopItem): number {
-  // Placeholder scaling: cost rises with current level.
-  const level = item.upgradeKey ? getUpgradeLevel(item.upgradeKey) : 0;
-  return item.cost * (level + 1);
-}
-
 export function priceOf(item: ShopItem): number {
-  return item.kind === 'upgrade' && item.upgradeKey ? upgradeCost(item) : item.cost;
+  return item.cost;
 }
 
 export function isOwned(item: ShopItem): boolean {
@@ -157,18 +119,6 @@ export function isOwned(item: ShopItem): boolean {
 
 export function evaluate(item: ShopItem): BuyResult {
   if (item.locked) return { ok: false, reason: item.lockReason ?? 'locked' };
-  if (item.kind === 'upgrade') {
-    if (!item.upgradeKey || item.maxLevel === undefined) {
-      return { ok: false, reason: 'invalid' };
-    }
-    if (getUpgradeLevel(item.upgradeKey) >= item.maxLevel) {
-      return { ok: false, reason: 'maxed' };
-    }
-    if (getEconomy().credits < priceOf(item)) {
-      return { ok: false, reason: 'insufficient credits' };
-    }
-    return { ok: true };
-  }
   if (ownsItem(item.id)) return { ok: false, reason: 'owned' };
   if (getEconomy().credits < item.cost) {
     return { ok: false, reason: 'insufficient credits' };
@@ -179,8 +129,5 @@ export function evaluate(item: ShopItem): BuyResult {
 
 export function buy(item: ShopItem): boolean {
   if (!evaluate(item).ok) return false;
-  if (item.kind === 'upgrade' && item.upgradeKey && item.maxLevel !== undefined) {
-    return purchaseUpgrade(item.upgradeKey, priceOf(item), item.maxLevel).ok;
-  }
   return purchaseItem(item.id, item.cost).ok;
 }

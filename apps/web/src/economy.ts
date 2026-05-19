@@ -38,6 +38,9 @@ export interface EconomyState {
   repCorporate: number;
   repBitrunner: number;
   lifetimeScrapes: number;
+  // Cumulative passcodes ever minted (never decremented when spent in the
+  // skill tree). Gates the tree: "after reaching 1 passcode created".
+  lifetimePasscodes: number;
   owned: string[];
   upgrades: Record<string, number>;
   slots: (string | null)[];
@@ -67,6 +70,7 @@ function defaultState(): EconomyState {
     repCorporate: 0,
     repBitrunner: 0,
     lifetimeScrapes: 0,
+    lifetimePasscodes: 0,
     owned: [],
     upgrades: {},
     slots: emptySlots(),
@@ -128,11 +132,18 @@ function normEquipped(v: unknown): Equipped {
   return e;
 }
 
+function fin(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
 function normalize(parsed: EconomyState): EconomyState {
   const p = parsed as unknown as Record<string, unknown>;
   return {
     ...defaultState(),
     ...parsed,
+    // Additive field: old v1 blobs predate it. Seed from current passcodes so
+    // a player who already minted some isn't locked out of the skill tree.
+    lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
     owned: strArray(p.owned),
     upgrades: numRecord(p.upgrades),
     slots: normSlots(p.slots),
@@ -191,8 +202,38 @@ export function subscribeAppearance(cb: () => void): () => void {
   return () => window.removeEventListener(APPEARANCE_EVENT, handler);
 }
 
+/** Path 1 (scrape depth): bits minted per SCRAPE = 1 + level. */
 export function scrapeYield(): number {
   return 1 + (state.upgrades.scrape ?? 0);
+}
+
+/**
+ * Path 3 (conversion alchemy): Credits minted per passcode at the Admin/
+ * Company trade. The locked 8x ladder (STEP) is NEVER touched — only the
+ * value of a finished passcode rises, so canon stays intact and shop prices
+ * can stay fixed while late-game purchasing power grows.
+ */
+export function creditsPerPasscode(): number {
+  return CREDITS_PER_PASSCODE + (state.upgrades.yield ?? 0);
+}
+
+/** Path 2 unlock: hold the SCRAPE button to auto-repeat while held. */
+export function hasHoldScrape(): boolean {
+  return (state.upgrades.hold ?? 0) >= 1;
+}
+
+/**
+ * Path 2 unlock: hands-free auto-scrape while the panel is open. Owner-gated
+ * as a future premium perk; functional and free in this build (no membership
+ * system exists yet — the premium gate is a later, deliberate seam).
+ */
+export function hasAutoScrape(): boolean {
+  return (state.upgrades.auto ?? 0) >= 1;
+}
+
+/** The skill tree unlocks once the player has ever minted a passcode. */
+export function isTreeUnlocked(): boolean {
+  return state.lifetimePasscodes >= 1;
 }
 
 /** SCRAPE — one click yields scrapeYield() bits (raised by the scrape upgrade). */
@@ -212,6 +253,7 @@ export function tabulate(from: RefinableTier): boolean {
   const next = { ...state };
   next[from] -= STEP;
   next[to] += 1;
+  if (to === 'passcodes') next.lifetimePasscodes += 1;
   state = next;
   persist();
   return true;
@@ -239,6 +281,7 @@ export function tabulateAll(): boolean {
   if (reach < 1) return false;
   const tiers: RefinableTier[] = (['bits', 'strings', 'serials'] as const).slice(0, reach);
   const next = { ...state };
+  const startPasscodes = next.passcodes;
   let any = false;
   let changed = true;
   let guard = 0;
@@ -256,6 +299,8 @@ export function tabulateAll(): boolean {
     }
   }
   if (!any) return false;
+  const minted = next.passcodes - startPasscodes;
+  if (minted > 0) next.lifetimePasscodes += minted;
   state = next;
   persist();
   return true;
@@ -269,7 +314,7 @@ export function calculate(faction: Faction): boolean {
   if (state.passcodes < 1) return false;
   const next = { ...state };
   next.passcodes -= 1;
-  next.credits += CREDITS_PER_PASSCODE;
+  next.credits += creditsPerPasscode();
   if (faction === 'company') next.repCorporate += 1;
   else next.repBitrunner += 1;
   state = next;
@@ -329,15 +374,20 @@ export function purchaseItem(id: string, cost: number): MutResult {
   return { ok: true };
 }
 
-/** Buy one level of a rate upgrade (repeatable up to maxLevel). */
-export function purchaseUpgrade(key: string, cost: number, maxLevel: number): MutResult {
+/**
+ * Buy one level of a skill-tree node. Spends PASSCODES (not Credits — the tree
+ * is the passcode sink; Credits stay the shop currency). lifetimePasscodes is
+ * cumulative and is NOT decremented, so spending never re-locks the tree.
+ */
+export function purchaseTreeNode(key: string, cost: number, maxLevel: number): MutResult {
   if (cost < 0) return { ok: false, reason: 'invalid' };
+  if (!isTreeUnlocked()) return { ok: false, reason: 'locked' };
   const level = state.upgrades[key] ?? 0;
   if (level >= maxLevel) return { ok: false, reason: 'maxed' };
-  if (state.credits < cost) return { ok: false, reason: 'insufficient credits' };
+  if (state.passcodes < cost) return { ok: false, reason: 'need passcodes' };
   state = {
     ...state,
-    credits: state.credits - cost,
+    passcodes: state.passcodes - cost,
     upgrades: { ...state.upgrades, [key]: level + 1 },
   };
   persist();

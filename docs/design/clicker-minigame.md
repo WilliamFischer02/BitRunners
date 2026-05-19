@@ -287,3 +287,70 @@ lore):
   `maxed`/reason; inventory shows an empty-state line.
 - **Robustness.** Esc handler is mount-once via a ref; all transient
   timers tracked and cleared on unmount.
+
+## 16. Skill tree + main-view surfacing (devlog 0038)
+
+Owner-directed expansion. **Three owner decisions locked this pass** (Q&A;
+recorded in `.claude/decisions.md`):
+
+1. **Auto-click** ships **functional and free now**. It is *intended* to be a
+   premium-member perk later, but no membership/billing system exists (out of
+   phase, needs paid infra). `hasAutoScrape()` is the clean seam a future
+   premium gate wraps. Not faked, not paywalled today.
+2. **Path 3** raises **Credits minted per passcode at the Admin/Company
+   trade** (`creditsPerPasscode()` = `CREDITS_PER_PASSCODE + yield`). The
+   uniform **8× ladder (STEP) is NEVER touched** — §3/§10 stays locked, canon
+   intact. "A bit is worth more over time" is delivered as *output value*, so
+   shop prices can stay fixed (owner's intent) without a canon edit.
+3. **Rate upgrades moved out of the shop into a passcode-priced skill tree.**
+   Shop is now **cosmetics-only** (clothing/pets, Credits). Credits buy looks;
+   **passcodes buy power**. This supersedes §14's `upgrade` shop kind — that
+   `ItemKind` is removed; `economy.purchaseUpgrade` (credit-based) is replaced
+   by `purchaseTreeNode` (passcode-based).
+
+### The tree (`apps/web/src/skilltree.ts` — isolated, economy-only import)
+
+Unlocks once the player has **ever minted a passcode**
+(`economy.isTreeUnlocked()` ← new cumulative `lifetimePasscodes`, additive &
+backward-compatible; seeded from current passcodes on load so existing players
+aren't locked out; never decremented when spent).
+
+| Path | Theme | Nodes (placeholder balance — all numbers in `skilltree.ts`, single tunable source) |
+|---|---|---|
+| **1 · scrape depth** | bits/tap | `deeper scrape` ×12, +1 bit/SCRAPE/lvl, cost `1+⌊lvl/2⌋` pc |
+| **2 · persistent kit** | unique unlocks, escalating | `sustained pull` (hold-to-scrape, 3 pc) · `tabulate cache` ×3 (bulk reach I–III, 6/12/20 pc) · `autonomous pull` (auto-scrape, 40 pc) |
+| **3 · conversion alchemy** | long game | `data appreciation` ×12, +1 Credit/passcode/lvl, cost `3+2·lvl` pc |
+
+Balance is an explicit **first pass** (early game intentionally steep; Path 3
+is the multi-session sink). It is **not** verified against the owner's "≈1
+week of 1 h sessions" target — that needs live play; constants are isolated in
+one module for tuning. Reputation reward curve remains the separate open Q&A.
+
+### Hold / auto scrape
+
+- **Hold-to-scrape** (Path 2 `hold`): press-and-hold repeats at `HOLD_MS`;
+  a quick tap stays a single scrape (tap = `onClick`, hold = pointer interval).
+- **Auto-scrape** (Path 2 `auto`): hands-free interval (`AUTO_MS`) **while the
+  panel is open** — deliberately *not* an offline idle generator (offline idle
+  stays a separate, untaken decision). HUD shows an `auto ▶` tag.
+- Both intervals use a latest-closure ref (no stale state) and are cleared on
+  release/unmount.
+
+### Main-view surfacing (the only main-view touch — still no scene/net/server)
+
+- Launcher sub-text **renamed** `> cookie-clicker` → `> data scrape`
+  (eyebrow → `// minigame` to avoid a duplicate line).
+- **Shop** is now a standalone right-rail **icon button** (`$` glyph) directly
+  under the data-scrape launcher — opens the panel straight to the shop view.
+  Shop/inventory are *also* still header tabs inside the panel (owner: keep
+  the click-throughs too).
+- **Inventory** opens from a new **centre button in the emote wheel** (`▦`),
+  rendered last so the existing `:nth-child` flicker offsets don't shift.
+- Cross-component open uses a `bitrunners:open-scrape` CustomEvent
+  (`openScrape(view)`), matching the existing `bitrunners:*` bus — callers
+  stay decoupled; `EmoteWheel` takes a plain optional `onInventory` prop and
+  imports nothing from the mini-game.
+
+Isolation guarantee from §11 is preserved: `skilltree.ts` imports only
+`economy.ts`; no `scene.ts`/`network.ts`/server imports anywhere in the
+mini-game. It still cannot regress Phase 2.

@@ -2078,7 +2078,173 @@ body,
   .inv-slot {
     min-height: 46px;
   }
-  .scrape-launch {
+  .scrape-launch,
+  .shop-launch {
     min-height: 44px;
+  }
+}
+
+/* ── shop launcher · right rail, directly under the data-scrape launcher ──
+   Icon-forward (glyph, not the word "shop"), styled to match the rail. */
+.shop-launch {
+  position: absolute;
+  top: 134px;
+  right: 12px;
+  appearance: none;
+  background: rgba(8, 12, 14, 0.75);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  padding: 6px 10px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  cursor: pointer;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shop-launch:hover {
+  border-color: #93e0b1;
+}
+.shop-launch-glyph {
+  font-size: 18px;
+  font-weight: 700;
+  color: #c0ffd6;
+  line-height: 1;
+}
+.shop-launch-cap {
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── inventory hub · center of the emote wheel ──
+   Small so it sits in the dead zone between the four directional buttons;
+   octagon clip + translucency hide any minor corner overlap. */
+.emote-btn.emote-center {
+  width: 34px;
+  height: 34px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 12;
+  background: rgba(14, 20, 17, 0.85);
+}
+.emote-btn.emote-center .emote-glyph {
+  font-size: 12px;
+}
+.emote-btn.emote-center .emote-label {
+  font-size: 7px;
+}
+
+/* ── scrape juice/affordance text ── */
+.scrape-hint {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #6e7a86;
+  text-transform: uppercase;
+}
+.scrape-auto-tag {
+  color: #93e0b1;
+}
+
+/* ── skill tree · 3 passcode paths, video-game tree feel ── */
+.skill-tree {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.skill-tree.is-locked {
+  opacity: 0.5;
+  pointer-events: none;
+  filter: grayscale(0.5);
+}
+.tree-col {
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.5);
+  display: flex;
+  flex-direction: column;
+}
+.tree-col-head {
+  padding: 7px 8px;
+  border-bottom: 1px solid #2a3340;
+  background: rgba(180, 139, 255, 0.06);
+}
+.tree-col-title {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: #b48bff;
+  letter-spacing: 0.04em;
+}
+.tree-col-blurb {
+  display: block;
+  font-size: 9px;
+  color: #6e7a86;
+}
+.tree-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+.tree-node {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 7px 8px;
+  border: 1px solid #243049;
+  border-radius: 3px;
+  background: rgba(10, 14, 13, 0.6);
+}
+.tree-node.is-active {
+  border-color: #3a5446;
+}
+.tree-node.is-maxed {
+  border-color: #4a6850;
+  background: rgba(60, 110, 80, 0.12);
+}
+.tree-node-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tree-node-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: #c0ffd6;
+}
+.tree-node-blurb {
+  font-size: 9px;
+  color: #8aa597;
+  line-height: 1.3;
+}
+.tree-node-meta {
+  font-size: 9px;
+  color: #6e7a86;
+}
+.tree-node .shop-buy {
+  align-self: flex-start;
+}
+
+@media (max-width: 540px) {
+  .scrape-launch {
+    top: 70px;
+  }
+  .shop-launch {
+    top: 110px;
+    padding: 5px 8px;
+  }
+  .shop-launch-glyph {
+    font-size: 15px;
+  }
+  .skill-tree {
+    grid-template-columns: 1fr;
+  }
+  .tree-node-name {
+    font-size: 10px;
   }
 }
