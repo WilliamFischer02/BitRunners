@@ -2002,3 +2002,83 @@ body,
     opacity: 0;
   }
 }
+
+/* ── mobile compatibility for the clicker / shop / inventory ──
+   Scoped to small screens only — desktop layout is unchanged. The .panel
+   itself is already responsive (width:min(520px,100%), scrolls); these rules
+   fix the launcher scale + the clicker header overflow on narrow phones. */
+@media (max-width: 540px) {
+  .scrape-launch {
+    top: 78px;
+    min-width: 116px;
+    max-width: 156px;
+    padding: 6px 8px;
+  }
+  .scrape-launch-label {
+    font-size: 9px;
+  }
+  .scrape-launch-sub {
+    font-size: 11px;
+  }
+  .panel-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .panel-title {
+    font-size: 10px;
+  }
+  .scrape-headbtns {
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .scrape-tabbtn {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+  .scrape-btn {
+    font-size: 18px;
+    padding: 18px 12px;
+  }
+  .scrape-hud-row {
+    grid-template-columns: 14px 58px 1fr auto;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .scrape-hud-stat {
+    font-size: 9px;
+  }
+  .shop-item {
+    padding: 7px 8px;
+  }
+  .shop-item-name {
+    font-size: 11px;
+  }
+  .inv-grid {
+    gap: 4px;
+  }
+  .inv-slot {
+    font-size: 8px;
+  }
+  .inv-equip-row {
+    grid-template-columns: 46px 1fr auto;
+    font-size: 10px;
+  }
+}
+
+/* Finger-friendly tap targets on touch devices (does not affect mouse). */
+@media (pointer: coarse) {
+  .scrape-mini,
+  .shop-buy,
+  .scrape-tabbtn,
+  .panel-toggle,
+  .panel-close {
+    min-height: 38px;
+  }
+  .inv-slot {
+    min-height: 46px;
+  }
+  .scrape-launch {
+    min-height: 44px;
+  }
+}
