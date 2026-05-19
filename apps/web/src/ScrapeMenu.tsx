@@ -1,21 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  EQUIP_SLOTS,
   type EconomyState,
+  type EquipSlot,
   type Faction,
   type RefinableTier,
   STEP,
   calculate,
   canCalculate,
   canTabulate,
+  equip,
   getEconomy,
+  isAppearanceHidden,
   scrape,
+  scrapeYield,
+  setAppearanceHidden,
   subscribeEconomy,
   tabulate,
 } from './economy.js';
-import { SHOP_CATALOG, type ShopItem, buy, evaluate, isOwned } from './shop.js';
+import {
+  SHOP_CATALOG,
+  type ShopItem,
+  buy,
+  evaluate,
+  getShopItem,
+  isOwned,
+  priceOf,
+} from './shop.js';
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
-type View = 'scrape' | 'shop';
+type View = 'scrape' | 'shop' | 'inventory';
 
 const TIER_STEPS: { from: RefinableTier; label: string }[] = [
   { from: 'bits', label: 'bits → string' },
@@ -29,10 +43,20 @@ const DATA_ROWS: { key: 'bits' | 'strings' | 'serials'; glyph: string }[] = [
   { key: 'serials', glyph: '=' },
 ];
 
+const SHOP_GROUPS: { kind: ShopItem['kind']; title: string }[] = [
+  { kind: 'clothing', title: '$ clothing' },
+  { kind: 'pet', title: '$ pets' },
+  { kind: 'upgrade', title: '$ upgrades' },
+];
+
 function ladderBar(have: number): string {
   const mod = have % STEP;
   const filled = have > 0 && mod === 0 ? STEP : mod;
   return '█'.repeat(filled) + '░'.repeat(STEP - filled);
+}
+
+function rarityClass(item: ShopItem): string {
+  return item.rarity ? `rar-${item.rarity}` : '';
 }
 
 export function ScrapeMenu(): JSX.Element {
@@ -60,7 +84,7 @@ interface ScrapePanelProps {
 function DataHud({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section scrape-hud">
-      <div className="panel-section-title">$ buffer</div>
+      <div className="panel-section-title">$ buffer · +{scrapeYield()}/scrape</div>
       {DATA_ROWS.map((r) => (
         <div className="scrape-hud-row" key={r.key}>
           <span className="scrape-hud-glyph">{r.glyph}</span>
@@ -93,46 +117,141 @@ function DataHud({ eco }: { eco: EconomyState }): JSX.Element {
   );
 }
 
+function ShopRow({ item }: { item: ShopItem }): JSX.Element {
+  const ev = evaluate(item);
+  const owned = item.kind !== 'upgrade' && isOwned(item);
+  const disabled = !ev.ok;
+  const price = `${priceOf(item)} cr`;
+  const label = item.locked
+    ? '[ locked ]'
+    : owned
+      ? '[ owned ]'
+      : ev.reason === 'maxed'
+        ? '[ maxed ]'
+        : `[ ${price} ]`;
+  return (
+    <div className={`shop-item ${owned ? 'is-owned' : ''}`}>
+      <div className="shop-item-main">
+        <span className="shop-item-name">
+          {item.rarity && <span className={`rar-badge ${rarityClass(item)}`}>{item.rarity}</span>}
+          {item.name}
+        </span>
+        <span className="shop-item-blurb">{item.blurb}</span>
+        {!owned && !ev.ok && ev.reason && <span className="shop-item-note">─── {ev.reason}</span>}
+      </div>
+      <button
+        type="button"
+        className={disabled ? 'shop-buy' : 'shop-buy is-ready'}
+        disabled={disabled}
+        onClick={() => {
+          buy(item);
+        }}
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
 function ShopView({ credits }: { credits: number }): JSX.Element {
   return (
     <section className="panel-section">
       <div className="panel-section-title">$ shop · trade credits</div>
       <div className="shop-credits">credits available · {credits}</div>
-      <div className="shop-list">
-        {SHOP_CATALOG.map((item: ShopItem) => {
-          const owned = isOwned(item);
-          const ev = evaluate(item);
-          const disabled = owned || !ev.ok;
-          const label = owned
-            ? '[ owned ]'
-            : item.currency === 'tokens'
-              ? '[ locked ]'
-              : `[ ${item.cost} cr ]`;
+      {SHOP_GROUPS.map((g) => {
+        const items = SHOP_CATALOG.filter((i) => i.kind === g.kind && !i.locked);
+        if (items.length === 0) return null;
+        return (
+          <div className="shop-group" key={g.kind}>
+            <div className="shop-group-title">{g.title}</div>
+            <div className="shop-list">
+              {items.map((item) => (
+                <ShopRow item={item} key={item.id} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+      <div className="panel-stub">
+        ─── scaffold catalog. real rewards + lore pending owner Q&amp;A.
+      </div>
+    </section>
+  );
+}
+
+function InventoryView(): JSX.Element {
+  const slots = getEconomy().slots;
+  const equipped = getEconomy().equipped;
+  const hidden = isAppearanceHidden();
+
+  const onSlotClick = (id: string | null): void => {
+    if (!id) return;
+    const item = getShopItem(id);
+    if (!item || !item.slot) return;
+    const slot = item.slot;
+    equip(slot, equipped[slot] === id ? null : id);
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ inventory · {slots.length} slots</div>
+      <div className="inv-grid">
+        {slots.map((cell, i) => {
+          const item = cell ? getShopItem(cell) : undefined;
+          const eqSlot = item?.slot;
+          const isEq = eqSlot != null && cell !== null && equipped[eqSlot] === cell;
+          const cls = ['inv-slot'];
+          if (item) cls.push('is-filled', rarityClass(item));
+          if (isEq) cls.push('is-equipped');
           return (
-            <div className={owned ? 'shop-item is-owned' : 'shop-item'} key={item.id}>
-              <div className="shop-item-main">
-                <span className="shop-item-name">{item.name}</span>
-                <span className="shop-item-blurb">{item.blurb}</span>
-                {!owned && !ev.ok && ev.reason && (
-                  <span className="shop-item-note">─── {ev.reason}</span>
-                )}
-              </div>
+            <button
+              type="button"
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length slot grid
+              key={`slot-${i}`}
+              className={cls.join(' ')}
+              disabled={!cell}
+              title={item ? item.name : 'empty'}
+              onClick={() => onSlotClick(cell)}
+            >
+              {item ? item.name.slice(0, 10) : '·'}
+              {isEq && <span className="inv-eq">E</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="inv-equip">
+        {EQUIP_SLOTS.map((s) => {
+          const eid = equipped[s];
+          return (
+            <div className="inv-equip-row" key={s}>
+              <span className="panel-key">{s}</span>
+              <span className="panel-val">{eid ? (getShopItem(eid)?.name ?? eid) : '─'}</span>
               <button
                 type="button"
-                className={disabled ? 'shop-buy' : 'shop-buy is-ready'}
-                disabled={disabled}
+                className={eid ? 'scrape-mini is-ready' : 'scrape-mini'}
+                disabled={!eid}
                 onClick={() => {
-                  buy(item);
+                  equip(s, null);
                 }}
               >
-                {label}
+                [ unequip ]
               </button>
             </div>
           );
         })}
       </div>
+      <div className="panel-row">
+        <span className="panel-key">show cosmetics</span>
+        <button
+          type="button"
+          className={hidden ? 'panel-toggle' : 'panel-toggle is-on'}
+          onClick={() => setAppearanceHidden(!hidden)}
+        >
+          {hidden ? '[ hidden ]' : '[ shown ]'}
+        </button>
+      </div>
       <div className="panel-stub">
-        ─── scaffold catalog. real rewards + lore pending owner Q&amp;A.
+        ─── equipped look feeds appearance.ts; the 3D render reads it in a later pass.
       </div>
     </section>
   );
@@ -141,7 +260,9 @@ function ShopView({ credits }: { credits: number }): JSX.Element {
 function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
   const [verb, setVerb] = useState<Verb>('SCRAPE');
+  const [pressed, setPressed] = useState(false);
   const [view, setView] = useState<View>('scrape');
+  const timers = useRef<number[]>([]);
 
   useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
 
@@ -153,11 +274,30 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const flash = (v: Exclude<Verb, 'SCRAPE'>): void => {
-    setVerb(v);
-    window.setTimeout(() => setVerb('SCRAPE'), 260);
+  // Polish: track every transient timer so an unmount mid-flash can't setState
+  // on a dead component.
+  useEffect(() => {
+    const ids = timers.current;
+    return () => {
+      for (const t of ids) window.clearTimeout(t);
+    };
+  }, []);
+
+  const after = (ms: number, fn: () => void): void => {
+    const id = window.setTimeout(fn, ms);
+    timers.current.push(id);
   };
 
+  const flash = (v: Exclude<Verb, 'SCRAPE'>): void => {
+    setVerb(v);
+    after(260, () => setVerb('SCRAPE'));
+  };
+
+  const onScrape = (): void => {
+    scrape();
+    setPressed(true);
+    after(140, () => setPressed(false));
+  };
   const onTabulate = (from: RefinableTier): void => {
     if (tabulate(from)) flash('TABULATING');
   };
@@ -166,29 +306,41 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
   };
   const tradeReady = canCalculate();
 
+  const nav = (target: View, text: string): JSX.Element => (
+    <button
+      type="button"
+      className={view === target ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+      onClick={() => setView(target)}
+    >
+      {text}
+    </button>
+  );
+
   return (
     <div className="panel-backdrop" onMouseDown={onClose}>
       <div className="panel scrape-panel scrape-panel--in" onMouseDown={(e) => e.stopPropagation()}>
         <header className="panel-header">
-          <span className="panel-title">{view === 'shop' ? '// shop' : '// data scrape'}</span>
+          <span className="panel-title">
+            {view === 'shop' ? '// shop' : view === 'inventory' ? '// inventory' : '// data scrape'}
+          </span>
           <div className="scrape-headbtns">
-            <button
-              type="button"
-              className="scrape-tabbtn"
-              onClick={() => setView((v) => (v === 'shop' ? 'scrape' : 'shop'))}
-            >
-              {view === 'shop' ? '‹ back' : 'shop ▸'}
-            </button>
+            {nav('scrape', 'scrape')}
+            {nav('shop', 'shop')}
+            {nav('inventory', 'inv')}
             <button type="button" className="panel-close" onClick={onClose}>
-              close ✕
+              ✕
             </button>
           </div>
         </header>
 
-        {view === 'scrape' ? (
+        {view === 'scrape' && (
           <>
             <section className="panel-section scrape-stage">
-              <button type="button" className="scrape-btn" onClick={() => scrape()}>
+              <button
+                type="button"
+                className={pressed ? 'scrape-btn is-pressed' : 'scrape-btn'}
+                onClick={onScrape}
+              >
                 <span className="scrape-btn-face">{verb}</span>
               </button>
             </section>
@@ -245,9 +397,10 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
               </div>
             </section>
           </>
-        ) : (
-          <ShopView credits={eco.credits} />
         )}
+
+        {view === 'shop' && <ShopView credits={eco.credits} />}
+        {view === 'inventory' && <InventoryView />}
 
         <footer className="panel-footer">
           press [esc] or click outside to close · progress saved on this device

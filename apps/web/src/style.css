@@ -1806,3 +1806,121 @@ body,
 .shop-buy:disabled {
   opacity: 0.6;
 }
+
+/* ── nav / press polish / rarity / inventory ── */
+.scrape-tabbtn.is-on {
+  color: #07100c;
+  background: #93e0b1;
+  border-color: #93e0b1;
+}
+.scrape-btn.is-pressed {
+  animation: scrape-pop 140ms ease-out;
+}
+@keyframes scrape-pop {
+  0% {
+    transform: perspective(520px) rotateX(11deg) translateY(6px);
+    box-shadow: 0 2px 0 #16241d, 0 3px 8px rgba(0, 0, 0, 0.5);
+  }
+  60% {
+    transform: perspective(520px) rotateX(11deg) translateY(-2px);
+  }
+  100% {
+    transform: perspective(520px) rotateX(11deg) translateY(0);
+    box-shadow: 0 8px 0 #16241d, 0 10px 16px rgba(0, 0, 0, 0.45);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-btn.is-pressed {
+    animation: none;
+  }
+}
+.shop-group {
+  margin-top: 10px;
+}
+.shop-group-title {
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.rar-badge {
+  display: inline-block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  margin-right: 6px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.rar-normal {
+  color: #8aa597;
+}
+.rar-rare {
+  color: #93e0b1;
+}
+.rar-ultra {
+  color: #b48bff;
+}
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.inv-slot {
+  appearance: none;
+  aspect-ratio: 1 / 1;
+  background: rgba(8, 12, 14, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #3a4650;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px;
+  cursor: default;
+  overflow: hidden;
+  position: relative;
+  word-break: break-word;
+}
+.inv-slot.is-filled {
+  color: #c0ffd6;
+  cursor: pointer;
+  background: rgba(20, 28, 24, 0.7);
+}
+.inv-slot.rar-rare.is-filled {
+  border-color: #3a5446;
+}
+.inv-slot.rar-ultra.is-filled {
+  border-color: #6a4aa8;
+}
+.inv-slot.is-equipped {
+  outline: 1px solid #93e0b1;
+  outline-offset: -2px;
+}
+.inv-eq {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 8px;
+  color: #07100c;
+  background: #93e0b1;
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.inv-equip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.inv-equip-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}

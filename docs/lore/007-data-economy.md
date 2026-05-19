@@ -69,3 +69,8 @@ Recorded from owner Q&A, 2026-05-16. Drives the Data Scrape mini-game
   placeholder scaffold only. Cosmetics/outfits are Phase-3; emoticrons are
   moderation-gated (fixed DB, manual review). Needs owner Q&A — do not invent
   reward content or its lore.
+- **Clothing / pets / rarity vocabulary:** real item names, the three rarity
+  tier names (placeholder mechanical: normal/rare/ultra), what visual
+  effects/textures/colour shifts mean in-world, and pet identities (code
+  sparks, aether motes — do these tie to existing Aether lore in `006`?).
+  Open owner Q&A; framework is built but content is intentionally empty.

@@ -211,3 +211,57 @@ step), a passcode row, a Credits row, a dimmed **locked Tokens** row
 overlay. Consistent with the glyph-atlas / Caves-of-Qud terminal vocabulary;
 reduced-motion safe (static). Full isometric ASCII button render + press
 juice remain the deferred polish pass.
+
+## 14. Clothing / pets / upgrades / inventory (framework)
+
+Owner Q&A locked: framework + polish; **isolated appearance seam** (not
+wired into the rig); device-local + account seam; **placeholder catalog,
+real content via later lore Q&A**.
+
+### Item kinds (`shop.ts`)
+
+- **clothing** — `slot: head|chest|legs`, `rarity: normal|rare|ultra`.
+  Rarity escalates *features* via a data-only `visual` descriptor: normal =
+  `palette` only · rare = `+ effect` · ultra = `+ effect + texture +
+  colour`. No pixels drawn here — the descriptor is consumed later by the
+  render via the appearance seam.
+- **pet** — same shape, `slot: pet`; priced far above clothing
+  (placeholders: clothing 24–320 cr, pets 900–2400 cr).
+- **upgrade** — raises a named rate (`upgradeKey`) up to `maxLevel`,
+  repeatable, rising cost. `scrape` is wired live (`scrapeYield()` =
+  `1 + level`); others (e.g. `tabulate`) store a level whose effect is a
+  later pass.
+
+### Inventory (`economy.ts`, additive)
+
+- `slots: (string|null)[16]` — Minecraft-style grid; a bought
+  clothing/pet auto-fills the first empty slot. Inventory-full blocks the
+  buy.
+- `equipped: {head,chest,legs,pet}` — one item per slot; equip/unequip
+  toggles from a filled inventory cell.
+- `appearanceHidden: boolean` — global show/hide of equipped cosmetics.
+- All **additive & backward-compatible** (old `v1` blobs normalise; **no
+  schema-version bump**; migration seam unchanged).
+
+### Appearance seam (`appearance.ts`) — the isolation boundary
+
+`getEquippedAppearance()` resolves equipped ids → a render-ready
+`EquippedAppearance` (rarity/palette/effect/texture, honouring
+`appearanceHidden`); `subscribeAppearance()` fires on equip/hide changes.
+**Nothing imports `appearance.ts` yet.** scene.ts will later import *only*
+this module to re-skin the bit_spekter rig — no economy/shop internals leak
+into render, so the mini-game still cannot regress Phase-2.
+
+### Account-link seam (`economy.ts`)
+
+`exportProgress()` / `importProgress()` are the concrete hooks the future
+Supabase layer calls (push on change, restore on login). One blob carries
+bits→passcodes, Credits, reputation, upgrades, inventory, equipped, hidden.
+Device-local now; IP linkage remains rejected (privacy/lore).
+
+### Deferred (still)
+
+Actual rig rendering of clothing/pets, real visual-effect/texture/colour
+implementations, the real catalog + rarity/lore vocabulary (owner Q&A),
+non-`scrape` upgrade effects, balancing numbers, idle generation, glitch
+close polish, reputation reward curve (faction-reward Q&A).

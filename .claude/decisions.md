@@ -5,6 +5,25 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-05-16 — Clothing/pets/inventory framework: appearance.ts is the render isolation boundary
+
+**Decision:** Built the clothing/pet/upgrade/inventory framework with the
+character-render integration as a dedicated **seam module `appearance.ts`**
+that nothing imports yet. Equip/inventory/upgrade state lives in the pure
+`economy.ts` blob (additive, no schema bump); `appearance.ts` resolves it to a
+render-ready descriptor + change event. scene.ts will later import **only**
+`appearance.ts` — economy/shop internals never reach the render pipeline. This
+keeps the deliberate isolation (the mini-game cannot regress Phase-2
+multiplayer/render) while still giving clothing a real path to the 3D rig.
+Added `exportProgress`/`importProgress` as the concrete account-link seam (one
+blob; device-local now, IP still rejected). Catalog remains placeholder; real
+clothing/pet/rarity content + lore is an open owner Q&A — not invented.
+
+**Why it matters:** "clothing changes the character" is the exact place an
+isolated mini-game would normally have to break isolation. Routing it through a
+one-way descriptor module preserves the safety property and the future wiring
+is a small, contained change.
+
 ## 2026-05-16 — Shop framework: Credits-only, Tokens hard-locked; `owned` additive
 
 **Decision:** Added a scaffold shop. Purchasable items are **Credits-priced**;
