@@ -24,6 +24,7 @@ Plot beats that **must not surface in player-facing text** until released by the
 | `004-quests-and-samaritan-status.md` | Quest-givers and the two reputation tracks |
 | `005-trade-depots-and-ports.md` | Depots, ports, vending — visual vocabulary of the world |
 | `006-runner-lifecycle.md` | Upload, login, logout, aether |
+| `007-data-economy.md` | Data ladder (bits→strings→serials→passcodes), Credits vs Tokens |
 | `_sealed/web-pullers.md` | ⚠️ SEALED future-event plot beat |
 
 ## Glossary (canonical names)
@@ -36,7 +37,9 @@ Plot beats that **must not surface in player-facing text** until released by the
 | **bitrunner** / **runner** | A player's in-world avatar. |
 | **The Admin** | Code-entity NPC. Companion, shopkeeper, quest-giver. Dangerous yet benevolent. |
 | **The Company** | Corporate quest-giver. Builder of hash_kicker template bodies. |
-| **Token** | Captured data scraps from Server Space. Currency. Coveted by The Admin. |
+| **Token** | Captured data scraps from Server Space. Scarce/premium currency. Coveted by The Admin. **Not** produced by the scrape mini-game; `bit_spekter` cannot earn it (proxy-wallet planned). See `007`. |
+| **Credit** | Common, interchangeable currency. Earned by trading passcodes to The Admin/The Company. Lesser than a Token. See `007`. |
+| **bit / string / serial / passcode** | Ascending refinements of scraped data (8× each). A passcode is the finished, tradeable artifact. See `007`. |
 | **Aether** | Drifting offline-runner remnant. Passive world decoration. |
 | **Samaritan Status** | Reputation. Two tracks: *Corporate* (The Company) and *BitRunner* (The Admin). |
 | **Port / depot** | Physical interactable in the Cloud that exposes Server Space behind it. |

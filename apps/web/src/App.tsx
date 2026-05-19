@@ -3,6 +3,7 @@ import { AdminDialogue } from './AdminDialogue.js';
 import { Boot } from './Boot.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { ProfileIcon } from './ProfileIcon.js';
+import { ScrapeMenu } from './ScrapeMenu.js';
 import { TransitionRain } from './TransitionRain.js';
 import { type SceneControls, startScene } from './scene.js';
 
@@ -108,6 +109,7 @@ function Game({ className }: GameProps): JSX.Element {
     <div ref={hostRef} className="canvas-host">
       <div className="hint">{className} · arrows / wasd / stick</div>
       <ProfileIcon className={className} />
+      <ScrapeMenu />
       <EmoteWheel onEmote={onEmote} />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
     </div>

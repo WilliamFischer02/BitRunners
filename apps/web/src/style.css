@@ -1508,3 +1508,577 @@ body,
     font-size: 11px;
   }
 }
+
+/* ──────────── data scrape mini-game (scaffold) ────────────
+   Launcher sits directly under the profile/account button.
+   Full isometric ASCII art + press juice are a deferred pass;
+   see docs/design/clicker-minigame.md. */
+.scrape-launch {
+  position: absolute;
+  top: 84px;
+  right: 12px;
+  appearance: none;
+  background: rgba(8, 12, 14, 0.75);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  padding: 8px 10px;
+  min-width: 170px;
+  text-align: left;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  cursor: pointer;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.scrape-launch:hover {
+  border-color: #93e0b1;
+}
+.scrape-launch-label {
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.scrape-launch-sub {
+  font-size: 12px;
+  color: #c0ffd6;
+  font-weight: 600;
+}
+
+/* glitch open transition stub — techno scan-in, reduced-motion safe */
+.scrape-panel--in {
+  animation: scrape-glitch-in 320ms steps(6, end) both;
+}
+@keyframes scrape-glitch-in {
+  0% {
+    opacity: 0;
+    clip-path: inset(46% 0 46% 0);
+    transform: translateY(-6px) scaleY(0.92);
+  }
+  45% {
+    opacity: 1;
+    clip-path: inset(12% 0 12% 0);
+    transform: translateY(2px) scaleY(1.02);
+  }
+  70% {
+    clip-path: inset(0 0 28% 0);
+  }
+  100% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0) scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-panel--in {
+    animation: none;
+  }
+}
+
+.scrape-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+/* double-wide, lightly isometric placeholder button (full ASCII render later) */
+.scrape-btn {
+  appearance: none;
+  width: 100%;
+  max-width: 320px;
+  padding: 22px 16px;
+  background: linear-gradient(180deg, rgba(34, 46, 40, 0.9), rgba(12, 16, 14, 0.95));
+  border: 1px solid #3a5446;
+  border-radius: 4px;
+  color: #c0ffd6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transform: perspective(520px) rotateX(11deg);
+  box-shadow: 0 8px 0 #16241d, 0 10px 16px rgba(0, 0, 0, 0.45);
+  transition: transform 70ms ease-out, box-shadow 70ms ease-out;
+}
+.scrape-btn:hover {
+  border-color: #93e0b1;
+}
+.scrape-btn:active {
+  transform: perspective(520px) rotateX(11deg) translateY(6px);
+  box-shadow: 0 2px 0 #16241d, 0 3px 8px rgba(0, 0, 0, 0.5);
+}
+.scrape-btn-face {
+  display: inline-block;
+}
+.scrape-readout {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 14px;
+  font-size: 11px;
+  color: #8aa597;
+  letter-spacing: 0.05em;
+}
+.scrape-mini {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #6e7a86;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: not-allowed;
+  transition: transform 60ms ease-out;
+}
+.scrape-mini.is-ready {
+  color: #c0ffd6;
+  border-color: #3a5446;
+  cursor: pointer;
+}
+.scrape-mini.is-ready:active {
+  transform: translateY(2px);
+}
+.scrape-mini:disabled {
+  opacity: 0.55;
+}
+
+/* ── data/token HUD (under the scrape button) ── */
+.scrape-headbtns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.scrape-tabbtn {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #c0ffd6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+.scrape-tabbtn:hover {
+  border-color: #93e0b1;
+}
+.scrape-hud {
+  position: relative;
+  overflow: hidden;
+}
+.scrape-hud::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(147, 224, 177, 0.05) 0 1px,
+    transparent 1px 3px
+  );
+}
+.scrape-hud-row {
+  display: grid;
+  grid-template-columns: 16px 74px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 0;
+}
+.scrape-hud-glyph {
+  color: #b48bff;
+  text-align: center;
+}
+.scrape-hud-name {
+  color: #6e7a86;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.scrape-hud-bar {
+  color: #3a5446;
+  letter-spacing: 1px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.scrape-hud-val {
+  color: #c0ffd6;
+  text-align: right;
+  min-width: 36px;
+}
+.scrape-hud--passcode .scrape-hud-bar {
+  color: #93e0b1;
+}
+.scrape-hud--passcode .scrape-hud-val,
+.scrape-hud--currency .scrape-hud-val {
+  font-weight: 700;
+}
+.scrape-hud-div {
+  color: #2a3340;
+  font-size: 11px;
+  margin: 4px 0;
+  letter-spacing: 2px;
+}
+.scrape-hud--currency .scrape-hud-glyph {
+  color: #93e0b1;
+}
+.scrape-hud--locked {
+  opacity: 0.5;
+}
+.scrape-hud--locked .scrape-hud-bar {
+  color: #6e7a86;
+  font-style: italic;
+}
+.scrape-hud-stat {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* ── shop scaffold ── */
+.shop-credits {
+  font-size: 11px;
+  color: #8aa597;
+  margin-bottom: 6px;
+  letter-spacing: 0.05em;
+}
+.shop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.shop-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  padding: 8px 10px;
+  background: rgba(8, 12, 14, 0.5);
+}
+.shop-item.is-owned {
+  opacity: 0.65;
+  border-color: #3a5446;
+}
+.shop-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.shop-item-name {
+  font-size: 12px;
+  color: #c0ffd6;
+  font-weight: 600;
+}
+.shop-item-blurb {
+  font-size: 10px;
+  color: #8aa597;
+}
+.shop-item-note {
+  font-size: 10px;
+  color: #6e7a86;
+}
+.shop-buy {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #6e7a86;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  padding: 6px 10px;
+  cursor: not-allowed;
+  white-space: nowrap;
+}
+.shop-buy.is-ready {
+  color: #c0ffd6;
+  border-color: #3a5446;
+  cursor: pointer;
+}
+.shop-buy.is-ready:active {
+  transform: translateY(1px);
+}
+.shop-buy:disabled {
+  opacity: 0.6;
+}
+
+/* ── nav / press polish / rarity / inventory ── */
+.scrape-tabbtn.is-on {
+  color: #07100c;
+  background: #93e0b1;
+  border-color: #93e0b1;
+}
+.scrape-btn.is-pressed {
+  animation: scrape-pop 140ms ease-out;
+}
+@keyframes scrape-pop {
+  0% {
+    transform: perspective(520px) rotateX(11deg) translateY(6px);
+    box-shadow: 0 2px 0 #16241d, 0 3px 8px rgba(0, 0, 0, 0.5);
+  }
+  60% {
+    transform: perspective(520px) rotateX(11deg) translateY(-2px);
+  }
+  100% {
+    transform: perspective(520px) rotateX(11deg) translateY(0);
+    box-shadow: 0 8px 0 #16241d, 0 10px 16px rgba(0, 0, 0, 0.45);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-btn.is-pressed {
+    animation: none;
+  }
+}
+.shop-group {
+  margin-top: 10px;
+}
+.shop-group-title {
+  font-size: 10px;
+  color: #6e7a86;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+.rar-badge {
+  display: inline-block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  margin-right: 6px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  vertical-align: middle;
+}
+.rar-normal {
+  color: #8aa597;
+}
+.rar-rare {
+  color: #93e0b1;
+}
+.rar-ultra {
+  color: #b48bff;
+}
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin-bottom: 10px;
+}
+.inv-slot {
+  appearance: none;
+  aspect-ratio: 1 / 1;
+  background: rgba(8, 12, 14, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #3a4650;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 9px;
+  line-height: 1.15;
+  padding: 4px;
+  cursor: default;
+  overflow: hidden;
+  position: relative;
+  word-break: break-word;
+}
+.inv-slot.is-filled {
+  color: #c0ffd6;
+  cursor: pointer;
+  background: rgba(20, 28, 24, 0.7);
+}
+.inv-slot.rar-rare.is-filled {
+  border-color: #3a5446;
+}
+.inv-slot.rar-ultra.is-filled {
+  border-color: #6a4aa8;
+}
+.inv-slot.is-equipped {
+  outline: 1px solid #93e0b1;
+  outline-offset: -2px;
+}
+.inv-eq {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 8px;
+  color: #07100c;
+  background: #93e0b1;
+  padding: 0 3px;
+  border-radius: 2px;
+}
+.inv-equip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.inv-equip-row {
+  display: grid;
+  grid-template-columns: 56px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+
+/* ── completion polish: scrape gain, close transition, iso frame ── */
+.scrape-stage {
+  position: relative;
+}
+.scrape-gain {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 18px;
+  font-weight: 700;
+  color: #c0ffd6;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.6);
+  animation: scrape-gain-rise 620ms ease-out forwards;
+}
+@keyframes scrape-gain-rise {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 8px);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -34px);
+  }
+}
+.scrape-panel--out {
+  animation: scrape-glitch-out 230ms steps(5, end) both;
+}
+@keyframes scrape-glitch-out {
+  0% {
+    opacity: 1;
+    clip-path: inset(0 0 0 0);
+    transform: translateY(0) scaleY(1);
+  }
+  45% {
+    opacity: 1;
+    clip-path: inset(8% 0 30% 0);
+    transform: translateY(2px) scaleY(0.99);
+  }
+  100% {
+    opacity: 0;
+    clip-path: inset(48% 0 48% 0);
+    transform: translateY(-6px) scaleY(0.9);
+  }
+}
+/* read more like a rendered iso panel: faint scanline + crisper edge */
+.scrape-btn {
+  position: relative;
+}
+.scrape-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 4px;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(147, 224, 177, 0.06) 0 1px,
+    transparent 1px 3px
+  );
+  box-shadow: inset 0 0 0 1px rgba(147, 224, 177, 0.12);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-gain {
+    animation: none;
+    opacity: 0;
+  }
+  .scrape-panel--out {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* ── mobile compatibility for the clicker / shop / inventory ──
+   Scoped to small screens only — desktop layout is unchanged. The .panel
+   itself is already responsive (width:min(520px,100%), scrolls); these rules
+   fix the launcher scale + the clicker header overflow on narrow phones. */
+@media (max-width: 540px) {
+  .scrape-launch {
+    top: 78px;
+    min-width: 116px;
+    max-width: 156px;
+    padding: 6px 8px;
+  }
+  .scrape-launch-label {
+    font-size: 9px;
+  }
+  .scrape-launch-sub {
+    font-size: 11px;
+  }
+  .panel-header {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .panel-title {
+    font-size: 10px;
+  }
+  .scrape-headbtns {
+    gap: 4px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .scrape-tabbtn {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+  .scrape-btn {
+    font-size: 18px;
+    padding: 18px 12px;
+  }
+  .scrape-hud-row {
+    grid-template-columns: 14px 58px 1fr auto;
+    gap: 6px;
+    font-size: 10px;
+  }
+  .scrape-hud-stat {
+    font-size: 9px;
+  }
+  .shop-item {
+    padding: 7px 8px;
+  }
+  .shop-item-name {
+    font-size: 11px;
+  }
+  .inv-grid {
+    gap: 4px;
+  }
+  .inv-slot {
+    font-size: 8px;
+  }
+  .inv-equip-row {
+    grid-template-columns: 46px 1fr auto;
+    font-size: 10px;
+  }
+}
+
+/* Finger-friendly tap targets on touch devices (does not affect mouse). */
+@media (pointer: coarse) {
+  .scrape-mini,
+  .shop-buy,
+  .scrape-tabbtn,
+  .panel-toggle,
+  .panel-close {
+    min-height: 38px;
+  }
+  .inv-slot {
+    min-height: 46px;
+  }
+  .scrape-launch {
+    min-height: 44px;
+  }
+}
