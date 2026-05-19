@@ -20,6 +20,8 @@ Also: moved the canonical emote glyph set + `isValidEmote()` to `@bitrunners/sha
 
 **Second deliverable — `docs/setup/SERVICES.md` (devlog 0032):** the canonical master setup guide for every external service — what/why/free-tier/click-by-click/exact-secret-and-destination/verify, in dependency order. Built from an actual config-surface scan (only 6 secrets/bindings wired today; everything else explicitly labelled ACCOUNT-ONLY). Supersedes setup steps in devlogs 0020/0021/0026. Decisions recorded: Neon DEPRECATED, Stripe DEFERRED, Steam needs a custom Worker. The earlier in-chat "diagnostics/tester menu" + Stripe stack proposal was an **accidental prompt — out of scope, do not build**; verified it never entered a committed file. Docs-only commit; no code, no deploy impact.
 
+**Third deliverable — Data Scrape mini-game design + scaffold (devlog 0033):** cookie-clicker economy in a new menu directly under the profile/account button. Design `docs/design/clicker-minigame.md`; lore Q&A `docs/lore/007-data-economy.md` (+ glossary/index). Code: `economy.ts` (pure model + device-local persistence) + `ScrapeMenu.tsx` (launcher + panel scaffold), mounted in `App.tsx`, styled in `style.css`. Loop: SCRAPE→bits, TABULATING up the 8× ladder (bits→strings→serials→passcodes), CALCULATING passcodes→Credits via Admin (destroy) / Company (recycle), +1 Samaritan on the matching track. Locked: device-local (IP-sync rejected — privacy), Credits not Tokens (canon preserved), serials 8×. Fully isolated from scene/network/server. Deferred: full iso ASCII art, press juice, balancing. Blocked seam: reputation reward curve (faction-reward Q&A).
+
 ## What's blocking forward progress
 
 - **Browser verification.** Headless env — I could not run two clients to eyeball the emote round-trip, seam visibility, or smoothing feel. Logic is gate-verified and reasoned against the real code paths; it needs a live two-client check on a deployed build.
@@ -39,6 +41,7 @@ Also: moved the canonical emote glyph set + `isValidEmote()` to `@bitrunners/sha
 5. Still open: run-toggle + reworked-tendrils live eyeball (from 0030/0029).
 6. Phase 2: aether snapshot on `onLeave` (TODO in `sphere-room.ts`) — Upstash setup steps are in SERVICES.md §12.
 7. Steam login: build the OpenID→Supabase-session Worker (SERVICES.md §10 explains why it's a build task, not a toggle).
+8. Mini-game: get the **faction-reward Q&A** answered — it unblocks both the 20-achievements design AND the clicker's reputation rewards (currently a raw counter + emitted intent). Then the deferred polish pass: full isometric ASCII button render + press juice, glitch open/close polish, idle/balancing numbers. Implement `migrateEconomyToAccount()` when Supabase lands.
 
 ## Files touched this session
 
@@ -52,7 +55,12 @@ Also: moved the canonical emote glyph set + `isValidEmote()` to `@bitrunners/sha
 - `docs/devlog/0031-multiplayer-emote-sync-and-smoothing.md` — new.
 - `docs/setup/SERVICES.md` — new (master services setup guide; second deliverable).
 - `docs/devlog/0032-services-setup-master-guide.md` — new.
-- `.claude/decisions.md` — appended (multiplayer call + services/Neon/Stripe/Steam call).
+- `docs/design/clicker-minigame.md` — new (mini-game architecture).
+- `docs/lore/007-data-economy.md` — new (economy Q&A); `docs/lore/README.md` — index + glossary updated.
+- `apps/web/src/economy.ts`, `apps/web/src/ScrapeMenu.tsx` — new (mini-game model + UI scaffold).
+- `apps/web/src/App.tsx` — mount `<ScrapeMenu/>` under `<ProfileIcon/>`; `apps/web/src/style.css` — scrape launcher/panel/button + glitch stub.
+- `docs/devlog/0033-clicker-minigame-scaffold.md` — new.
+- `.claude/decisions.md` — appended (multiplayer; services/Neon/Stripe/Steam; mini-game privacy/canon/isolation).
 - `.claude/handoff.md` — this file.
 
 ## Do NOT do these things (specific to right now)
@@ -63,6 +71,7 @@ Also: moved the canonical emote glyph set + `isValidEmote()` to `@bitrunners/sha
 - Don't edit `.claude/settings.json` by append/prepend (see prior handoff/decisions).
 - **Don't build a passcode-gated diagnostics / in-game "tester" menu, and don't add a Stripe/payments setup section.** Both were an accidental in-chat prompt the owner explicitly retracted. SERVICES.md verification is intentionally manual (curl/browser). Stripe is deferred to its own future doc.
 - Don't treat devlog 0026 as the setup source anymore — `docs/setup/SERVICES.md` is canonical; devlogs are immutable history.
+- **Don't let the Data Scrape clicker mint Tokens** — it mints Credits only; Tokens are canon-scarce and `bit_spekter` can't earn them (lore 003/007). Don't couple `economy.ts`/`ScrapeMenu.tsx` to `scene.ts`/`network.ts`/server — isolation is deliberate so an off-roadmap feature can't regress Phase-2.
 
 ## Open questions for the owner
 

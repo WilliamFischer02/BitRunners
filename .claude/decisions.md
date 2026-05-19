@@ -5,6 +5,29 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-05-16 — Data Scrape mini-game: reject IP guest-sync; preserve currency canon; isolate from Phase-2
+
+**Decision:** Scaffolded a clicker economy mini-game with three locked calls:
+
+- **Rejected the owner's IP-correlated guest-progression idea.** It's PII
+  tracking, directly contradicts the Admin's own privacy-protecting lore,
+  carries age-gate/minor risk, and the persistence backend isn't wired. Chose
+  **device-local** (`localStorage` v1, versioned) with a documented
+  account-migration seam. Privacy-safe and ships now. (Owner agreed via Q&A.)
+- **Currency canon preserved.** The clicker mints **Credits** (new common
+  currency) only. **Token** stays the scarce Server-Space premium currency and
+  is **not** clicker-minted — `bit_spekter` canonically cannot earn Tokens
+  (lore 003, proxy-wallet planned). A clicker that minted Tokens would break
+  canon on the only playable class. Recorded in `docs/lore/007`.
+- **Isolation.** The mini-game has no imports to/from `scene.ts`/`network.ts`/
+  server. It cannot regress Phase-2 multiplayer; it's off the `0004` roadmap
+  and owner-directed, so it's a separate track, not a Phase-2 blocker.
+
+**Why it matters:** the privacy call is a safety decision the owner should see
+persisted; the canon call prevents a day-one lore contradiction; isolation
+keeps an off-roadmap feature from endangering the roadmap. Reputation **reward**
+curve remains an open faction-reward Q&A — wired only as a pluggable intent.
+
 ## 2026-05-16 — `docs/setup/SERVICES.md` is the canonical setup source; Neon deprecated; Stripe deferred; Steam needs a Worker
 
 **Decision:** Created `docs/setup/SERVICES.md` as the single canonical service-
