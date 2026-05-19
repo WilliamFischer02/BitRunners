@@ -2,21 +2,24 @@ import { useEffect, useRef, useState } from 'react';
 import {
   EQUIP_SLOTS,
   type EconomyState,
-  type EquipSlot,
   type Faction,
   type RefinableTier,
   STEP,
   calculate,
   canCalculate,
   canTabulate,
+  canTabulateAll,
   equip,
   getEconomy,
+  getEquipped,
   isAppearanceHidden,
   scrape,
   scrapeYield,
   setAppearanceHidden,
   subscribeEconomy,
   tabulate,
+  tabulateAll,
+  tabulateReach,
 } from './economy.js';
 import {
   SHOP_CATALOG,
@@ -30,6 +33,11 @@ import {
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
 type View = 'scrape' | 'shop' | 'inventory';
+
+const REDUCED_MOTION =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
 
 const TIER_STEPS: { from: RefinableTier; label: string }[] = [
   { from: 'bits', label: 'bits → string' },
@@ -120,15 +128,17 @@ function DataHud({ eco }: { eco: EconomyState }): JSX.Element {
 function ShopRow({ item }: { item: ShopItem }): JSX.Element {
   const ev = evaluate(item);
   const owned = item.kind !== 'upgrade' && isOwned(item);
+  const equippedHere = item.slot ? getEquipped()[item.slot] === item.id : false;
   const disabled = !ev.ok;
-  const price = `${priceOf(item)} cr`;
   const label = item.locked
     ? '[ locked ]'
     : owned
-      ? '[ owned ]'
+      ? equippedHere
+        ? '[ equipped ]'
+        : '[ owned ]'
       : ev.reason === 'maxed'
         ? '[ maxed ]'
-        : `[ ${price} ]`;
+        : `[ ${priceOf(item)} cr ]`;
   return (
     <div className={`shop-item ${owned ? 'is-owned' : ''}`}>
       <div className="shop-item-main">
@@ -183,6 +193,7 @@ function InventoryView(): JSX.Element {
   const slots = getEconomy().slots;
   const equipped = getEconomy().equipped;
   const hidden = isAppearanceHidden();
+  const empty = slots.every((c) => c === null);
 
   const onSlotClick = (id: string | null): void => {
     if (!id) return;
@@ -195,6 +206,7 @@ function InventoryView(): JSX.Element {
   return (
     <section className="panel-section">
       <div className="panel-section-title">$ inventory · {slots.length} slots</div>
+      {empty && <div className="panel-stub">─── empty. buy clothing or a pet in the shop.</div>}
       <div className="inv-grid">
         {slots.map((cell, i) => {
           const item = cell ? getShopItem(cell) : undefined;
@@ -261,21 +273,15 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
   const [verb, setVerb] = useState<Verb>('SCRAPE');
   const [pressed, setPressed] = useState(false);
+  const [gain, setGain] = useState<{ n: number; k: number } | null>(null);
   const [view, setView] = useState<View>('scrape');
+  const [closing, setClosing] = useState(false);
   const timers = useRef<number[]>([]);
 
   useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  // Polish: track every transient timer so an unmount mid-flash can't setState
-  // on a dead component.
+  // Track every transient timer so an unmount mid-animation can't setState on
+  // a dead component.
   useEffect(() => {
     const ids = timers.current;
     return () => {
@@ -288,23 +294,48 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
     timers.current.push(id);
   };
 
+  const requestClose = (): void => {
+    if (REDUCED_MOTION) {
+      onClose();
+      return;
+    }
+    setClosing(true);
+    after(240, onClose);
+  };
+  const closeRef = useRef(requestClose);
+  closeRef.current = requestClose;
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') closeRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const flash = (v: Exclude<Verb, 'SCRAPE'>): void => {
     setVerb(v);
     after(260, () => setVerb('SCRAPE'));
   };
 
   const onScrape = (): void => {
+    const g = scrapeYield();
     scrape();
     setPressed(true);
     after(140, () => setPressed(false));
+    setGain((p) => ({ n: g, k: (p?.k ?? 0) + 1 }));
   };
   const onTabulate = (from: RefinableTier): void => {
     if (tabulate(from)) flash('TABULATING');
+  };
+  const onTabulateAll = (): void => {
+    if (tabulateAll()) flash('TABULATING');
   };
   const onTrade = (faction: Faction): void => {
     if (calculate(faction)) flash('CALCULATING');
   };
   const tradeReady = canCalculate();
+  const showAll = tabulateReach() >= 1;
 
   const nav = (target: View, text: string): JSX.Element => (
     <button
@@ -317,8 +348,11 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
   );
 
   return (
-    <div className="panel-backdrop" onMouseDown={onClose}>
-      <div className="panel scrape-panel scrape-panel--in" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="panel-backdrop" onMouseDown={requestClose}>
+      <div
+        className={`panel scrape-panel ${closing ? 'scrape-panel--out' : 'scrape-panel--in'}`}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <header className="panel-header">
           <span className="panel-title">
             {view === 'shop' ? '// shop' : view === 'inventory' ? '// inventory' : '// data scrape'}
@@ -327,7 +361,7 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
             {nav('scrape', 'scrape')}
             {nav('shop', 'shop')}
             {nav('inventory', 'inv')}
-            <button type="button" className="panel-close" onClick={onClose}>
+            <button type="button" className="panel-close" onClick={requestClose}>
               ✕
             </button>
           </div>
@@ -343,6 +377,11 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
               >
                 <span className="scrape-btn-face">{verb}</span>
               </button>
+              {gain && (
+                <span key={gain.k} className="scrape-gain">
+                  +{gain.n}
+                </span>
+              )}
             </section>
 
             <DataHud eco={eco} />
@@ -365,6 +404,19 @@ function ScrapePanel({ onClose }: ScrapePanelProps): JSX.Element {
                   </div>
                 );
               })}
+              {showAll && (
+                <div className="panel-row">
+                  <span className="panel-key">tabulate all · cache</span>
+                  <button
+                    type="button"
+                    className={canTabulateAll() ? 'scrape-mini is-ready' : 'scrape-mini'}
+                    disabled={!canTabulateAll()}
+                    onClick={onTabulateAll}
+                  >
+                    [ all ]
+                  </button>
+                </div>
+              )}
             </section>
 
             <section className="panel-section">

@@ -217,6 +217,50 @@ export function tabulate(from: RefinableTier): boolean {
   return true;
 }
 
+/** How many ladder tiers the tabulate-cache upgrade unlocks for bulk convert. */
+export function tabulateReach(): number {
+  return Math.min(state.upgrades.tabulate ?? 0, 3);
+}
+
+export function canTabulateAll(): boolean {
+  const reach = tabulateReach();
+  if (reach < 1) return false;
+  const tiers: RefinableTier[] = (['bits', 'strings', 'serials'] as const).slice(0, reach);
+  return tiers.some((t) => state[t] >= STEP);
+}
+
+/**
+ * TABULATE ALL — cascading bulk refine, unlocked/extended by the tabulate-cache
+ * upgrade (reach = level, capped at 3 tiers). Preserves the locked 8× ratio
+ * exactly (it just batches the same step); persists once.
+ */
+export function tabulateAll(): boolean {
+  const reach = tabulateReach();
+  if (reach < 1) return false;
+  const tiers: RefinableTier[] = (['bits', 'strings', 'serials'] as const).slice(0, reach);
+  const next = { ...state };
+  let any = false;
+  let changed = true;
+  let guard = 0;
+  while (changed && guard < 64) {
+    changed = false;
+    guard++;
+    for (const from of tiers) {
+      const conv = Math.floor(next[from] / STEP);
+      if (conv > 0) {
+        next[from] -= conv * STEP;
+        next[NEXT_TIER[from]] += conv;
+        any = true;
+        changed = true;
+      }
+    }
+  }
+  if (!any) return false;
+  state = next;
+  persist();
+  return true;
+}
+
 export function canCalculate(): boolean {
   return state.passcodes >= 1;
 }
@@ -248,6 +292,10 @@ export function ownsItem(id: string): boolean {
 
 export function getSlots(): readonly (string | null)[] {
   return state.slots;
+}
+
+export function hasFreeSlot(): boolean {
+  return state.slots.some((c) => c === null);
 }
 
 export function getEquipped(): Readonly<Equipped> {

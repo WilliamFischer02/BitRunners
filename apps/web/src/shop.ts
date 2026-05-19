@@ -18,6 +18,7 @@ import {
   type EquipSlot,
   getEconomy,
   getUpgradeLevel,
+  hasFreeSlot,
   ownsItem,
   purchaseItem,
   purchaseUpgrade,
@@ -172,6 +173,7 @@ export function evaluate(item: ShopItem): BuyResult {
   if (getEconomy().credits < item.cost) {
     return { ok: false, reason: 'insufficient credits' };
   }
+  if (!hasFreeSlot()) return { ok: false, reason: 'inventory full' };
   return { ok: true };
 }
 

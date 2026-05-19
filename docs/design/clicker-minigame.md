@@ -263,5 +263,27 @@ Device-local now; IP linkage remains rejected (privacy/lore).
 
 Actual rig rendering of clothing/pets, real visual-effect/texture/colour
 implementations, the real catalog + rarity/lore vocabulary (owner Q&A),
-non-`scrape` upgrade effects, balancing numbers, idle generation, glitch
-close polish, reputation reward curve (faction-reward Q&A).
+balancing numbers, reputation reward curve (faction-reward Q&A). Idle/auto
+generation deliberately **not** added — `tabulate all` is manual bulk, not
+an idle timer; auto-generation is a separate balance decision for the owner.
+
+## 15. Completion pass (devlog 0036)
+
+Finished the half-built bits of §1–§14 (no new content, no owner-gated
+lore):
+
+- **`tabulate` upgrade is now real.** Was an inert stored level; now powers
+  a cascading **bulk "tabulate all"** (`tabulateAll()` / `canTabulateAll()`
+  / `tabulateReach()`), reach = level capped at 3 tiers, **preserving the
+  locked 8× ratio exactly** (it batches the same step). The `[ all ]` row
+  appears once the cache is owned.
+- **Open *and* close transition.** `scrape-panel--out` glitch-out runs
+  before unmount; all close paths (✕, backdrop, Esc) route through
+  `requestClose()`. Reduced-motion → instant.
+- **Core-action juice.** Floating `+N` gain on SCRAPE; press-pop; faint
+  iso scanline frame on the button.
+- **Failure states surfaced.** `inventory full` now reported by
+  `evaluate()` (was a silent buy failure); shop shows `owned`/`equipped`/
+  `maxed`/reason; inventory shows an empty-state line.
+- **Robustness.** Esc handler is mount-once via a ref; all transient
+  timers tracked and cleared on unmount.
