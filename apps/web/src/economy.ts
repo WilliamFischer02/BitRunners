@@ -25,6 +25,7 @@ export interface EconomyState {
   repCorporate: number;
   repBitrunner: number;
   lifetimeScrapes: number;
+  owned: string[];
   updatedAt: number;
 }
 
@@ -45,6 +46,7 @@ function defaultState(): EconomyState {
     repCorporate: 0,
     repBitrunner: 0,
     lifetimeScrapes: 0,
+    owned: [],
     updatedAt: 0,
   };
 }
@@ -72,7 +74,13 @@ function load(): EconomyState {
     const raw = localStorage.getItem(ECONOMY_STORAGE_KEY);
     if (!raw) return defaultState();
     const parsed: unknown = JSON.parse(raw);
-    return isEconomyState(parsed) ? parsed : defaultState();
+    if (!isEconomyState(parsed)) return defaultState();
+    // Additive + backward-compatible: older v1 blobs predate `owned`.
+    const rawOwned = (parsed as { owned?: unknown }).owned;
+    const owned = Array.isArray(rawOwned)
+      ? rawOwned.filter((x): x is string => typeof x === 'string')
+      : [];
+    return { ...defaultState(), ...parsed, owned };
   } catch {
     return defaultState();
   }
@@ -153,6 +161,26 @@ export function calculate(faction: Faction): boolean {
   } catch {
     // non-DOM env — ignore
   }
+  return true;
+}
+
+export function getOwned(): readonly string[] {
+  return state.owned;
+}
+
+export function ownsItem(id: string): boolean {
+  return state.owned.includes(id);
+}
+
+/**
+ * Spend Credits to grant a one-time item. Atomic: only deducts if affordable
+ * and not already owned. The shop catalog + eligibility live in shop.ts; this
+ * stays the single persisted mutation point (like scrape/tabulate/calculate).
+ */
+export function purchaseWithCredits(id: string, cost: number): boolean {
+  if (cost < 0 || state.owned.includes(id) || state.credits < cost) return false;
+  state = { ...state, credits: state.credits - cost, owned: [...state.owned, id] };
+  persist();
   return true;
 }
 

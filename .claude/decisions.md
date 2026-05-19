@@ -5,6 +5,23 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-05-16 — Shop framework: Credits-only, Tokens hard-locked; `owned` additive
+
+**Decision:** Added a scaffold shop. Purchasable items are **Credits-priced**;
+**Token-priced items are present but hard-locked** with a canon reason
+(`bit_spekter` has no Server-Space wallet — lore 003/007). The shop cannot
+spend or mint Tokens, keeping the currency canon intact. Ownership is stored in
+`EconomyState.owned: string[]` as an **additive, backward-compatible** field
+(old `v1` blobs without it normalise to `[]` on load) — **no schema-version
+bump**, migration seam unchanged. Catalog is explicitly placeholder; the real
+reward set is an open owner Q&A (cosmetics Phase-3, emoticrons moderation-gated)
+— flagged, not fabricated. `shop.ts` stays isolated (no scene/network/server).
+
+**Why it matters:** a shop is the obvious place a "trade for Tokens" feature
+would quietly violate the bit_spekter canon; locking the Token path by
+construction prevents that. Additive persistence avoids a migration for a
+scaffold.
+
 ## 2026-05-16 — Data Scrape mini-game: reject IP guest-sync; preserve currency canon; isolate from Phase-2
 
 **Decision:** Scaffolded a clicker economy mini-game with three locked calls:

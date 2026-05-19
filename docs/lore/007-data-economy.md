@@ -65,3 +65,7 @@ Recorded from owner Q&A, 2026-05-16. Drives the Data Scrape mini-game
   ladder for non-`bit_spekter` classes.
 - Does destroying vs recycling passcodes have any later world consequence
   (privacy meter, Company favour)? — defer, do not invent.
+- **Shop reward catalog:** what do Credits actually buy? Current catalog is
+  placeholder scaffold only. Cosmetics/outfits are Phase-3; emoticrons are
+  moderation-gated (fixed DB, manual review). Needs owner Q&A — do not invent
+  reward content or its lore.

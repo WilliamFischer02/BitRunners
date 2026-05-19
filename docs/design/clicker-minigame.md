@@ -178,3 +178,36 @@ protocol.
   lands (see `docs/setup/SERVICES.md` §6).
 - **Sealed lore** — none surfaced. Admin/Company motivations drawn only from
   unsealed `002`/`004`. Do not surface `_sealed/` in any trade copy.
+
+## 13. Shop framework (scaffold)
+
+A small `shop ▸` button in the panel header swaps the body to a shop view
+(no second modal). Module: `apps/web/src/shop.ts` — isolated, no
+scene/network/server imports.
+
+- **Model:** `ShopItem { id, name, blurb, category, currency, cost, locked?,
+  lockReason? }`; `ShopCurrency = 'credits' | 'tokens'`. `evaluate(item)` →
+  eligibility; `buy(item)` → spends via `economy.purchaseWithCredits`.
+- **Currency rule (canon-safe):** purchasable items are **Credits-priced**.
+  **Token-priced items exist but are hard-locked** with a canon reason
+  (`bit_spekter` has no Server-Space wallet; proxy-wallet planned, lore
+  003/007). The shop **cannot** spend or mint Tokens.
+- **Ownership:** one-time items recorded in `EconomyState.owned: string[]` —
+  **additive, backward-compatible** (older `v1` blobs lacking `owned` are
+  normalised to `[]` on load; no schema-version bump, migration seam in §6
+  unchanged). Owning a cosmetic only records ownership; wiring the visual
+  effect is a later pass.
+- **Catalog is PLACEHOLDER scaffold.** Two benign Credits cosmetics + one
+  locked Token entry. The real reward set — and any lore it implies — is an
+  **open owner Q&A** (cosmetics/outfits are Phase-3 and emoticrons are
+  moderation-gated per `CLAUDE.md`; do not fabricate). Flagged, not invented.
+
+### Data/token HUD aesthetic pass
+
+The readout under the SCRAPE button is now a terminal-style HUD: per-tier
+rows with an ASCII ladder micro-bar (`█`/`░`, fills toward the next 8×
+step), a passcode row, a Credits row, a dimmed **locked Tokens** row
+(`⌷ no wallet`, canon), a lifetime-scrapes stat, and a faint scanline
+overlay. Consistent with the glyph-atlas / Caves-of-Qud terminal vocabulary;
+reduced-motion safe (static). Full isometric ASCII button render + press
+juice remain the deferred polish pass.
