@@ -145,3 +145,11 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (c) — Tokens stay locked (canon preserved).** SAMM can *win* Tokens but bit_spekter has no wallet (lore 003/007/008), so Token wins go to `economy.lockedTokens` (display-only, never spendable) and Token *betting* is UI-disabled. This is the proxy-wallet hook, not a canon break. **Future sessions: do not make SAMM mint spendable Tokens to bit_spekter.**
 
 **Lore recorded:** `docs/lore/008-samm.md` (name = State Authored Money Machine; personality = formal/jolly/impersonal). Open follow-ups noted there (SAMM faction ties, quests/reputation, what a Token win unlocks post-proxy-wallet) — not invented.
+
+## 2026-05-21 — P2P trading is a backend epic, deferred until auth (devlog 0042)
+
+**Decision:** Chunk D ("trade offers at depots/ports") was scoped as NPC-posted offers, but the owner clarified they want **player-to-player** trading (browse others' offers, create your own; item↔item, pet↔item, credit↔item, credit↔pet; Tokens excluded per canon). Real P2P **cannot run on the current architecture** — economy is device-local `localStorage`, the Colyseus room is in-memory/ephemeral, and auth is scaffolded but not live. A client-trusted version would be a dupe exploit. Owner chose **"plan the P2P backend epic first"** over scaffolding a local stub or shipping NPC-mediated trades.
+
+**Outcome:** wrote `docs/design/p2p-trading-epic.md` — the reviewable plan. Hard prerequisites: **live accounts** + a **server-authoritative tradeable economy** (Supabase Postgres as system of record; atomic transactional `accept_trade`). Builds on the existing `supabase/migrations/0001` scaffold (`profiles`/`inventory`/`equipped_outfit`); gaps = no wallet column, no `trade_offers`. No new paid infra expected (Supabase free tier). **No trade code shipped this session.**
+
+**Caution for future sessions:** do NOT build a device-local "marketplace" — it can't show other players' offers and trading device-local items is trivially exploitable. Trading is gated on auth; revisit per the design doc's phasing + open questions. The fallback "NPC/system-posted offers" is a *different, smaller* feature, not this epic.
