@@ -852,6 +852,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
             ra.trotY = p.rotY;
           },
           onEmote(id, text) {
+            console.info('[bitrunners] remote emote', id.slice(0, 6), text);
             const ra = remoteAvatars.get(id);
             if (ra) spawnRemoteEmote(ra.group, text);
           },

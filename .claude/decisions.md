@@ -121,3 +121,17 @@ verification manual.
 **Decision (c) — rate upgrades moved out of the Credits shop into a passcode skill tree; shop is cosmetics-only.** Two purchase systems for the same upgrades (credit shop vs passcode tree) is incoherent. Owner chose consolidation: Credits buy looks, passcodes buy power. Removed the shop `upgrade` `ItemKind` and credit-based `economy.purchaseUpgrade`; added `purchaseTreeNode` (passcode sink) + cumulative `lifetimePasscodes` (additive, backward-compatible, never decremented — gates the tree, seeded from current passcodes on load so existing players keep access). This supersedes design-doc §14's `upgrade` shop kind.
 
 **Caution for future sessions:** clicker balance numbers (skilltree.ts costs/maxLevels, HOLD_MS/AUTO_MS) are a deliberate **first pass** and are NOT verified against the owner's "≈1 week of 1 h sessions" target — that needs live play. All constants are isolated in one module on purpose; tune there, don't scatter magic numbers. The faction-reward curve remains a separate open Q&A (unchanged).
+
+## 2026-05-19 — Sprint roadmap Q&A: vending NPC, trade venue, tutorial reward, rig wiring (devlog 0039)
+
+Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine, trade offers, shop+rig, tutorial). Recorded so future sessions don't re-litigate or accidentally break canon.
+
+**Decision (a) — vending machine is a NEW sentient NPC, and its Token output stays hard-locked behind the proxy-wallet.** It's new lore (name/personality is a still-open Q&A for Chunk C — do NOT invent it). Critically: it gambles for Tokens, but bit_spekter cannot hold Tokens (locked canon, lore 003 + clicker design §4). So Token drops are gated behind the planned proxy-wallet unlock — canon-safe. Do not let the vending machine mint spendable Tokens to bit_spekter.
+
+**Decision (b) — trade offers are reviewed/accepted at the existing depots/ports**, not new "trade centre" buildings. Reuses world objects already present; no new placement/art/lore.
+
+**Decision (c) — tutorial completion unlocks `server_speaker`** as the 2nd playable class. Its origin lore already exists (003-classes-origins.md), so only the unlock plumbing is new (device-local flag now, account-linked later). The boot grid already lists it locked.
+
+**Decision (d) — clothing/pets render via primitive recolor/scale** from the existing data-only `visual` descriptors (palette/effect/texture), NOT commissioned meshes. First pass so equipped gear is visible on the rig without blocking on art; this is the first time `scene.ts` consumes `appearance.ts`.
+
+**Process caution:** the recurring strand-after-merge pattern bit us 3× (devlogs 0037/0038/0039 setups). Going forward: don't merge a PR mid-session if more commits are coming, or expect a fresh PR per post-merge push. Chunk A was started only AFTER PR #35 merged, for this reason.

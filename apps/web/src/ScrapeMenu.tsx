@@ -530,6 +530,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         {view === 'scrape' && (
           <>
             <section className="panel-section scrape-stage">
+              <div className={pressed ? 'scrape-glow is-on' : 'scrape-glow'} aria-hidden="true" />
               <button
                 type="button"
                 className={pressed ? 'scrape-btn is-pressed' : 'scrape-btn'}

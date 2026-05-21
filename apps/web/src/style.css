@@ -2248,3 +2248,104 @@ body,
     font-size: 10px;
   }
 }
+
+/* ════════ Chunk A — bug fix + polish (devlog 0039) ════════ */
+
+/* ── no text-selection / tap-highlight on the rapidly-tapped clicker ──
+   Fixes iOS trying to select the SCRAPE label on fast repeated taps. */
+.scrape-panel,
+.scrape-launch,
+.shop-launch {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.scrape-btn {
+  touch-action: manipulation;
+}
+
+/* ── emote bubble gets a backdrop so it reads over the scene ──
+   Additive only (no transform change, so the rise/fade still works). Applies
+   to both the local bubble and remote players' bubbles (same class). */
+.emote-float {
+  padding: 4px 10px;
+  background: rgba(6, 10, 9, 0.82);
+  border: 1px solid #3a5446;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5), 0 0 14px rgba(120, 200, 150, 0.22);
+}
+
+/* ── SCRAPE press flourish: green glow + circuit-trace tendrils ── */
+.scrape-stage {
+  position: relative;
+}
+.scrape-btn {
+  position: relative;
+  z-index: 1;
+}
+.scrape-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 320px;
+  height: 200px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+  z-index: 0;
+  background: radial-gradient(closest-side, rgba(80, 230, 140, 0.36), rgba(80, 230, 140, 0) 72%);
+}
+.scrape-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+      90deg,
+      rgba(130, 255, 175, 0.16) 0 1px,
+      transparent 1px 14px
+    ), repeating-linear-gradient(0deg, rgba(130, 255, 175, 0.12) 0 1px, transparent 1px 18px);
+  -webkit-mask: radial-gradient(closest-side, #000 38%, transparent 76%);
+  mask: radial-gradient(closest-side, #000 38%, transparent 76%);
+}
+.scrape-glow.is-on {
+  opacity: 1;
+  animation: scrape-glow-pulse 420ms ease-out;
+}
+@keyframes scrape-glow-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(0.84);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-glow.is-on {
+    animation: none;
+  }
+}
+
+/* ── menu spacing: roomier emote wheel + right-rail breathing room ── */
+.emote {
+  width: 150px;
+  height: 150px;
+  right: 26px;
+  bottom: 26px;
+}
+.shop-launch {
+  top: 140px;
+}
+@media (max-width: 540px) {
+  .emote {
+    width: 126px;
+    height: 126px;
+    right: 14px;
+    bottom: 14px;
+  }
+  .shop-launch {
+    top: 112px;
+  }
+}
