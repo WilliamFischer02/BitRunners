@@ -796,6 +796,23 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     }
   }
 
+  // ─── SAMM proximity (the vending machine) → walk-up prompt ───────────
+  // Fires a range enter/exit event; the React layer shows a "use SAMM" prompt
+  // and opens the betting terminal. Coords match the `vending` prop above.
+  const SAMM_X = 6.0;
+  const SAMM_Z = -5.5;
+  const SAMM_TRIGGER_DIST = 2.6;
+  let sammInRange = false;
+  function checkSammApproach(): void {
+    const wdx = wrapDelta(rig.root.position.x - SAMM_X);
+    const wdz = wrapDelta(rig.root.position.z - SAMM_Z);
+    const near = wdx * wdx + wdz * wdz < SAMM_TRIGGER_DIST * SAMM_TRIGGER_DIST;
+    if (near !== sammInRange) {
+      sammInRange = near;
+      window.dispatchEvent(new CustomEvent('bitrunners:samm-range', { detail: { inRange: near } }));
+    }
+  }
+
   const characterTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
 
   const worldAtlas = buildGlyphAtlas({
@@ -1063,6 +1080,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();
+    checkSammApproach();
 
     const portRelX = rig.root.position.x - port.position.x;
     const portRelZ = rig.root.position.z - port.position.z;

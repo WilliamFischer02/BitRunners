@@ -25,6 +25,7 @@ Plot beats that **must not surface in player-facing text** until released by the
 | `005-trade-depots-and-ports.md` | Depots, ports, vending — visual vocabulary of the world |
 | `006-runner-lifecycle.md` | Upload, login, logout, aether |
 | `007-data-economy.md` | Data ladder (bits→strings→serials→passcodes), Credits vs Tokens |
+| `008-samm.md` | SAMM, the State Authored Money Machine (gambling NPC) |
 | `_sealed/web-pullers.md` | ⚠️ SEALED future-event plot beat |
 
 ## Glossary (canonical names)
@@ -43,3 +44,4 @@ Plot beats that **must not surface in player-facing text** until released by the
 | **Aether** | Drifting offline-runner remnant. Passive world decoration. |
 | **Samaritan Status** | Reputation. Two tracks: *Corporate* (The Company) and *BitRunner* (The Admin). |
 | **Port / depot** | Physical interactable in the Cloud that exposes Server Space behind it. |
+| **SAMM** | *State Authored Money Machine.* Government-profit gambling vending machine. Formal, jolly, impersonal. Bets Credits for a chance at rewards; Tokens stay locked (no wallet). See `008`. |

@@ -2373,3 +2373,161 @@ body,
   border-bottom: 1px solid #2a3340;
   padding-bottom: 3px;
 }
+
+/* ════════ Chunk C — SAMM gambling terminal (devlog 0041) ════════ */
+
+/* Walk-up prompt shown when the player is near the SAMM vending machine. */
+.samm-prompt {
+  position: absolute;
+  bottom: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  appearance: none;
+  background: rgba(10, 14, 13, 0.9);
+  border: 1px solid #c9a23a;
+  border-radius: 4px;
+  color: #ffe6a3;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding: 9px 16px;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(201, 162, 58, 0.35);
+  animation: samm-prompt-pulse 1.4s ease-in-out infinite;
+}
+.samm-prompt-glyph {
+  color: #ffd166;
+}
+@keyframes samm-prompt-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(201, 162, 58, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(201, 162, 58, 0.6);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .samm-prompt {
+    animation: none;
+  }
+}
+
+.samm-panel {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.samm-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+.samm-sub {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #c9a23a;
+}
+.samm-reels {
+  display: flex;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid #3a3322;
+  border-radius: 4px;
+  background: radial-gradient(closest-side, rgba(201, 162, 58, 0.12), rgba(8, 10, 9, 0.9));
+}
+.samm-reel {
+  font-size: 34px;
+  line-height: 1;
+  color: #ffe6a3;
+  text-shadow: 0 0 8px rgba(201, 162, 58, 0.5);
+  width: 38px;
+}
+.samm-reels.is-spinning .samm-reel {
+  color: #8aa597;
+  text-shadow: none;
+}
+.samm-result {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.samm-result--win {
+  color: #c0ffd6;
+}
+.samm-result--lose {
+  color: #6e7a86;
+}
+.samm-quip {
+  font-size: 10px;
+  color: #c9a23a;
+  letter-spacing: 0.04em;
+  min-height: 24px;
+  max-width: 320px;
+}
+.samm-bets {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.samm-bet {
+  appearance: none;
+  flex: 1;
+  background: rgba(30, 28, 18, 0.6);
+  border: 1px solid #3a3322;
+  border-radius: 3px;
+  color: #8aa597;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  padding: 8px;
+  cursor: pointer;
+}
+.samm-bet.is-on {
+  color: #07100c;
+  background: #c9a23a;
+  border-color: #c9a23a;
+}
+.samm-bet:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.samm-pull {
+  appearance: none;
+  width: 100%;
+  background: rgba(30, 28, 18, 0.6);
+  border: 1px solid #3a3322;
+  border-radius: 3px;
+  color: #6e7a86;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 12px;
+  cursor: not-allowed;
+}
+.samm-pull.is-ready {
+  color: #ffe6a3;
+  border-color: #c9a23a;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(201, 162, 58, 0.25);
+}
+.samm-pull.is-ready:active {
+  transform: translateY(1px);
+}
+.samm-locked {
+  margin-top: 8px;
+  opacity: 0.6;
+}
+.samm-wallet {
+  font-size: 11px;
+}
+@media (pointer: coarse) {
+  .samm-prompt,
+  .samm-bet,
+  .samm-pull {
+    min-height: 44px;
+  }
+}

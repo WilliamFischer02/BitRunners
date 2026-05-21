@@ -3,6 +3,7 @@ import { AdminDialogue } from './AdminDialogue.js';
 import { Boot } from './Boot.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { ProfileIcon } from './ProfileIcon.js';
+import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { TransitionRain } from './TransitionRain.js';
 import { type SceneControls, startScene } from './scene.js';
@@ -84,6 +85,7 @@ function Game({ className }: GameProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<SceneControls | null>(null);
   const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
+  const [sammInRange, setSammInRange] = useState(false);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -98,7 +100,14 @@ function Game({ className }: GameProps): JSX.Element {
   useEffect(() => {
     const onEncounter = (): void => setAdminDialogueOpen(true);
     window.addEventListener('bitrunners:admin-encounter', onEncounter);
-    return () => window.removeEventListener('bitrunners:admin-encounter', onEncounter);
+    const onSammRange = (e: Event): void => {
+      setSammInRange((e as CustomEvent<{ inRange?: boolean }>).detail?.inRange ?? false);
+    };
+    window.addEventListener('bitrunners:samm-range', onSammRange);
+    return () => {
+      window.removeEventListener('bitrunners:admin-encounter', onEncounter);
+      window.removeEventListener('bitrunners:samm-range', onSammRange);
+    };
   }, []);
 
   const onEmote = useCallback((id: EmoteId) => {
@@ -111,6 +120,7 @@ function Game({ className }: GameProps): JSX.Element {
       <ProfileIcon className={className} />
       <ScrapeMenu />
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
+      <Samm inRange={sammInRange} />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
     </div>
   );

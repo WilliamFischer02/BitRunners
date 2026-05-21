@@ -135,3 +135,13 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (d) — clothing/pets render via primitive recolor/scale** from the existing data-only `visual` descriptors (palette/effect/texture), NOT commissioned meshes. First pass so equipped gear is visible on the rig without blocking on art; this is the first time `scene.ts` consumes `appearance.ts`.
 
 **Process caution:** the recurring strand-after-merge pattern bit us 3× (devlogs 0037/0038/0039 setups). Going forward: don't merge a PR mid-session if more commits are coming, or expect a fresh PR per post-merge push. Chunk A was started only AFTER PR #35 merged, for this reason.
+
+## 2026-05-21 — SAMM gambling machine: in-world, real house edge, Tokens locked (devlog 0041)
+
+**Decision (a) — SAMM is built in-world now, reusing the existing `vending` prop.** Owner chose the in-world machine (walk-up proximity) over a launcher button. No new mesh — the `vending` prop at (6.0, −5.5) IS SAMM; `scene.ts` fires `bitrunners:samm-range` on approach and the React layer shows a `use SAMM` prompt → betting terminal. Same one-way CustomEvent pattern as the Admin encounter; `samm.ts` stays isolated (economy/shop only).
+
+**Decision (b) — real house edge; a pull can lose outright.** Owner chose a genuine gamble over always-win. Credit EV ≈ 0.84× bet (the State profits — fits the "government-profit machine" lore). All odds/payouts centralized in `samm.ts` as a first-pass, tunable table.
+
+**Decision (c) — Tokens stay locked (canon preserved).** SAMM can *win* Tokens but bit_spekter has no wallet (lore 003/007/008), so Token wins go to `economy.lockedTokens` (display-only, never spendable) and Token *betting* is UI-disabled. This is the proxy-wallet hook, not a canon break. **Future sessions: do not make SAMM mint spendable Tokens to bit_spekter.**
+
+**Lore recorded:** `docs/lore/008-samm.md` (name = State Authored Money Machine; personality = formal/jolly/impersonal). Open follow-ups noted there (SAMM faction ties, quests/reputation, what a Token win unlocks post-proxy-wallet) — not invented.
