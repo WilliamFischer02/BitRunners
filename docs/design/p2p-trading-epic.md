@@ -162,8 +162,8 @@ The economy already exposes the right seam: `exportProgress` /
      (**password + confirm password**).
    - **Password-peek** (show/hide) on both sign-in and sign-up.
    - A dedicated **create-account** flow.
-   - *(Open sub-question: keep OAuth providers on the unified page, or go
-     email/password-only — decide before building the auth UI.)*
+   - **Email/password only** (locked 2026-05-21) — the OAuth provider buttons
+     are dropped; no OAuth setup needed.
 5. **Offers expire after 3 days (72 h).**
 
 ## Sequencing (revised)

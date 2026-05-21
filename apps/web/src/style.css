@@ -2531,3 +2531,75 @@ body,
     min-height: 44px;
   }
 }
+
+/* ════════ Chunk E — first-play tutorial (devlog 0043) ════════ */
+.tutorial-card {
+  position: absolute;
+  bottom: 84px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  width: min(380px, calc(100vw - 24px));
+  background: rgba(8, 12, 14, 0.93);
+  border: 1px solid #3a5446;
+  border-radius: 4px;
+  padding: 12px 14px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  color: #d4ecdd;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.55);
+  -webkit-user-select: none;
+  user-select: none;
+}
+.tutorial-card--reward {
+  border-color: #c9a23a;
+  box-shadow: 0 0 18px rgba(201, 162, 58, 0.4);
+}
+.tutorial-step {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6e7a86;
+}
+.tutorial-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #c0ffd6;
+  margin: 2px 0 6px;
+}
+.tutorial-card--reward .tutorial-title {
+  color: #ffe6a3;
+}
+.tutorial-body {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #b9d4c5;
+}
+.tutorial-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 10px;
+}
+.tutorial-btn {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #8aa597;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.tutorial-btn--primary {
+  color: #c0ffd6;
+  border-color: #3a5446;
+}
+.tutorial-btn:hover {
+  border-color: #93e0b1;
+}
+@media (pointer: coarse) {
+  .tutorial-btn {
+    min-height: 40px;
+  }
+}

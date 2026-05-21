@@ -44,6 +44,10 @@ export interface EconomyState {
   // Tokens won from SAMM that the player cannot yet hold/spend (bit_spekter has
   // no Server-Space wallet — canon). Display-only until the proxy-wallet ships.
   lockedTokens: number;
+  // First-play tutorial + unlocked classes (device-local; migrates with the
+  // account later). Completing the tutorial unlocks server_speaker.
+  tutorialDone: boolean;
+  unlocks: string[];
   owned: string[];
   upgrades: Record<string, number>;
   slots: (string | null)[];
@@ -75,6 +79,8 @@ function defaultState(): EconomyState {
     lifetimeScrapes: 0,
     lifetimePasscodes: 0,
     lockedTokens: 0,
+    tutorialDone: false,
+    unlocks: [],
     owned: [],
     upgrades: {},
     slots: emptySlots(),
@@ -149,6 +155,8 @@ function normalize(parsed: EconomyState): EconomyState {
     // a player who already minted some isn't locked out of the skill tree.
     lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
     lockedTokens: fin(p.lockedTokens),
+    tutorialDone: p.tutorialDone === true,
+    unlocks: strArray(p.unlocks),
     owned: strArray(p.owned),
     upgrades: numRecord(p.upgrades),
     slots: normSlots(p.slots),
@@ -330,6 +338,28 @@ export function calculate(faction: Faction): boolean {
     // non-DOM env — ignore
   }
   return true;
+}
+
+export function isTutorialDone(): boolean {
+  return state.tutorialDone;
+}
+
+export function getUnlocks(): readonly string[] {
+  return state.unlocks;
+}
+
+export function isClassUnlocked(id: string): boolean {
+  return state.unlocks.includes(id);
+}
+
+/** Mark the first-play tutorial complete and grant the server_speaker class. */
+export function completeTutorial(): void {
+  if (state.tutorialDone && state.unlocks.includes('server_speaker')) return;
+  const unlocks = state.unlocks.includes('server_speaker')
+    ? state.unlocks
+    : [...state.unlocks, 'server_speaker'];
+  state = { ...state, tutorialDone: true, unlocks };
+  persist();
 }
 
 export function getOwned(): readonly string[] {

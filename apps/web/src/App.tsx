@@ -6,6 +6,7 @@ import { ProfileIcon } from './ProfileIcon.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { TransitionRain } from './TransitionRain.js';
+import { Tutorial } from './Tutorial.js';
 import { type SceneControls, startScene } from './scene.js';
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
@@ -121,6 +122,7 @@ function Game({ className }: GameProps): JSX.Element {
       <ScrapeMenu />
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
+      <Tutorial />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
     </div>
   );
