@@ -127,29 +127,62 @@ The economy already exposes the right seam: `exportProgress` /
 
 ## Phasing
 
-0. **Auth live** (Supabase) — hard prerequisite. (Separate, already scaffolded.)
-1. **Server-authoritative tradeable economy** — `profiles.credits` + populate
-   `inventory` from `economy`; reconcile seam; server is truth for tradeables.
-2. **Marketplace read + create** — `trade_offers` table, browse list at a
-   depot/port (walk-up, mirroring SAMM), "offer trade" create UI.
-3. **Atomic accept** — the transactional `accept_trade` RPC + transfer + UI.
-4. **Polish** — expiry sweep, cancellation, rate-limits, empty/full states.
+- **P0a — Auth UI redesign** *(client-only, buildable now)*: unified
+  sign-in/sign-up page + password-peek + create-account. Inert until env set.
+- **P0b — Room-code join** *(client+server, buildable now)*: `joinById` +
+  Settings UI to enter a room code. Independent of auth.
+- **★ OWNER SETUP GATE — auth live**: set `VITE_SUPABASE_URL` +
+  `VITE_SUPABASE_ANON_KEY` in Cloudflare Pages and run the SQL migrations in
+  Supabase (see `docs/setup/SERVICES.md`, devlog 0026). **Blocks P1–P4.**
+- **P1 — Server-authoritative tradeable economy (B)** — add `profiles.credits`;
+  mirror owned items into `inventory`; reconcile seam; server truth for
+  tradeables.
+- **P2 — Marketplace read + create** — `trade_offers` table (room-scoped,
+  `expires_at = now()+72h`), browse list at a depot/port (walk-up, mirroring
+  SAMM), "offer trade" create UI.
+- **P3 — Atomic accept** — transactional `accept_trade` RPC + transfer + UI.
+- **P4 — Polish** — 72 h expiry sweep, cancellation, rate-limits, empty/full
+  states, same-room filtering.
 
-## Open questions for the owner (next round)
+## Owner decisions (locked 2026-05-21)
 
-1. **Economy scope:** full server-authoritative (A) or tradeable-assets-only (B,
-   recommended)?
-2. **Marketplace reach:** global (any player, pure DB) or limited to players in
-   the same sphere/room?
-3. **Guests:** confirm trading requires an account (recommended yes).
-4. **Offer limits:** expiry window? max open offers per player?
-5. **Sequencing:** schedule this **after** auth lands (and likely after Chunk E
-   tutorial). Confirm priority vs. other roadmap items.
+1. **Economy scope: (B) server-authoritative for *tradeable assets only*** —
+   items/pets/credits become DB-owned + trade-validated; the clicker keeps
+   earning device-local and **reconciles** balances to the server (server is
+   truth for tradeables).
+2. **Marketplace reach: same sphere/room.** Offers are scoped to the room
+   you're in. Paired with →
+3. **Room-code / join-room in Settings.** A join-by-code control lets players
+   hop between active rooms (e.g. into a friend's resident sphere) so they can
+   co-locate to trade. Colyseus `joinById` + a settings UI; server allows
+   joining a known room id/code.
+4. **Trading requires an account**, and the auth UI is **redesigned**:
+   - One **unified sign-in / sign-up page** (replaces the current several
+     buttons). Same form for both; choosing *sign up* reveals extra fields
+     (**password + confirm password**).
+   - **Password-peek** (show/hide) on both sign-in and sign-up.
+   - A dedicated **create-account** flow.
+   - *(Open sub-question: keep OAuth providers on the unified page, or go
+     email/password-only — decide before building the auth UI.)*
+5. **Offers expire after 3 days (72 h).**
+
+## Sequencing (revised)
+
+The only part that needs **owner setup** is auth going live (Supabase env +
+migrations). Everything else is either unblocked or gated on that one action.
+
+- **Buildable now, no owner action:** the **auth UI redesign** (client-only —
+  ships inert until env is set, exactly like today's AccountSection) and the
+  **room-code join** UI/plumbing.
+- **Gated on owner action:** server-authoritative tradeables, the
+  `trade_offers` table, and the atomic accept — these need auth *live*.
 
 ## Recommendation
 
-Park trading until **auth is live**. It is not a near-term chunk. When
-scheduled, run phases 1→4 above on Supabase. Until then, if a "trades at the
-depot" *feel* is wanted sooner, the fallback is **NPC/system-posted offers**
-(no backend) — but that is a different feature from true P2P and would be its
-own small chunk, not this epic.
+P0a (auth UI) and P0b (room-code) ship now with **zero owner action** (inert/
+standalone until auth is configured). P1–P4 are gated on the **owner setup
+gate** (Supabase env + migrations). Recommended: continue the sprint with
+**Chunk E (tutorial)** next — also unblocked — then P0a/P0b, and run P1–P4 once
+the owner has done the Supabase setup. The "NPC/system-posted offers" fallback
+remains a *different, smaller* feature if a depot-trade feel is wanted before
+all this lands.
