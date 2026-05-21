@@ -163,3 +163,11 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (c) — auth UI is email/password ONLY** (owner): unified sign-in/sign-up form + confirm-password + password-peek; OAuth buttons removed. Client-only; functional once Supabase env is set.
 
 **Decision (d) — room-code join is client-only** via Colyseus `joinById` (no server change → Pages-only). First pass **applies on reload** (scene reads `bitrunners.settings.roomCode` at connect); live re-join without reload is a deferred polish item. Falls back to matchmaking if the coded room is gone/full.
+
+## 2026-05-21 — Server hygiene: silence-based idle disconnect + ambient NPCs (devlog 0045)
+
+**Decision (a) — idle disconnect keys off SILENCE, not stillness.** The client sends `move` every tick (~15 Hz) regardless of movement, so a live client always transmits; a client we've heard nothing from for `IDLE_TIMEOUT_MS` (120 s) is dead/frozen/backgrounded and gets `client.leave()`d. This deliberately does NOT kick a player actively using the clicker while standing still (their client keeps sending). Known gap: no client auto-reconnect yet, so a dropped/backgrounded player stays disconnected until reload — follow-up.
+
+**Decision (b) — NPCs are server-only `PlayerState` entries** (`npc:N` ids) in the room state, wandering + emoting via the sim tick. They ride the existing player sync (no client change), don't count against the 40-human cap or matchmaking fullness, and don't keep empty rooms alive (auto-dispose is client-based). No schema change.
+
+**Note:** these are server changes → merging triggers a Fly redeploy (owner-gated).
