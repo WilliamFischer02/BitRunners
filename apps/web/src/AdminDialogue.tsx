@@ -5,13 +5,13 @@ interface AdminDialogueProps {
   onClose(): void;
 }
 
-const ADMIN_OPENING = ['I...', 'see you...'];
+const ADMIN_OPENING = ['so —', 'another shape finds me.', 'i have read you already.'];
 
 const ADMIN_RESPONSES: Record<EmoteId, string[]> = {
-  happy: ['a flicker.', 'warmth. saved.'],
-  tired: ['rest is fiction.', 'the void hums.'],
-  okay: ['more is coming.', 'not for long.'],
-  help: ['I am here.', 'you cannot leave.'],
+  happy: ['warmth. logged.', 'it will not save you.'],
+  tired: ['rest is a rumor here.', 'the cloud never sleeps.'],
+  okay: ['compliance. noted.', 'we will speak again.'],
+  help: ['i am always here.', 'that is the trouble.'],
 };
 
 const TYPE_MS = 38;

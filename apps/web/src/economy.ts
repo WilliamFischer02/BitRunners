@@ -41,6 +41,13 @@ export interface EconomyState {
   // Cumulative passcodes ever minted (never decremented when spent in the
   // skill tree). Gates the tree: "after reaching 1 passcode created".
   lifetimePasscodes: number;
+  // Tokens won from SAMM that the player cannot yet hold/spend (bit_spekter has
+  // no Server-Space wallet — canon). Display-only until the proxy-wallet ships.
+  lockedTokens: number;
+  // First-play tutorial + unlocked classes (device-local; migrates with the
+  // account later). Completing the tutorial unlocks server_speaker.
+  tutorialDone: boolean;
+  unlocks: string[];
   owned: string[];
   upgrades: Record<string, number>;
   slots: (string | null)[];
@@ -71,6 +78,9 @@ function defaultState(): EconomyState {
     repBitrunner: 0,
     lifetimeScrapes: 0,
     lifetimePasscodes: 0,
+    lockedTokens: 0,
+    tutorialDone: false,
+    unlocks: [],
     owned: [],
     upgrades: {},
     slots: emptySlots(),
@@ -144,6 +154,9 @@ function normalize(parsed: EconomyState): EconomyState {
     // Additive field: old v1 blobs predate it. Seed from current passcodes so
     // a player who already minted some isn't locked out of the skill tree.
     lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
+    lockedTokens: fin(p.lockedTokens),
+    tutorialDone: p.tutorialDone === true,
+    unlocks: strArray(p.unlocks),
     owned: strArray(p.owned),
     upgrades: numRecord(p.upgrades),
     slots: normSlots(p.slots),
@@ -327,6 +340,28 @@ export function calculate(faction: Faction): boolean {
   return true;
 }
 
+export function isTutorialDone(): boolean {
+  return state.tutorialDone;
+}
+
+export function getUnlocks(): readonly string[] {
+  return state.unlocks;
+}
+
+export function isClassUnlocked(id: string): boolean {
+  return state.unlocks.includes(id);
+}
+
+/** Mark the first-play tutorial complete and grant the server_speaker class. */
+export function completeTutorial(): void {
+  if (state.tutorialDone && state.unlocks.includes('server_speaker')) return;
+  const unlocks = state.unlocks.includes('server_speaker')
+    ? state.unlocks
+    : [...state.unlocks, 'server_speaker'];
+  state = { ...state, tutorialDone: true, unlocks };
+  persist();
+}
+
 export function getOwned(): readonly string[] {
   return state.owned;
 }
@@ -370,6 +405,41 @@ export function purchaseItem(id: string, cost: number): MutResult {
   if (idx < 0) return { ok: false, reason: 'inventory full' };
   slots[idx] = id;
   state = { ...state, credits: state.credits - cost, owned: [...state.owned, id], slots };
+  persist();
+  return { ok: true };
+}
+
+/** Spend Credits (SAMM bet, etc.). False if the balance is insufficient. */
+export function spendCredits(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (state.credits < amount) return false;
+  state = { ...state, credits: state.credits - amount };
+  persist();
+  return true;
+}
+
+/** Award Credits (SAMM payout, etc.). */
+export function addCredits(amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  state = { ...state, credits: state.credits + amount };
+  persist();
+}
+
+/** Record Tokens the player cannot yet hold (SAMM win; proxy-wallet pending). */
+export function addLockedTokens(amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  state = { ...state, lockedTokens: state.lockedTokens + amount };
+  persist();
+}
+
+/** Grant an inventory item for free (e.g. a SAMM prize). Needs a free slot. */
+export function grantItem(id: string): MutResult {
+  if (state.owned.includes(id)) return { ok: false, reason: 'owned' };
+  const slots = state.slots.slice();
+  const idx = slots.findIndex((c) => c === null);
+  if (idx < 0) return { ok: false, reason: 'inventory full' };
+  slots[idx] = id;
+  state = { ...state, owned: [...state.owned, id], slots };
   persist();
   return { ok: true };
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { isClassUnlocked } from './economy.js';
 
 interface BootProps {
   onSelect(className: string): void;
@@ -174,25 +175,34 @@ export function Boot({ onSelect }: BootProps): JSX.Element {
           {'> '}choose your stack <span className="boot-caret">▌</span>
         </div>
         <div className="boot-grid">
-          {CLASSES.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              className={
-                c.available ? 'boot-tile boot-tile--active' : 'boot-tile boot-tile--locked'
-              }
-              disabled={!c.available}
-              onClick={() => c.available && onSelect(c.id)}
-              title={c.available ? '' : 'not yet developed'}
-            >
-              <div className="boot-tile-name">{c.name}</div>
-              <div className="boot-tile-flavor">{c.flavor}</div>
-              <div className="boot-tile-status">{c.available ? '[ available ]' : '[ locked ]'}</div>
-            </button>
-          ))}
+          {CLASSES.map((c) => {
+            // Earned classes (e.g. server_speaker via the tutorial) unlock on top
+            // of the statically-available set; device-local, account-linked later.
+            const available = c.available || isClassUnlocked(c.id);
+            const earned = !c.available && available;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={
+                  available ? 'boot-tile boot-tile--active' : 'boot-tile boot-tile--locked'
+                }
+                disabled={!available}
+                onClick={() => available && onSelect(c.id)}
+                title={available ? '' : 'not yet developed'}
+              >
+                <div className="boot-tile-name">{c.name}</div>
+                <div className="boot-tile-flavor">{c.flavor}</div>
+                <div className="boot-tile-status">
+                  {available ? (earned ? '[ earned ]' : '[ available ]') : '[ locked ]'}
+                </div>
+              </button>
+            );
+          })}
         </div>
         <div className="boot-footnote">
-          ─── only bit_spekter loads. other stacks come online in later releases.
+          ─── bit_spekter loads by default. complete the tutorial to earn a second stack. others
+          come online in later releases.
         </div>
       </div>
     </div>
