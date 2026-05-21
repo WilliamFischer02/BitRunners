@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { getJoinedRoomId } from './network.js';
 import {
   type AuthSnapshot,
   isAuthConfigured,
   signInWithEmail,
-  signInWithProvider,
   signOut,
   signUpWithEmail,
   subscribeAuth,
@@ -127,6 +127,7 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
         </section>
 
         <SettingsSection />
+        <RoomSection />
 
         <footer className="panel-footer">
           press [esc] or click outside to close · placeholder until account system lands
@@ -138,9 +139,11 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
 
 function AccountSection(): JSX.Element {
   const [auth, setAuth] = useState<AuthSnapshot>({ status: 'guest' });
-  const [mode, setMode] = useState<'idle' | 'email-in' | 'email-up'>('idle');
+  const [mode, setMode] = useState<'in' | 'up'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const configured = isAuthConfigured();
@@ -189,20 +192,21 @@ function AccountSection(): JSX.Element {
     );
   }
 
-  const oauth = (provider: 'google' | 'github' | 'azure') => async () => {
-    setBusy(true);
+  const switchMode = (m: 'in' | 'up'): void => {
+    setMode(m);
     setError(null);
-    const res = await signInWithProvider(provider);
-    if (res.error) setError(res.error);
-    setBusy(false);
   };
 
-  const submitEmail = async (e: React.FormEvent): Promise<void> => {
+  const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (busy) return;
-    setBusy(true);
     setError(null);
-    const action = mode === 'email-up' ? signUpWithEmail : signInWithEmail;
+    if (mode === 'up' && password !== confirm) {
+      setError('passwords do not match');
+      return;
+    }
+    setBusy(true);
+    const action = mode === 'up' ? signUpWithEmail : signInWithEmail;
     const res = await action(email, password);
     if (res.error) setError(res.error);
     setBusy(false);
@@ -211,91 +215,68 @@ function AccountSection(): JSX.Element {
   return (
     <section className="panel-section">
       <div className="panel-section-title">$ account</div>
-      <div className="auth-providers">
+      <div className="auth-tabs">
         <button
           type="button"
-          className="auth-btn auth-google"
-          onClick={oauth('google')}
-          disabled={busy}
+          className={mode === 'in' ? 'auth-tab is-on' : 'auth-tab'}
+          onClick={() => switchMode('in')}
         >
-          [ google ]
+          sign in
         </button>
         <button
           type="button"
-          className="auth-btn auth-github"
-          onClick={oauth('github')}
-          disabled={busy}
+          className={mode === 'up' ? 'auth-tab is-on' : 'auth-tab'}
+          onClick={() => switchMode('up')}
         >
-          [ github ]
-        </button>
-        <button
-          type="button"
-          className="auth-btn auth-microsoft"
-          onClick={oauth('azure')}
-          disabled={busy}
-        >
-          [ microsoft ]
+          sign up
         </button>
       </div>
-      <div className="auth-or">─── or ───</div>
-      {mode === 'idle' && (
-        <div className="auth-email-row">
-          <button
-            type="button"
-            className="auth-btn"
-            onClick={() => setMode('email-in')}
-            disabled={busy}
-          >
-            sign in (email)
-          </button>
-          <button
-            type="button"
-            className="auth-btn"
-            onClick={() => setMode('email-up')}
-            disabled={busy}
-          >
-            create account
-          </button>
-        </div>
-      )}
-      {mode !== 'idle' && (
-        <form className="auth-form" onSubmit={submitEmail}>
+      <form className="auth-form" onSubmit={submit}>
+        <input
+          type="email"
+          className="auth-input"
+          placeholder="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+          required
+        />
+        <div className="auth-pw-row">
           <input
-            type="email"
-            className="auth-input"
-            placeholder="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-          />
-          <input
-            type="password"
+            type={showPw ? 'text' : 'password'}
             className="auth-input"
             placeholder="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'email-up' ? 'new-password' : 'current-password'}
+            autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
             minLength={8}
             required
           />
-          <div className="auth-form-row">
-            <button type="submit" className="auth-btn auth-submit" disabled={busy}>
-              {mode === 'email-up' ? 'create' : 'sign in'}
-            </button>
-            <button
-              type="button"
-              className="auth-btn"
-              onClick={() => {
-                setMode('idle');
-                setError(null);
-              }}
-            >
-              cancel
-            </button>
-          </div>
-        </form>
-      )}
+          <button
+            type="button"
+            className="auth-peek"
+            onClick={() => setShowPw((v) => !v)}
+            aria-label={showPw ? 'hide password' : 'show password'}
+          >
+            {showPw ? 'hide' : 'show'}
+          </button>
+        </div>
+        {mode === 'up' && (
+          <input
+            type={showPw ? 'text' : 'password'}
+            className="auth-input"
+            placeholder="confirm password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            autoComplete="new-password"
+            minLength={8}
+            required
+          />
+        )}
+        <button type="submit" className="auth-btn auth-submit" disabled={busy}>
+          {busy ? '…' : mode === 'up' ? 'create account' : 'sign in'}
+        </button>
+      </form>
       {error && <div className="auth-error">! {error}</div>}
     </section>
   );
@@ -367,6 +348,76 @@ function SettingsSection(): JSX.Element {
           {run ? '[ on ]' : '[ off ]'}
         </button>
       </div>
+    </section>
+  );
+}
+
+function RoomSection(): JSX.Element {
+  const [roomId, setRoomId] = useState<string>(() => getJoinedRoomId());
+  const [code, setCode] = useState('');
+
+  useEffect(() => {
+    const onJoined = (e: Event): void => {
+      const id = (e as CustomEvent<{ roomId?: string }>).detail?.roomId;
+      if (id) setRoomId(id);
+    };
+    window.addEventListener('bitrunners:room-joined', onJoined);
+    return () => window.removeEventListener('bitrunners:room-joined', onJoined);
+  }, []);
+
+  // Applied on reload — the scene reads the stored code at connect time and
+  // joins that room (falling back to matchmaking if it's gone). Live re-join
+  // without a reload is a later polish item.
+  const join = (): void => {
+    const c = code.trim();
+    if (!c) return;
+    try {
+      localStorage.setItem('bitrunners.settings.roomCode', c);
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  };
+  const reset = (): void => {
+    try {
+      localStorage.removeItem('bitrunners.settings.roomCode');
+    } catch {
+      // ignore
+    }
+    window.location.reload();
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ room</div>
+      <div className="panel-row">
+        <span className="panel-key">your room code</span>
+        <span className="panel-val">{roomId || '─'}</span>
+      </div>
+      <div className="panel-stub">─── share your code so a friend can join your sphere.</div>
+      <form
+        className="auth-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          join();
+        }}
+      >
+        <input
+          type="text"
+          className="auth-input"
+          placeholder="join a room code"
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+        />
+        <div className="auth-form-row">
+          <button type="submit" className="auth-btn auth-submit">
+            join (reloads)
+          </button>
+          <button type="button" className="auth-btn" onClick={reset}>
+            reset
+          </button>
+        </div>
+      </form>
     </section>
   );
 }

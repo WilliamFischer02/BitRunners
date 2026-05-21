@@ -2603,3 +2603,56 @@ body,
     min-height: 40px;
   }
 }
+
+/* ════════ email/password auth redesign (devlog 0044) ════════ */
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.auth-tab {
+  appearance: none;
+  flex: 1;
+  background: rgba(30, 40, 35, 0.4);
+  border: 1px solid #2a3340;
+  color: #8aa597;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 7px 8px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.auth-tab.is-on {
+  color: #07100c;
+  background: #93e0b1;
+  border-color: #93e0b1;
+}
+.auth-pw-row {
+  display: flex;
+  gap: 6px;
+}
+.auth-pw-row .auth-input {
+  flex: 1;
+}
+.auth-peek {
+  appearance: none;
+  background: rgba(30, 40, 35, 0.55);
+  border: 1px solid #3a4a40;
+  color: #8aa597;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 10px;
+  padding: 0 10px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.auth-peek:hover {
+  border-color: #93e0b1;
+  color: #c0ffd6;
+}
+@media (pointer: coarse) {
+  .auth-tab,
+  .auth-peek {
+    min-height: 40px;
+  }
+}

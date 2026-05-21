@@ -951,48 +951,66 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     setNet('net: offline · VITE_SERVER_URL unset', 'idle');
   } else {
     setNet(`net: connecting · ${serverUrl}`, 'connecting');
+    let roomCode = '';
+    try {
+      roomCode = (localStorage.getItem('bitrunners.settings.roomCode') ?? '').trim();
+    } catch {
+      // storage unavailable — use matchmaking
+    }
     void (async () => {
       try {
-        const session = await joinSphere(serverUrl, 'bit_spekter', {
-          onJoin(p) {
-            if (remoteAvatars.has(p.id)) return;
-            const group = buildRemoteAvatar();
-            const dx = wrapDelta(p.x - rig.root.position.x);
-            const dz = wrapDelta(p.z - rig.root.position.z);
-            group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
-            group.rotation.y = p.rotY;
-            scene.add(group);
-            remoteAvatars.set(p.id, { group, tx: p.x, tz: p.z, trotY: p.rotY });
-            setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
+        const session = await joinSphere(
+          serverUrl,
+          'bit_spekter',
+          {
+            onJoin(p) {
+              if (remoteAvatars.has(p.id)) return;
+              const group = buildRemoteAvatar();
+              const dx = wrapDelta(p.x - rig.root.position.x);
+              const dz = wrapDelta(p.z - rig.root.position.z);
+              group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
+              group.rotation.y = p.rotY;
+              scene.add(group);
+              remoteAvatars.set(p.id, { group, tx: p.x, tz: p.z, trotY: p.rotY });
+              setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
+            },
+            onLeave(id) {
+              const ra = remoteAvatars.get(id);
+              if (!ra) return;
+              scene.remove(ra.group);
+              remoteAvatars.delete(id);
+              for (let i = trackedEmotes.length - 1; i >= 0; i--) {
+                const te = trackedEmotes[i];
+                if (!te || te.group !== ra.group) continue;
+                if (te.anchor.parentNode === host) host.removeChild(te.anchor);
+                trackedEmotes.splice(i, 1);
+              }
+              setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
+            },
+            onUpdate(p) {
+              const ra = remoteAvatars.get(p.id);
+              if (!ra) return;
+              ra.tx = p.x;
+              ra.tz = p.z;
+              ra.trotY = p.rotY;
+            },
+            onEmote(id, text) {
+              console.info('[bitrunners] remote emote', id.slice(0, 6), text);
+              const ra = remoteAvatars.get(id);
+              if (ra) spawnRemoteEmote(ra.group, text);
+            },
           },
-          onLeave(id) {
-            const ra = remoteAvatars.get(id);
-            if (!ra) return;
-            scene.remove(ra.group);
-            remoteAvatars.delete(id);
-            for (let i = trackedEmotes.length - 1; i >= 0; i--) {
-              const te = trackedEmotes[i];
-              if (!te || te.group !== ra.group) continue;
-              if (te.anchor.parentNode === host) host.removeChild(te.anchor);
-              trackedEmotes.splice(i, 1);
-            }
-            setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
-          },
-          onUpdate(p) {
-            const ra = remoteAvatars.get(p.id);
-            if (!ra) return;
-            ra.tx = p.x;
-            ra.tz = p.z;
-            ra.trotY = p.rotY;
-          },
-          onEmote(id, text) {
-            console.info('[bitrunners] remote emote', id.slice(0, 6), text);
-            const ra = remoteAvatars.get(id);
-            if (ra) spawnRemoteEmote(ra.group, text);
-          },
-        });
+          roomCode || undefined,
+        );
         netSession = session;
         setNet(`net: connected · session ${session.sessionId.slice(0, 6)}`, 'ok');
+        try {
+          window.dispatchEvent(
+            new CustomEvent('bitrunners:room-joined', { detail: { roomId: session.roomId } }),
+          );
+        } catch {
+          // non-DOM env — ignore
+        }
         console.info('[bitrunners] joined sphere as', session.sessionId);
       } catch (err) {
         const msg = (err as Error)?.message ?? String(err);

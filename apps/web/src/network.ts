@@ -20,10 +20,17 @@ export interface NetworkCallbacks {
 
 export interface NetworkSession {
   sessionId: string;
+  roomId: string;
   sendMove(x: number, z: number, rotY: number): void;
   sendEmote(text: string): void;
   setClass(name: string): void;
   dispose(): Promise<void>;
+}
+
+// Last-joined room id, for the Settings "room code" display (read after connect).
+let joinedRoomId = '';
+export function getJoinedRoomId(): string {
+  return joinedRoomId;
 }
 
 interface PlayerSchema {
@@ -59,9 +66,22 @@ export async function joinSphere(
   serverUrl: string,
   className: string,
   callbacks: NetworkCallbacks = {},
+  roomId?: string,
 ): Promise<NetworkSession> {
   const client = new Client(serverUrl);
-  const room: Room = await client.joinOrCreate('sphere', { className });
+  // Join a specific room by code (a friend's sphere) when given one; fall back
+  // to matchmaking if that room is gone/full so the player still connects.
+  let room: Room;
+  if (roomId) {
+    try {
+      room = await client.joinById(roomId, { className });
+    } catch {
+      room = await client.joinOrCreate('sphere', { className });
+    }
+  } else {
+    room = await client.joinOrCreate('sphere', { className });
+  }
+  joinedRoomId = room.roomId;
 
   // Wait for the first state sync so room.state is populated.
   await new Promise<void>((resolve) => {
@@ -120,6 +140,7 @@ export async function joinSphere(
 
   return {
     sessionId: room.sessionId,
+    roomId: room.roomId,
     sendMove(x, z, rotY) {
       room.send('move', { x, z, rotY });
     },
