@@ -26,6 +26,12 @@ import {
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import {
+  type EquippedAppearance,
+  type SlotAppearance,
+  getEquippedAppearance,
+  subscribeAppearance,
+} from './appearance.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 
@@ -97,6 +103,24 @@ function buildRemoteAvatar(): Group {
   return g;
 }
 
+// One recolourable armour material + its factory defaults, so equipping a
+// cosmetic can tint it and un-equipping can restore the original exactly.
+interface SkinTarget {
+  mat: MeshStandardMaterialType;
+  baseColor: number;
+  baseEmissive: number;
+  baseEmissiveIntensity: number;
+}
+
+function snapshotSkin(mat: MeshStandardMaterialType): SkinTarget {
+  return {
+    mat,
+    baseColor: mat.color.getHex(),
+    baseEmissive: mat.emissive.getHex(),
+    baseEmissiveIntensity: mat.emissiveIntensity,
+  };
+}
+
 interface BitSpekterRig {
   root: Group;
   visual: Group;
@@ -106,6 +130,9 @@ interface BitSpekterRig {
   armPivotR: Group;
   legPivotL: Group;
   legPivotR: Group;
+  // Recolour targets for equipped clothing + a node a pet primitive orbits.
+  skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget };
+  petAnchor: Group;
 }
 
 function buildBitSpekter(): BitSpekterRig {
@@ -285,7 +312,27 @@ function buildBitSpekter(): BitSpekterRig {
   bootR.position.set(0, -0.74, 0.04);
   legPivotR.add(bootR);
 
-  return { root, visual, chest, hip, armPivotL, armPivotR, legPivotL, legPivotR };
+  // Pet primitive orbits this node (offset child + spin in the tick).
+  const petAnchor = new Group();
+  petAnchor.position.set(0, 0.4, 0);
+  chest.add(petAnchor);
+
+  return {
+    root,
+    visual,
+    chest,
+    hip,
+    armPivotL,
+    armPivotR,
+    legPivotL,
+    legPivotR,
+    skin: {
+      head: snapshotSkin(armorHead),
+      chest: snapshotSkin(armorTorso),
+      legs: snapshotSkin(armorLegs),
+    },
+    petAnchor,
+  };
 }
 
 export interface SceneControls {
@@ -534,6 +581,76 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     obj.layers.set(CHARACTER_LAYER);
   });
   scene.add(rig.root);
+
+  // ─── Equipped-cosmetic appearance (Chunk B, devlog 0040) ─────────────
+  // The ONLY crossing of the mini-game isolation boundary: scene reads the
+  // appearance seam (resolved descriptors) — no economy/shop internals leak
+  // in. With nothing equipped, applySkin(null) restores factory materials, so
+  // the default rig is byte-identical to before (zero regression).
+  const DEFAULT_HEX = 0xffffff;
+  const PALETTE: Record<string, number> = {
+    slate: 0x8893a3,
+    viridian: 0x2ec4a0,
+    aurora: 0x7ef0c8,
+    ember: 0xff7a3c,
+  };
+  const paletteHex = (name: string): number => PALETTE[name] ?? DEFAULT_HEX;
+
+  function applySkin(t: SkinTarget, slot: SlotAppearance | null): void {
+    if (!slot) {
+      t.mat.color.setHex(t.baseColor);
+      t.mat.emissive.setHex(t.baseEmissive);
+      t.mat.emissiveIntensity = t.baseEmissiveIntensity;
+      return;
+    }
+    t.mat.color.setHex(paletteHex(slot.palette));
+    // rarity escalates the glow: normal = recolour only; rare (effect) glows;
+    // ultra (texture) glows hardest.
+    if (slot.effect) {
+      t.mat.emissive.setHex(paletteHex(slot.palette));
+      t.mat.emissiveIntensity = slot.texture ? 1.9 : 1.1;
+    } else {
+      t.mat.emissive.setHex(t.baseEmissive);
+      t.mat.emissiveIntensity = t.baseEmissiveIntensity;
+    }
+  }
+
+  let petMesh: Mesh | null = null;
+  let petGeom: BoxGeometry | null = null;
+  let petMat: MeshStandardMaterialType | null = null;
+
+  function applyAppearance(): void {
+    const a: EquippedAppearance = getEquippedAppearance();
+    applySkin(rig.skin.head, a.head);
+    applySkin(rig.skin.chest, a.chest);
+    applySkin(rig.skin.legs, a.legs);
+
+    if (a.pet) {
+      if (!petMesh) {
+        petGeom = new BoxGeometry(0.16, 0.16, 0.16);
+        petMat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 });
+        petMesh = new MeshClass(petGeom, petMat);
+        petMesh.position.set(0.5, 0, 0.1);
+        petMesh.layers.set(CHARACTER_LAYER);
+        rig.petAnchor.add(petMesh);
+      }
+      if (petMat) {
+        petMat.color.setHex(paletteHex(a.pet.palette));
+        petMat.emissive.setHex(paletteHex(a.pet.palette));
+        petMat.emissiveIntensity = a.pet.texture ? 1.8 : 1.1;
+      }
+    } else if (petMesh) {
+      rig.petAnchor.remove(petMesh);
+      petGeom?.dispose();
+      petMat?.dispose();
+      petMesh = null;
+      petGeom = null;
+      petMat = null;
+    }
+  }
+
+  applyAppearance();
+  const unsubscribeAppearance = subscribeAppearance(applyAppearance);
 
   // ─── Admin shadow figure (hidden until encounter) ────────────────────
   // Shadow/silhouette of a hunched man made of black/dark gray boxes,
@@ -938,6 +1055,12 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     const idleBreathe = Math.sin(elapsed * 1.1) * 0.018 * idleAmt;
     rig.visual.position.y = hoverY + idleBreathe;
 
+    // Equipped pet: slow orbit + gentle bob.
+    if (petMesh) {
+      rig.petAnchor.rotation.y = elapsed * 0.8;
+      petMesh.position.y = Math.sin(elapsed * 2.2) * 0.05;
+    }
+
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();
 
@@ -1078,6 +1201,9 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     cancelAnimationFrame(raf);
     ro.disconnect();
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
+    unsubscribeAppearance();
+    petGeom?.dispose();
+    petMat?.dispose();
     input.dispose();
     if (netSession) {
       void netSession.dispose();
