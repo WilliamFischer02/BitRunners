@@ -153,3 +153,21 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Outcome:** wrote `docs/design/p2p-trading-epic.md` — the reviewable plan. Hard prerequisites: **live accounts** + a **server-authoritative tradeable economy** (Supabase Postgres as system of record; atomic transactional `accept_trade`). Builds on the existing `supabase/migrations/0001` scaffold (`profiles`/`inventory`/`equipped_outfit`); gaps = no wallet column, no `trade_offers`. No new paid infra expected (Supabase free tier). **No trade code shipped this session.**
 
 **Caution for future sessions:** do NOT build a device-local "marketplace" — it can't show other players' offers and trading device-local items is trivially exploitable. Trading is gated on auth; revisit per the design doc's phasing + open questions. The fallback "NPC/system-posted offers" is a *different, smaller* feature, not this epic.
+
+## 2026-05-21 — Admin panel epic + server-hygiene tasks added; auth redesigned email-only; room-code join (devlog 0044)
+
+**Decision (a) — admin panel is a server-enforced backend epic, not built now.** Owner wants an owner-only panel (dialogue editing, user table + currency grants + account status/permissions, activity stats, under-construction switch w/ dev-bypass). Recorded in `docs/design/admin-panel-epic.md`. **Hard rule: every admin action must be server-authorized (admin role + RLS / privileged functions).** A client-only admin panel or client-side currency grant is an instant exploit — never ship that. Gated on live auth + an admin role + (for grants) the server-authoritative economy shared with trading. "Elevated" account status names the premium/season-pass concept (the deferred auto-click gate can later key off it).
+
+**Decision (b) — engine tasks queued as server-side "server hygiene" (buildable now, → Fly):** idle-player disconnect (anti-clutter) + NPC wander/emote liveliness. Isolated server changes; not built this pass (owner's gate was "add to timeline first").
+
+**Decision (c) — auth UI is email/password ONLY** (owner): unified sign-in/sign-up form + confirm-password + password-peek; OAuth buttons removed. Client-only; functional once Supabase env is set.
+
+**Decision (d) — room-code join is client-only** via Colyseus `joinById` (no server change → Pages-only). First pass **applies on reload** (scene reads `bitrunners.settings.roomCode` at connect); live re-join without reload is a deferred polish item. Falls back to matchmaking if the coded room is gone/full.
+
+## 2026-05-21 — Server hygiene: silence-based idle disconnect + ambient NPCs (devlog 0045)
+
+**Decision (a) — idle disconnect keys off SILENCE, not stillness.** The client sends `move` every tick (~15 Hz) regardless of movement, so a live client always transmits; a client we've heard nothing from for `IDLE_TIMEOUT_MS` (120 s) is dead/frozen/backgrounded and gets `client.leave()`d. This deliberately does NOT kick a player actively using the clicker while standing still (their client keeps sending). Known gap: no client auto-reconnect yet, so a dropped/backgrounded player stays disconnected until reload — follow-up.
+
+**Decision (b) — NPCs are server-only `PlayerState` entries** (`npc:N` ids) in the room state, wandering + emoting via the sim tick. They ride the existing player sync (no client change), don't count against the 40-human cap or matchmaking fullness, and don't keep empty rooms alive (auto-dispose is client-based). No schema change.
+
+**Note:** these are server changes → merging triggers a Fly redeploy (owner-gated).
