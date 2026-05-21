@@ -2349,3 +2349,27 @@ body,
     top: 112px;
   }
 }
+
+/* ════════ Chunk B — shop aesthetic (devlog 0040) ════════ */
+.shop-item {
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.shop-item:hover {
+  border-color: #4a6850;
+  background: rgba(14, 22, 18, 0.6);
+}
+.shop-item.rar-rare {
+  border-left: 2px solid #93e0b1;
+}
+.shop-item.rar-ultra {
+  border-left: 2px solid #b48bff;
+}
+.shop-buy.is-ready:hover {
+  background: rgba(60, 110, 80, 0.4);
+  border-color: #93e0b1;
+}
+.shop-group-title {
+  color: #8aa597;
+  border-bottom: 1px solid #2a3340;
+  padding-bottom: 3px;
+}

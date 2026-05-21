@@ -197,7 +197,7 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
         : '[ owned ]'
       : `[ ${priceOf(item)} cr ]`;
   return (
-    <div className={`shop-item ${owned ? 'is-owned' : ''}`}>
+    <div className={`shop-item ${rarityClass(item)} ${owned ? 'is-owned' : ''}`}>
       <div className="shop-item-main">
         <span className="shop-item-name">
           {item.rarity && <span className={`rar-badge ${rarityClass(item)}`}>{item.rarity}</span>}
