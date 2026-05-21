@@ -2,12 +2,13 @@
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE (read this):** PR #33 merged **only the first commit** (`b6d34fb`, multiplayer) to `main` on 2026-05-16 then closed. So prod `bitrunners.app` has **multiplayer only**. The services guide + entire Data Scrape mini-game (devlogs 0032–0038) are **stranded on the branch**, never deployed. **PR #34** (draft) carries them all. Merging it = **Cloudflare Pages prod deploy only (no Fly — no server/packages changes in the stranded set)**; owner-gated, not done.
-- **Live web (bitrunners.app):** multiplayer changes live; clicker/services-doc NOT yet (see deploy state above).
-- **Live server (bitrunners.fly.dev):** multiplayer (protocol v1, emote schema) live as of the #33 merge. No further server changes since.
-- **Local repo branch:** `claude/bitrunners-collaboration-EcqBv` + this session's commits.
-- **Uncommitted changes:** none after the session commit; pushed; PR #34 (draft) refreshed.
+- **⚠️ DEPLOY STATE:** prod `main` now has **everything through devlog 0038** — PR #34 merged 0032–0037 (06:07), PR #35 merged 0038 (the skill tree). Both were Cloudflare-Pages-only deploys (no server/packages changes). **Chunk A (devlog 0039) is NEW work, not yet on a PR** — it'll be its own PR (the branch advanced past #35's merge, the recurring strand pattern; expected).
+- **Live web (bitrunners.app):** clicker + skill tree + mobile pass all live. Chunk A (emote fix + polish) pending its PR/merge.
+- **Live server (bitrunners.fly.dev):** multiplayer (protocol v1, emote schema) live since the #33 merge. **Chunk A's emote fix is client-only — no server change, no Fly redeploy.**
+- **Active plan:** 5-chunk sprint in `docs/devlog/0039`. Chunk A done; B–E queued, each its own PR. Open Q&A before Chunk C: the vending NPC's name/personality (lore).
+- **Local repo branch:** `claude/bitrunners-collaboration-EcqBv` + Chunk A commit.
 - **CI status:** local gates green — `pnpm lint` clean (44 files), `pnpm typecheck` 8/8, `pnpm build` 5/5. No test suite (`vitest run` exits 1 on "no tests" — pre-existing, not a regression).
+- **⚠️ Emote fix unverifiable headless** — needs a live 2-client test; receiving tab's console logs `[bitrunners] remote emote …` on arrival (tells us send-vs-receive if it still fails).
 
 ## What I did this session
 

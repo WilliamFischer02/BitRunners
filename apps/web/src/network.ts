@@ -84,15 +84,30 @@ export async function joinSphere(
       if (sessionId === room.sessionId) return;
       lastEmoteSeq.set(sessionId, player.emoteSeq ?? 0);
       callbacks.onJoin?.(snapshot(player));
+
       const playerCb = $(player);
-      if (playerCb && typeof playerCb.onChange === 'function') {
+      const fireEmote = (seq: number): void => {
+        if (seq > (lastEmoteSeq.get(sessionId) ?? 0)) {
+          lastEmoteSeq.set(sessionId, seq);
+          if (player.emote) callbacks.onEmote?.(sessionId, player.emote);
+        }
+      };
+      const fireUpdate = (): void => callbacks.onUpdate?.(snapshot(player));
+
+      // Schema 3.x: per-field listen() is the reliable way to react to
+      // primitive changes on a MapSchema child. Instance-level onChange has
+      // been flaky for nested entries across 0.16 builds — the most likely
+      // reason remote emotes never reached other clients. Keep onChange as a
+      // fallback for any build where listen() is unavailable.
+      if (playerCb && typeof playerCb.listen === 'function') {
+        playerCb.listen('emoteSeq', (seq: number) => fireEmote(seq ?? 0));
+        playerCb.listen('x', fireUpdate);
+        playerCb.listen('z', fireUpdate);
+        playerCb.listen('rotY', fireUpdate);
+      } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
-          const seq = player.emoteSeq ?? 0;
-          if (seq > (lastEmoteSeq.get(sessionId) ?? 0)) {
-            lastEmoteSeq.set(sessionId, seq);
-            if (player.emote) callbacks.onEmote?.(sessionId, player.emote);
-          }
-          callbacks.onUpdate?.(snapshot(player));
+          fireEmote(player.emoteSeq ?? 0);
+          fireUpdate();
         });
       }
     });
