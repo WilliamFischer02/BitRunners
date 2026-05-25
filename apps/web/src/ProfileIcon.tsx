@@ -26,6 +26,7 @@ function makeRainLine(): string {
 export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
   const [rain, setRain] = useState<string[]>(() => Array.from({ length: 4 }, makeRainLine));
   const [open, setOpen] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -33,6 +34,14 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
     }, 380);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(
+    () =>
+      subscribeAuth((s) =>
+        setAuthEmail(s.status === 'authenticated' ? (s.user?.email ?? 'signed in') : null),
+      ),
+    [],
+  );
 
   return (
     <>
@@ -52,7 +61,9 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
         <div className="profile-box">
           <div className="profile-label">{'// profile'}</div>
           <div className="profile-class">{className}</div>
-          <div className="profile-status">{'// guest'}</div>
+          <div className="profile-status">
+            {authEmail ? `// ${authEmail.split('@')[0] || 'member'}` : '// guest'}
+          </div>
         </div>
       </button>
       {open && <ProfilePanel className={className} onClose={() => setOpen(false)} />}
