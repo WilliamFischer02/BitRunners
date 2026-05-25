@@ -157,10 +157,17 @@ function AccountSection(): JSX.Element {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [synced, setSynced] = useState(false);
   const configured = isAuthConfigured();
 
   useEffect(() => {
     return subscribeAuth(setAuth);
+  }, []);
+
+  useEffect(() => {
+    const on = (): void => setSynced(true);
+    window.addEventListener('bitrunners:economy-synced', on);
+    return () => window.removeEventListener('bitrunners:economy-synced', on);
   }, []);
 
   if (!configured) {
@@ -189,6 +196,10 @@ function AccountSection(): JSX.Element {
         <div className="panel-row">
           <span className="panel-key">user id</span>
           <span className="panel-val">{auth.user?.id?.slice(0, 8) ?? '─'}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">progress</span>
+          <span className="panel-val">{synced ? 'synced ✓' : 'syncing…'}</span>
         </div>
         <button
           type="button"

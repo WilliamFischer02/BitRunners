@@ -181,3 +181,13 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (c) — owner must run `0002_player_economy.sql`** for saving to work; until then sync silently no-ops.
 
 **Decision (d) — autonomous daily task** is governed by `.claude/autonomous-task.md` (standing brief). Guardrails: dev branch only, never push main, never merge, gates before commit, draft PRs, no paid resources / no Fly deploy / no silent dep bumps, canon + sealed-lore safe, no destructive git, security pass every run, escalate big/ambiguous calls to the handoff rather than guessing. Owner wires the schedule in Claude Code on the web.
+
+## 2026-05-21 — Admin console phase 1: role + RLS-gated config, fail-open construction gate (devlog 0047)
+
+**Decision (a) — admin privilege is DB + RLS, never client.** `profiles.role` (user/dev/admin) set only via SQL editor; `is_admin()`/`is_dev_or_admin()` SECURITY-DEFINER helpers; admin actions (e.g. the under-construction flag in `app_config`) gated by RLS policies, not by UI visibility. The client admin gate is convenience only. No service-role key in the client. This is the standing pattern for ALL future admin features (user table, grants, dialogue writes, stats) — enforce server-side.
+
+**Decision (b) — under-construction gate FAILS OPEN.** `ConstructionGate` blocks non-dev/admin only when it positively reads the flag as on; any fetch error → app stays visible. A config/DB hiccup must never lock everyone (incl. the owner) out. `app_config` is readable by anon (the flag must gate guests too); writable only by admins.
+
+**Decision (c) — account continuity surfaced** via a `bitrunners:economy-synced` event + a "progress · synced ✓" row in the account panel.
+
+**Owner actions:** run `0003_admin_role_and_config.sql`; set own `profiles.role='admin'` via SQL. Phases left: dialogue editor, user table + token/credit grants, activity stats — each needs its own admin-RLS migration; grants additionally need the server-authoritative economy (shared with trading).

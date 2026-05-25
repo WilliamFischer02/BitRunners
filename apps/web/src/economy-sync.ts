@@ -23,6 +23,15 @@ let userId: string | null = null;
 let saveTimer: number | null = null;
 let loading = false;
 
+// Lets the account UI confirm progress is persisting (continuity check).
+function emitSynced(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('bitrunners:economy-synced'));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 async function loadFromAccount(uid: string): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
@@ -37,6 +46,7 @@ async function loadFromAccount(uid: string): Promise<void> {
     const remoteUpdated = typeof remote?.updatedAt === 'number' ? remote.updatedAt : -1;
     if (remote && remoteUpdated >= getEconomy().updatedAt) {
       importProgress(remote); // account is newer (or local never saved) → adopt it
+      emitSynced();
     } else {
       await saveNow(uid); // local is newer / server empty → push it up
     }
@@ -51,7 +61,11 @@ async function saveNow(uid: string): Promise<void> {
   const { error } = await sb
     .from(TABLE)
     .upsert({ user_id: uid, blob: exportProgress(), updated_at: new Date().toISOString() });
-  if (error) console.warn('[bitrunners] economy save failed:', error.message);
+  if (error) {
+    console.warn('[bitrunners] economy save failed:', error.message);
+    return;
+  }
+  emitSynced();
 }
 
 /**
