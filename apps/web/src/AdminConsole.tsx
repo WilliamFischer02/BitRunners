@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listDialogue, saveDialogue } from './dialogue.js';
 import {
+  type DailySignin,
+  fetchActivityStats,
   fetchUnderConstruction,
   getMyRole,
   setUnderConstruction,
@@ -100,10 +102,12 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
 
         <DialogueEditor />
 
+        <ActivityStats />
+
         <section className="panel-section">
           <div className="panel-section-title">$ coming next</div>
           <div className="panel-stub">
-            ─── user table + token/credit grants · daily activity stats (next admin phases).
+            ─── user table + token/credit grants (needs live economy).
           </div>
         </section>
 
@@ -175,6 +179,121 @@ function DialogueEditor(): JSX.Element {
           [ save ]
         </button>
       </div>
+    </section>
+  );
+}
+
+// ── Activity stats (admin phase 4) ────────────────────────────────────────────
+
+const CHART_W = 280;
+const CHART_H = 60;
+const BAR_GAP = 1;
+
+function DauChart({ rows }: { rows: DailySignin[] }): JSX.Element {
+  if (rows.length === 0) {
+    return <div className="panel-stub">─── no sign-in data yet.</div>;
+  }
+
+  // Oldest → newest for left-to-right rendering.
+  const sorted = [...rows].sort((a, b) => a.day.localeCompare(b.day));
+  const n = sorted.length;
+  const maxDau = Math.max(...sorted.map((r) => r.dau), 1);
+  const barW = Math.max(1, (CHART_W - BAR_GAP * (n - 1)) / n);
+
+  const bars = sorted.map((row, i) => {
+    const barH = Math.max(1, Math.round((row.dau / maxDau) * CHART_H));
+    const x = i * (barW + BAR_GAP);
+    const y = CHART_H - barH;
+    return (
+      <rect
+        key={row.day}
+        x={x}
+        y={y}
+        width={barW}
+        height={barH}
+        fill="var(--ascii-fg, #00ff41)"
+        opacity={0.75}
+      >
+        <title>
+          {row.day}: {row.dau} DAU
+        </title>
+      </rect>
+    );
+  });
+
+  // X-axis labels: first, middle, last
+  const labelIdxs = [0, Math.floor((n - 1) / 2), n - 1].filter((v, i, a) => a.indexOf(v) === i);
+  const labels = labelIdxs.flatMap((i) => {
+    const row = sorted[i];
+    if (!row) return [];
+    const x = i * (barW + BAR_GAP) + barW / 2;
+    return [
+      <text
+        key={row.day}
+        x={x}
+        y={CHART_H + 10}
+        textAnchor="middle"
+        fontSize={7}
+        fill="var(--ascii-fg, #00ff41)"
+        opacity={0.6}
+      >
+        {row.day.slice(5)}
+      </text>,
+    ];
+  });
+
+  // Peak label
+  const peakRow = sorted.reduce((a, b) => (a.dau >= b.dau ? a : b));
+  const peakIdx = sorted.indexOf(peakRow);
+  const peakX = peakIdx * (barW + BAR_GAP) + barW / 2;
+
+  return (
+    <svg
+      width={CHART_W}
+      height={CHART_H + 16}
+      aria-labelledby="dau-chart-title"
+      className="admin-dau-chart"
+      role="img"
+    >
+      <title id="dau-chart-title">{`daily active users — last ${n} days`}</title>
+      {bars}
+      {labels}
+      <text
+        x={Math.min(peakX, CHART_W - 4)}
+        y={CHART_H - Math.round((peakRow.dau / maxDau) * CHART_H) - 3}
+        textAnchor={peakX > CHART_W / 2 ? 'end' : 'start'}
+        fontSize={7}
+        fill="var(--ascii-fg, #00ff41)"
+      >
+        {peakRow.dau}
+      </text>
+    </svg>
+  );
+}
+
+function ActivityStats(): JSX.Element {
+  const [rows, setRows] = useState<DailySignin[] | null>(null);
+  const [err, setErr] = useState(false);
+
+  useEffect(() => {
+    void fetchActivityStats(30).then((data) => {
+      if (data === null) setErr(true);
+      else setRows(data);
+    });
+  }, []);
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ activity · last 30 days</div>
+      {err && <div className="panel-stub">─── could not load (run migration 0005?).</div>}
+      {!err && rows === null && <div className="panel-stub">─── loading…</div>}
+      {!err && rows !== null && <DauChart rows={rows} />}
+      {!err && rows !== null && (
+        <div className="panel-stub">
+          ─── daily active users (distinct accounts / day) · {rows.length} day
+          {rows.length !== 1 ? 's' : ''} with activity.
+        </div>
+      )}
     </section>
   );
 }

@@ -2780,3 +2780,8 @@ body,
 .admin-textarea:focus {
   border-color: #93e0b1;
 }
+.admin-dau-chart {
+  display: block;
+  margin: 6px 0 2px;
+  overflow: visible;
+}
