@@ -2,17 +2,13 @@
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE:** prod `main` (`b5fa113`) has everything through devlog 0048 + the #42 polish/security pass (SAMM proximity glow, hold/auto-scrape glow).
-- **Live web:** clicker, skill tree, SAMM, admin console (phases 1–2), dialogue editor, room-code join, email/password auth, account economy sync — all live through 0048.
+- **⚠️ DEPLOY STATE:** prod `main` (`735f225`) has everything through the **combined PR #43** (merged): proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases 1–4 (incl. activity stats), SAMM glow + security. **All migrations 0001–0005 are run; auth + account-economy + admin role/config are LIVE.**
+- **Tokens are LIVE** (proxy-wallet, lore 009) — spendable, account-synced, exchange + token shop + SAMM token bets. Canon "bit_spekter can't hold Tokens" RETIRED — do not re-lock.
 - **Live server (Fly):** protocol v1, idle-disconnect, ambient NPCs.
-- **This combined PR adds (Pages-only + ONE new migration `0005`):**
-  - **Tokens LIVE** (proxy-wallet, lore 009): spendable `economy.tokens`; Credits→Tokens one-way exchange; token-priced premium shop items; SAMM bets Credits or Tokens. Canon "bit_spekter can't hold Tokens" RETIRED — do not re-lock.
-  - **Runner switch:** in-game "change runner" → class-select grid.
-  - **a11y:** modal panels → native `<dialog>`, aria-live SAMM result, etc.
-  - **Admin phase-4:** `session_events` table (migration **0005**) + `get_daily_signins()` SECURITY DEFINER aggregate + DAU SVG chart in the admin console.
-- **⚠️ Owner runs migrations in order: 0002, 0003, 0004, 0005**, and sets own `profiles.role='admin'` (SQL).
-- **Autonomous daily task** (`.claude/autonomous-task.md`) produced #42 (merged), #44, #45, #46. Watch for duplicate runs on the same roadmap item (#45/#46 were dupes).
-- **CI status:** local gates green after the combine — `pnpm lint`, `pnpm typecheck` 8/8, `pnpm build` 5/5.
+- **This session (devlog 0052, NEW PR, Pages-only, no migration):** hardened `.claude/autonomous-task.md` with an **open-PR coordination protocol** (instances run in separate containers → coordinate via open PRs; check before picking, claim early, disjoint files, branch off latest main) + fixed stale brief lines (epics now live; Tokens unlocked). Plus **distinct pet shapes** in `scene.ts` (per-pet primitive geometry).
+- **Next big items (focused sessions):** admin phase 3 (user table + credit/token grants — security-critical) · trading backend (server-authoritative economy).
+- **Process:** the scheduled autonomous task + manual sessions ran in parallel and caused the #43–#46 pileup; the brief's new §1b mitigates it. Owner: consider pausing the schedule during active manual sessions.
+- **CI status:** local gates green — `pnpm lint` clean (53 files), `pnpm typecheck` 8/8, `pnpm build` 5/5.
 
 ## What I did this session
 

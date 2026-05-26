@@ -2,22 +2,28 @@ import { buildGlyphAtlas, createAsciiPass, setAsciiPassResolution } from '@bitru
 import {
   BackSide,
   BoxGeometry,
+  type BufferGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
   Group,
   HemisphereLight,
+  IcosahedronGeometry,
   type Mesh,
   Mesh as MeshClass,
   MeshNormalMaterial,
   MeshStandardMaterial,
   type MeshStandardMaterial as MeshStandardMaterialType,
+  OctahedronGeometry,
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
   Scene,
   ShaderMaterial,
   SphereGeometry,
+  TetrahedronGeometry,
+  TorusGeometry,
   Uniform,
   Vector3,
   WebGLRenderTarget,
@@ -335,6 +341,26 @@ function buildBitSpekter(): BitSpekterRig {
   };
 }
 
+// Distinct primitive per equipped pet so they don't all look like a box.
+function petGeometryFor(itemId: string): BufferGeometry {
+  switch (itemId) {
+    case 'pet.byte_pup':
+      return new SphereGeometry(0.1, 12, 8);
+    case 'pet.glint_drone':
+      return new OctahedronGeometry(0.12);
+    case 'pet.null_kit':
+      return new TetrahedronGeometry(0.13);
+    case 'pet.spark':
+      return new ConeGeometry(0.08, 0.22, 6);
+    case 'pet.mote_ultra':
+      return new IcosahedronGeometry(0.12);
+    case 'pet.token_seraph':
+      return new TorusGeometry(0.09, 0.035, 8, 16);
+    default:
+      return new BoxGeometry(0.14, 0.14, 0.14);
+  }
+}
+
 export interface SceneControls {
   dispose(): void;
   triggerEmote(text: string): void;
@@ -616,8 +642,19 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   }
 
   let petMesh: Mesh | null = null;
-  let petGeom: BoxGeometry | null = null;
+  let petGeom: BufferGeometry | null = null;
   let petMat: MeshStandardMaterialType | null = null;
+  let petId: string | null = null;
+
+  const disposePet = (): void => {
+    if (petMesh) rig.petAnchor.remove(petMesh);
+    petGeom?.dispose();
+    petMat?.dispose();
+    petMesh = null;
+    petGeom = null;
+    petMat = null;
+    petId = null;
+  };
 
   function applyAppearance(): void {
     const a: EquippedAppearance = getEquippedAppearance();
@@ -626,13 +663,16 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     applySkin(rig.skin.legs, a.legs);
 
     if (a.pet) {
-      if (!petMesh) {
-        petGeom = new BoxGeometry(0.16, 0.16, 0.16);
+      // Rebuild when the pet changes — each one has a distinct shape.
+      if (!petMesh || petId !== a.pet.itemId) {
+        disposePet();
+        petGeom = petGeometryFor(a.pet.itemId);
         petMat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 });
         petMesh = new MeshClass(petGeom, petMat);
         petMesh.position.set(0.5, 0, 0.1);
         petMesh.layers.set(CHARACTER_LAYER);
         rig.petAnchor.add(petMesh);
+        petId = a.pet.itemId;
       }
       if (petMat) {
         petMat.color.setHex(paletteHex(a.pet.palette));
@@ -640,12 +680,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
         petMat.emissiveIntensity = a.pet.texture ? 1.8 : 1.1;
       }
     } else if (petMesh) {
-      rig.petAnchor.remove(petMesh);
-      petGeom?.dispose();
-      petMat?.dispose();
-      petMesh = null;
-      petGeom = null;
-      petMat = null;
+      disposePet();
     }
   }
 
