@@ -2757,6 +2757,22 @@ body,
   }
 }
 
+/* ── admin activity chart (devlog 0050) ── */
+.admin-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 6px 0 2px;
+}
+.admin-chart-bar {
+  fill: #7b5fc4;
+}
+.admin-chart-label {
+  fill: #7a8490;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 8px;
+}
+
 /* ── admin dialogue editor (devlog 0048) ── */
 .admin-select,
 .admin-textarea {

@@ -14,7 +14,7 @@ import {
   importProgress,
   subscribeEconomy,
 } from './economy.js';
-import { getSupabase, subscribeAuth } from './supabase.js';
+import { getSupabase, logSignOn, subscribeAuth } from './supabase.js';
 
 const SAVE_DEBOUNCE_MS = 1500;
 const TABLE = 'player_economy';
@@ -77,6 +77,7 @@ export function initEconomySync(): void {
     if (snap.status === 'authenticated' && snap.user) {
       userId = snap.user.id;
       void loadFromAccount(userId);
+      void logSignOn();
     } else {
       userId = null;
     }

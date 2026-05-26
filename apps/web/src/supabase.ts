@@ -144,3 +144,44 @@ export async function setUnderConstruction(on: boolean): Promise<{ error: string
     .eq('key', 'under_construction');
   return { error: error?.message ?? null };
 }
+
+/** Log a sign-on event for the currently signed-in user. No-op if not configured or not signed in. */
+export async function logSignOn(): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data: sess } = await sb.auth.getSession();
+  const uid = sess.session?.user?.id;
+  if (!uid) return;
+  await sb.from('sign_on_log').insert({ user_id: uid });
+}
+
+export interface DayCount {
+  day: string;
+  count: number;
+}
+
+/** Admin-only: sign-on counts per calendar day for the last `days` days.
+ *  Returns [] if not admin, not configured, or migration 0005 not yet run. */
+export async function fetchSignOnStats(days = 14): Promise<DayCount[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data, error } = await sb
+    .from('sign_on_log')
+    .select('signed_in_at')
+    .gte('signed_in_at', since)
+    .order('signed_in_at', { ascending: true });
+  if (error || !data) return [];
+  const counts = new Map<string, number>();
+  for (const row of data as Array<{ signed_in_at: string }>) {
+    const day = row.signed_in_at.slice(0, 10);
+    counts.set(day, (counts.get(day) ?? 0) + 1);
+  }
+  const result: DayCount[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(Date.now() - i * 86_400_000);
+    const day = d.toISOString().slice(0, 10);
+    result.push({ day, count: counts.get(day) ?? 0 });
+  }
+  return result;
+}

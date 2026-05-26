@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listDialogue, saveDialogue } from './dialogue.js';
 import {
+  type DayCount,
+  fetchSignOnStats,
   fetchUnderConstruction,
   getMyRole,
   setUnderConstruction,
@@ -100,16 +102,89 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
 
         <DialogueEditor />
 
+        <ActivityStats />
+
         <section className="panel-section">
           <div className="panel-section-title">$ coming next</div>
           <div className="panel-stub">
-            ─── user table + token/credit grants · daily activity stats (next admin phases).
+            ─── user table + token/credit grants (needs server-authoritative economy + live auth).
           </div>
         </section>
 
         <footer className="panel-footer">owner-only · actions are server-enforced</footer>
       </div>
     </div>
+  );
+}
+
+function ActivityStats(): JSX.Element {
+  const [stats, setStats] = useState<DayCount[] | null>(null);
+
+  useEffect(() => {
+    void fetchSignOnStats(14).then(setStats);
+  }, []);
+
+  const DAYS = 14;
+  const W = 260;
+  const H = 72;
+  const BAR_GAP = 1;
+  const LABEL_H = 12;
+  const barW = Math.floor((W - (DAYS - 1) * BAR_GAP) / DAYS);
+  const chartH = H - LABEL_H;
+
+  const total = stats ? stats.reduce((s, d) => s + d.count, 0) : 0;
+  const max = stats ? Math.max(...stats.map((d) => d.count), 1) : 1;
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ activity · last 14 days</div>
+      {!stats ? (
+        <div className="panel-stub">─── loading…</div>
+      ) : total === 0 ? (
+        <div className="panel-stub">─── no sign-on data yet. run migration 0005 to enable.</div>
+      ) : (
+        <>
+          <svg
+            className="admin-chart"
+            viewBox={`0 0 ${W} ${H}`}
+            role="img"
+            aria-label="daily sign-ons — last 14 days"
+          >
+            <title>{'daily sign-ons — last 14 days'}</title>
+            {stats.map((d, i) => {
+              const barH = Math.max(2, Math.round((d.count / max) * (chartH - 2)));
+              const x = i * (barW + BAR_GAP);
+              const showLabel = i === 0 || i === 6 || i === DAYS - 1;
+              return (
+                <g key={d.day}>
+                  <rect
+                    x={x}
+                    y={chartH - barH}
+                    width={barW}
+                    height={barH}
+                    className="admin-chart-bar"
+                  />
+                  {showLabel && (
+                    <text
+                      x={x + barW / 2}
+                      y={H - 2}
+                      className="admin-chart-label"
+                      textAnchor="middle"
+                    >
+                      {d.day.slice(5).replace('-', '/')}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+          <div className="panel-row">
+            <span className="panel-key">sign-ons (14d)</span>
+            <span className="panel-val">{total}</span>
+          </div>
+        </>
+      )}
+    </section>
   );
 }
 
