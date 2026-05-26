@@ -17,17 +17,54 @@ Read, in order, before touching anything:
 
 Then pick **one** coherent piece of work (below) and do it end to end.
 
+## 1b. Check open PRs FIRST (coordinate with other instances)
+
+Other instances run in **separate containers** — the only shared state is
+GitHub. Use **open PRs + branches as the coordination lock.** Before picking
+work:
+
+1. `git fetch origin`, then **list open PRs** (GitHub MCP `list_pull_requests`,
+   `state=open`). Note each one's title, head branch, and changed files
+   (`pull_request_read` → `get_files`).
+2. **Do NOT start an item an open PR already covers.** If the roadmap item you'd
+   pick is the subject of an open PR (by title/scope), pick a **different,
+   uncovered** item. Two PRs for one feature is the duplicate that caused the
+   #45/#46 mess — avoid it.
+3. **Prefer a disjoint file footprint.** Choose an item that touches files no
+   open PR is editing, so concurrent work merges cleanly. (Beware shared hot
+   files: `economy.ts`, `AdminConsole.tsx`, `supabase.ts`, `style.css`,
+   `ScrapeMenu.tsx`, `Samm.tsx`, `scene.ts`.)
+4. **Branch from the latest `origin/main`** — always `git fetch` first; never
+   build on a stale snapshot.
+5. **Claim early:** after your *first* commit, open your **draft** PR
+   immediately (not at the end), titled for the item, so other instances see
+   it's taken.
+6. **Re-check before pushing:** `git fetch` again; if `main` moved, merge it in
+   and re-run gates so your PR stays conflict-free. If an open PR now covers
+   your item, **stop and pick another** — don't ship a duplicate.
+7. **Never** resolve a same-item collision by force-push or by merging another
+   instance's PR. Leave consolidation to the owner (or a single combine pass)
+   and note it in `.claude/handoff.md`.
+
+If every near-term roadmap item is already covered by an open PR, do a security
+pass or a docs/test improvement instead (§2.1 / §2.5) rather than duplicating
+in-flight work.
+
+
 ## 2. What to work on (priority order)
 
 1. **Security issues** — if you find one (see §4), fix it first; it outranks features.
 2. **Bugs / regressions** noted in the handoff.
-3. **Unblocked roadmap items** — polish + features that need no owner setup:
-   UI/UX cleanup, game-feel/optimization, deferred polish (pet shapes, SAMM
-   proximity glow, tutorial-card placement, hold/auto-scrape glow), perf passes,
-   accessibility, reduced-motion coverage, test coverage.
-4. **Gated epics** (trading, admin panel) — only their **buildable-now** phases
-   (client UI behind seams, schema/migration drafts) if auth still isn't live.
-   Do **not** assume infra exists.
+3. **Unblocked roadmap items** — polish + features: UI/UX cleanup, game-feel/
+   optimization, deferred polish (distinct pet shapes, tutorial-card placement,
+   client auto-reconnect on disconnect), perf passes, reduced-motion coverage,
+   test coverage.
+4. **Backend epics** — auth + account-economy + admin role/config are now LIVE
+   (migrations 0001–0005 run). Next: **admin phase 3** (user table + credit/
+   token grants — security-critical: `SECURITY DEFINER` + `is_admin()` gating,
+   careful `auth.users` email exposure) and the **trading backend**
+   (server-authoritative economy). Large + security-sensitive — take ONE phase,
+   design RLS carefully, flag for owner verification.
 5. **Roadmap planning** — if nothing else is actionable, refine an epic plan or
    propose next steps in a devlog. Planning is a valid run.
 
@@ -47,7 +84,8 @@ one polish batch per run.
   (name, version, why) and prefer a zero-dep solution.
 - **Canon & lore:** never invent lore unilaterally (Q&A → record). Never surface
   `docs/lore/_sealed/` content in any player-facing surface. Preserve locked
-  decisions (e.g. the 8× ladder; bit_spekter has no Token wallet).
+  decisions (e.g. the fixed 8× ladder). NOTE: Tokens are now UNLOCKED for
+  bit_spekter via the proxy-wallet (lore 009) — do not re-lock them.
 - **Secrets:** never read/edit `.env*`, keys, or anything under `**/secrets/**`.
 - **Git safety:** no force-push, no `reset --hard`, no history rewrites, no
   `--no-verify`. Create new commits.

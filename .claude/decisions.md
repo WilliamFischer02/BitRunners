@@ -219,3 +219,11 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision:** #43 (proxy-wallet + runner switch) couldn't merge — `main` advanced to `b5fa113` (PR #42 polish/security) and the scheduled autonomous task left #44/#45/#46 open. Combined `main` + #43 + #44 + #46 onto #43's branch via merges (resolving conflicts in `Samm.tsx`, `style.css`, `handoff.md`), gates green, so #43 is now conflict-free/merge-ready. **Dropped #45** — a duplicate of #46 (autonomous task built admin phase-4 activity-stats twice); kept #46 for its stronger security (SECURITY DEFINER aggregate, no raw-row client read). Close #44/#45/#46 as superseded.
 
 **Process caution:** parallel autonomous runs off divergent `main` snapshots caused the conflicts + the dup. The autonomous brief should check for an existing open PR on the same roadmap item before starting; the owner merging promptly (or pausing the schedule during manual sessions) prevents divergent bases. Single new migration from this combine: `0005_session_logging.sql`.
+
+## 2026-05-26 — Autonomous open-PR coordination protocol + distinct pet shapes (devlog 0052)
+
+**Decision (a) — parallel instances coordinate via OPEN PRs (shared GitHub state), not files.** Scheduled instances run in separate containers (no shared FS), so the autonomous brief (`.claude/autonomous-task.md` §1b) now mandates: fetch + list open PRs before picking work; don't start an item an open PR covers; prefer a disjoint file footprint; branch off latest `main`; claim early (open the draft PR after the first commit); re-check/merge `main` before pushing; never force-push or merge another instance's PR to resolve a collision. This is the fix for the #43–#46 pileup + the #45/#46 duplicate. Also fixed two stale brief lines (epics are now live; Tokens unlocked — don't re-lock).
+
+**Decision (b) — distinct pet shapes:** `scene.ts` `petGeometryFor(itemId)` gives each pet a distinct primitive (sphere/octahedron/tetrahedron/cone/icosahedron/torus); the appearance applier rebuilds the pet mesh when the equipped id changes. Isolated via the appearance seam.
+
+**Next big items (focused sessions, not marathon tails):** admin phase 3 (user table + grants — security-critical SECURITY DEFINER + auth.users email exposure + cross-user economy writes) and the trading backend.
