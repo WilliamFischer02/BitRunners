@@ -2786,7 +2786,6 @@ dialog.panel {
 .admin-textarea:focus {
   border-color: #93e0b1;
 }
-
 /* ── SAMM currency toggle + shop exchange (devlog 0049) ── */
 .samm-cur {
   display: flex;
@@ -2823,4 +2822,11 @@ dialog.panel {
   .samm-cur-btn {
     min-height: 40px;
   }
+}
+
+/* ── admin DAU chart (devlog 0050 activity stats) ── */
+.admin-dau-chart {
+  display: block;
+  margin: 6px 0 2px;
+  overflow: visible;
 }

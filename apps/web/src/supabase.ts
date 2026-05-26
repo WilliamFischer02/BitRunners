@@ -49,14 +49,23 @@ export function subscribeAuth(cb: AuthListener): () => void {
       cb({ status: 'guest' });
     }
   });
-  const { data } = sb.auth.onAuthStateChange((_event, session) => {
+  const { data } = sb.auth.onAuthStateChange((event, session) => {
     if (session) {
+      if (event === 'SIGNED_IN') void logSignIn(session.user.id);
       cb({ status: 'authenticated', user: session.user, session });
     } else {
       cb({ status: 'guest' });
     }
   });
   return () => data.subscription.unsubscribe();
+}
+
+/** Fire-and-forget: records a sign-in event for DAU tracking. Silently no-ops
+ *  if Supabase is unconfigured or the insert fails (non-critical path). */
+async function logSignIn(userId: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await sb.from('session_events').insert({ user_id: userId });
 }
 
 export async function signInWithProvider(
@@ -143,4 +152,22 @@ export async function setUnderConstruction(on: boolean): Promise<{ error: string
     .update({ value: on, updated_at: new Date().toISOString() })
     .eq('key', 'under_construction');
   return { error: error?.message ?? null };
+}
+
+export interface DailySignin {
+  day: string;
+  dau: number;
+}
+
+/** Admin-only (enforced by SECURITY DEFINER in get_daily_signins). Returns
+ *  daily active-user counts for the last `daysBack` days, newest first. */
+export async function fetchActivityStats(daysBack = 30): Promise<DailySignin[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_daily_signins', { days_back: daysBack });
+  if (error || !data) return null;
+  return (data as Array<{ day: string; dau: number }>).map((row) => ({
+    day: row.day,
+    dau: Number(row.dau),
+  }));
 }
