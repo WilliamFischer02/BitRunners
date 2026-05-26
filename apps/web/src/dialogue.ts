@@ -76,7 +76,7 @@ export const DIALOGUE_DEFAULTS: readonly DialogueEntry[] = [
   {
     key: 'samm.token',
     label: 'SAMM · token win',
-    lines: ['A TOKEN PRIZE! ALAS, NO WALLET ON FILE — IT IS HELD IN TRUST FOR YOU. JOY!'],
+    lines: ['A TOKEN PRIZE! ADDED TO YOUR WALLET. THE STATE APPLAUDS YOUR FORTUNE.'],
   },
 ];
 

@@ -26,6 +26,7 @@ Plot beats that **must not surface in player-facing text** until released by the
 | `006-runner-lifecycle.md` | Upload, login, logout, aether |
 | `007-data-economy.md` | Data ladder (bits→strings→serials→passcodes), Credits vs Tokens |
 | `008-samm.md` | SAMM, the State Authored Money Machine (gambling NPC) |
+| `009-proxy-wallet.md` | The proxy wallet — Tokens unlocked for bit_spekter |
 | `_sealed/web-pullers.md` | ⚠️ SEALED future-event plot beat |
 
 ## Glossary (canonical names)
@@ -38,7 +39,7 @@ Plot beats that **must not surface in player-facing text** until released by the
 | **bitrunner** / **runner** | A player's in-world avatar. |
 | **The Admin** | Code-entity NPC. Companion, shopkeeper, quest-giver. Dangerous yet benevolent. |
 | **The Company** | Corporate quest-giver. Builder of hash_kicker template bodies. |
-| **Token** | Captured data scraps from Server Space. Scarce/premium currency. Coveted by The Admin. **Not** produced by the scrape mini-game; `bit_spekter` cannot earn it (proxy-wallet planned). See `007`. |
+| **Token** | Captured data scraps from Server Space. Scarce/premium currency. Coveted by The Admin. **Not** produced by the scrape mini-game; obtained via the **proxy wallet** (Credits→Tokens one-way, SAMM token prizes). See `007`/`009`. |
 | **Credit** | Common, interchangeable currency. Earned by trading passcodes to The Admin/The Company. Lesser than a Token. See `007`. |
 | **bit / string / serial / passcode** | Ascending refinements of scraped data (8× each). A passcode is the finished, tradeable artifact. See `007`. |
 | **Aether** | Drifting offline-runner remnant. Passive world decoration. |

@@ -201,3 +201,21 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (c) — samm.ts stays network-isolated** by returning a `quipKey` (registry key) from `gamble()`; the UI (`Samm.tsx`) resolves the text via `dialogue.getLine()`. samm.ts never imports the dialogue/network layer.
 
 **Owner action:** run `0004_dialogue.sql`. Next admin phases: user table + token/credit grants (needs admin-read RLS + auth.users email via a view/function + server-authoritative economy), then activity stats (session logging + chart).
+
+## 2026-05-26 — Proxy-wallet (Tokens go live) + runner switch (devlog 0049)
+
+**Decision (a) — the "bit_spekter has no Token wallet" canon is retired as the planned proxy-wallet unlock** (lore 009; owner chose "proxy-wallet unlock" framing). Tokens are now a real spendable currency in the account-synced economy blob (NO migration — JSONB blob). Legacy `lockedTokens` are folded into the spendable balance on load (the release moment). `economy.tokens` replaces `lockedTokens`. **Future sessions: do not re-lock Tokens for bit_spekter.**
+
+**Decision (b) — Credits→Tokens is ONE-WAY** (owner): `exchangeCreditsForTokens`, `CREDITS_PER_TOKEN=100` (tunable), exposed as a "buy tokens" control in the shop. No cash-out → Tokens stay a premium sink.
+
+**Decision (c) — store has token-priced PREMIUM items** (`ShopItem.currency`); SAMM bets in Credits OR Tokens (currency toggle, token tiers `[1,3,10]`, payouts in the bet currency, rare token bonus). `samm.ts` stays network-isolated (emits `quipKey`).
+
+**Decision (d) — "change runner" = in-game class switch** (NOT a currency exchanger — owner corrected my read). `Boot` gains `startAtSelect`; a `bitrunners:change-runner` event returns to the class-select grid; a profile-panel button triggers it. Swapping re-inits the scene on the new class.
+
+**Note:** Tokens remain client-trusted (device-local blob); server-authoritative validation is the trading-epic concern. Trading's "Tokens excluded" assumption is now obsolete — revisit when trading is built.
+
+## 2026-05-26 — Combined four open PRs into one merge-ready PR; dropped #45 as a dup (devlog 0051)
+
+**Decision:** #43 (proxy-wallet + runner switch) couldn't merge — `main` advanced to `b5fa113` (PR #42 polish/security) and the scheduled autonomous task left #44/#45/#46 open. Combined `main` + #43 + #44 + #46 onto #43's branch via merges (resolving conflicts in `Samm.tsx`, `style.css`, `handoff.md`), gates green, so #43 is now conflict-free/merge-ready. **Dropped #45** — a duplicate of #46 (autonomous task built admin phase-4 activity-stats twice); kept #46 for its stronger security (SECURITY DEFINER aggregate, no raw-row client read). Close #44/#45/#46 as superseded.
+
+**Process caution:** parallel autonomous runs off divergent `main` snapshots caused the conflicts + the dup. The autonomous brief should check for an existing open PR on the same roadmap item before starting; the owner merging promptly (or pausing the schedule during manual sessions) prevents divergent bases. Single new migration from this combine: `0005_session_logging.sql`.

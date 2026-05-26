@@ -56,6 +56,7 @@ export function App(): JSX.Element {
 function Shell(): JSX.Element {
   const [phase, setPhase] = useState<Phase>('boot');
   const [chosenClass, setChosenClass] = useState<string>('bit_spekter');
+  const [reselect, setReselect] = useState(false);
 
   const onSelect = useCallback((className: string) => {
     setChosenClass(className);
@@ -66,9 +67,19 @@ function Shell(): JSX.Element {
     setPhase('game');
   }, []);
 
+  // In-game "change runner" → back to the class-select grid (skip the scroll).
+  useEffect(() => {
+    const onChange = (): void => {
+      setReselect(true);
+      setPhase('boot');
+    };
+    window.addEventListener('bitrunners:change-runner', onChange);
+    return () => window.removeEventListener('bitrunners:change-runner', onChange);
+  }, []);
+
   return (
     <>
-      {phase === 'boot' && <Boot onSelect={onSelect} />}
+      {phase === 'boot' && <Boot onSelect={onSelect} startAtSelect={reselect} />}
       {phase === 'transition' && (
         <>
           <Game className={chosenClass} />

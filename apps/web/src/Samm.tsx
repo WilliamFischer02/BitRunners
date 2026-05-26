@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getLine } from './dialogue.js';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
-import { BET_TIERS, type GambleResult, canBet, gamble, minBet } from './samm.js';
+import { type BetCurrency, type GambleResult, betTiers, canBet, gamble, minBet } from './samm.js';
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -34,7 +34,13 @@ export function Samm({ inRange }: { inRange: boolean }): JSX.Element | null {
 
 function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
-  const [bet, setBet] = useState<number>(minBet());
+  const [currency, setCurrency] = useState<BetCurrency>('credits');
+  const [bet, setBet] = useState<number>(minBet('credits'));
+
+  const switchCurrency = (c: BetCurrency): void => {
+    setCurrency(c);
+    setBet(minBet(c));
+  };
   const [result, setResult] = useState<GambleResult | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [reels, setReels] = useState<[string, string, string]>(['◆', '◆', '◆']);
@@ -65,11 +71,11 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
 
   const onPull = (): void => {
     if (spinning) return;
-    if (!canBet(bet)) {
+    if (!canBet(bet, currency)) {
       setMsg(getLine('samm.insufficient'));
       return;
     }
-    const r = gamble(bet);
+    const r = gamble(bet, currency);
     if (!r) {
       setMsg(getLine('samm.insufficient'));
       return;
@@ -104,9 +110,17 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
 
   return (
     <div className="panel-backdrop" onMouseDown={onClose}>
-      <div className="panel samm-panel" onMouseDown={(e) => e.stopPropagation()}>
+      <dialog
+        open
+        className="panel samm-panel"
+        aria-modal="true"
+        aria-labelledby="samm-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <header className="panel-header">
-          <span className="panel-title">{'// SAMM'}</span>
+          <span className="panel-title" id="samm-dialog-title">
+            {'// SAMM'}
+          </span>
           <button type="button" className="panel-close" onClick={onClose}>
             ✕
           </button>
@@ -125,23 +139,45 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
           {result && (
             <div className={`samm-result ${resultClass}`}>
               {result.kind === 'lose' && 'no payout'}
-              {result.kind === 'credits' && `+${result.payout} credits`}
+              {result.kind === 'credits' && `+${result.payout} ${currency}`}
               {result.kind === 'item' && `prize: ${result.itemName}`}
-              {result.kind === 'token' && `+${result.lockedTokens} token (locked)`}
+              {result.kind === 'token' && `+${result.tokens} token`}
             </div>
           )}
-          <div className="samm-quip">{msg}</div>
+          <div className="samm-quip" aria-live="polite" aria-atomic="true">
+            {msg}
+          </div>
         </section>
 
         <section className="panel-section">
-          <div className="panel-section-title">$ place a bet · credits</div>
+          <div className="panel-section-title">$ place a bet</div>
+          <div className="samm-cur">
+            <button
+              type="button"
+              className={currency === 'credits' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
+              disabled={spinning}
+              onClick={() => switchCurrency('credits')}
+            >
+              credits
+            </button>
+            <button
+              type="button"
+              className={currency === 'tokens' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
+              disabled={spinning}
+              onClick={() => switchCurrency('tokens')}
+            >
+              tokens
+            </button>
+          </div>
           <div className="samm-bets">
-            {BET_TIERS.map((t) => (
+            {betTiers(currency).map((t) => (
               <button
                 type="button"
                 key={t}
                 className={bet === t ? 'samm-bet is-on' : 'samm-bet'}
-                disabled={spinning || getEconomy().credits < t}
+                disabled={spinning || (currency === 'tokens' ? eco.tokens : eco.credits) < t}
+                aria-label={`bet ${t} ${currency}`}
+                aria-pressed={bet === t}
                 onClick={() => setBet(t)}
               >
                 {t}
@@ -150,16 +186,13 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
           </div>
           <button
             type="button"
-            className={!spinning && canBet(bet) ? 'samm-pull is-ready' : 'samm-pull'}
-            disabled={spinning || !canBet(bet)}
+            className={!spinning && canBet(bet, currency) ? 'samm-pull is-ready' : 'samm-pull'}
+            disabled={spinning || !canBet(bet, currency)}
+            aria-label={spinning ? 'pulling…' : `pull — bet ${bet} ${currency}`}
             onClick={onPull}
           >
-            {spinning ? '…' : `[ PULL · ${bet} ]`}
+            {spinning ? '…' : `[ PULL · ${bet} ${currency} ]`}
           </button>
-          <div className="panel-row samm-locked">
-            <span className="panel-key">bet tokens</span>
-            <span className="panel-val">no wallet — proxy-wallet planned</span>
-          </div>
         </section>
 
         <section className="panel-section samm-wallet">
@@ -169,18 +202,18 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
             <span className="scrape-hud-bar" />
             <span className="scrape-hud-val">{eco.credits}</span>
           </div>
-          <div className="scrape-hud-row scrape-hud--locked">
-            <span className="scrape-hud-glyph">⌷</span>
-            <span className="scrape-hud-name">tokens (locked)</span>
-            <span className="scrape-hud-bar">no wallet</span>
-            <span className="scrape-hud-val">{eco.lockedTokens}</span>
+          <div className="scrape-hud-row scrape-hud--currency">
+            <span className="scrape-hud-glyph">⬢</span>
+            <span className="scrape-hud-name">tokens</span>
+            <span className="scrape-hud-bar" />
+            <span className="scrape-hud-val">{eco.tokens}</span>
           </div>
         </section>
 
         <footer className="panel-footer">
           the State thanks you · press [esc] or step away to close
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

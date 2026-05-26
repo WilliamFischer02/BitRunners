@@ -3,6 +3,9 @@ import { isClassUnlocked } from './economy.js';
 
 interface BootProps {
   onSelect(className: string): void;
+  // Re-entry from in-game "change runner" — skip the boot scroll, go straight
+  // to the class-select grid.
+  startAtSelect?: boolean;
 }
 
 const BOOT_LINES: { text: string; pause: number }[] = [
@@ -67,8 +70,8 @@ const CLASSES: ClassDef[] = [
 
 type Stage = 'scroll' | 'select';
 
-export function Boot({ onSelect }: BootProps): JSX.Element {
-  const [stage, setStage] = useState<Stage>('scroll');
+export function Boot({ onSelect, startAtSelect = false }: BootProps): JSX.Element {
+  const [stage, setStage] = useState<Stage>(startAtSelect ? 'select' : 'scroll');
   const [lines, setLines] = useState<string[]>(['']);
   const [done, setDone] = useState(false);
 

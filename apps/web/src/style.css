@@ -690,6 +690,12 @@ body,
   padding: 16px;
   backdrop-filter: blur(2px);
 }
+/* Reset native <dialog> defaults so .panel class controls all visual styling */
+dialog.panel {
+  padding: 0;
+  border: none;
+  margin: 0;
+}
 .panel {
   background: #0b0e0d;
   border: 1px solid #2a3340;
@@ -2779,4 +2785,48 @@ body,
 .admin-select:focus,
 .admin-textarea:focus {
   border-color: #93e0b1;
+}
+/* ── SAMM currency toggle + shop exchange (devlog 0049) ── */
+.samm-cur {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.samm-cur-btn {
+  appearance: none;
+  flex: 1;
+  background: rgba(30, 28, 18, 0.5);
+  border: 1px solid #3a3322;
+  border-radius: 3px;
+  color: #8aa597;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 6px;
+  cursor: pointer;
+}
+.samm-cur-btn.is-on {
+  color: #07100c;
+  background: #c9a23a;
+  border-color: #c9a23a;
+}
+.samm-cur-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.shop-exchange {
+  display: inline-flex;
+  gap: 6px;
+}
+@media (pointer: coarse) {
+  .samm-cur-btn {
+    min-height: 40px;
+  }
+}
+
+/* ── admin DAU chart (devlog 0050 activity stats) ── */
+.admin-dau-chart {
+  display: block;
+  margin: 6px 0 2px;
+  overflow: visible;
 }

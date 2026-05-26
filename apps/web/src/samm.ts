@@ -11,14 +11,21 @@
 import {
   type MutResult,
   addCredits,
-  addLockedTokens,
+  addTokens,
   getEconomy,
   grantItem,
   spendCredits,
+  spendTokens,
 } from './economy.js';
 import { getShopItem } from './shop.js';
 
+export type BetCurrency = 'credits' | 'tokens';
 export const BET_TIERS: readonly number[] = [10, 50, 200];
+export const TOKEN_BET_TIERS: readonly number[] = [1, 3, 10];
+
+export function betTiers(currency: BetCurrency): readonly number[] {
+  return currency === 'tokens' ? TOKEN_BET_TIERS : BET_TIERS;
+}
 
 export type OutcomeKind = 'lose' | 'credits' | 'item' | 'token';
 
@@ -57,19 +64,20 @@ export interface GambleResult {
   payout: number;
   itemId: string | null;
   itemName: string | null;
-  lockedTokens: number;
+  tokens: number;
   reels: [string, string, string];
   // Dialogue registry key (dialogue.ts) — the UI resolves the actual text, so
   // samm.ts stays network-isolated (no dialogue/supabase import here).
   quipKey: string;
 }
 
-export function minBet(): number {
-  return BET_TIERS[0] ?? 10;
+export function minBet(currency: BetCurrency = 'credits'): number {
+  return betTiers(currency)[0] ?? 1;
 }
 
-export function canBet(bet: number): boolean {
-  return bet > 0 && getEconomy().credits >= bet;
+export function canBet(bet: number, currency: BetCurrency = 'credits'): boolean {
+  const bal = currency === 'tokens' ? getEconomy().tokens : getEconomy().credits;
+  return bet > 0 && bal >= bet;
 }
 
 function pick<T>(arr: readonly T[]): T {
@@ -97,22 +105,26 @@ function reelsFor(win: boolean): [string, string, string] {
 }
 
 /**
- * Place one bet. Spends `bet` Credits up front, then applies the rolled
- * outcome. Returns a UI result, or null if the bet can't be afforded.
+ * Place one bet in `currency`. Spends the bet up front, then applies the rolled
+ * outcome (payouts in the same currency). Returns a UI result, or null if the
+ * bet can't be afforded.
  */
-export function gamble(bet: number): GambleResult | null {
-  if (!canBet(bet) || !spendCredits(bet)) return null;
+export function gamble(bet: number, currency: BetCurrency = 'credits'): GambleResult | null {
+  if (!canBet(bet, currency)) return null;
+  const spend = currency === 'tokens' ? spendTokens : spendCredits;
+  if (!spend(bet)) return null;
+  const award = currency === 'tokens' ? addTokens : addCredits;
   const spec = rollSpec();
 
   if (spec.kind === 'credits' && spec.mult) {
     const payout = Math.max(1, Math.floor(bet * spec.mult));
-    addCredits(payout);
+    award(payout);
     return {
       kind: 'credits',
       payout,
       itemId: null,
       itemName: null,
-      lockedTokens: 0,
+      tokens: 0,
       reels: reelsFor(true),
       quipKey: spec.mult >= 5 ? 'samm.big' : 'samm.small',
     };
@@ -127,33 +139,34 @@ export function gamble(bet: number): GambleResult | null {
         payout: 0,
         itemId: id,
         itemName: getShopItem(id)?.name ?? id,
-        lockedTokens: 0,
+        tokens: 0,
         reels: reelsFor(true),
         quipKey: 'samm.item',
       };
     }
-    // Already owned / inventory full → consolation Credits so the win isn't lost.
+    // Already owned / inventory full → consolation payout so the win isn't lost.
     const payout = bet * 2;
-    addCredits(payout);
+    award(payout);
     return {
       kind: 'credits',
       payout,
       itemId: null,
       itemName: null,
-      lockedTokens: 0,
+      tokens: 0,
       reels: reelsFor(true),
       quipKey: 'samm.small',
     };
   }
 
   if (spec.kind === 'token') {
-    addLockedTokens(1);
+    // Token bonus — awards a spendable Token regardless of the bet currency.
+    addTokens(1);
     return {
       kind: 'token',
       payout: 0,
       itemId: null,
       itemName: null,
-      lockedTokens: 1,
+      tokens: 1,
       reels: reelsFor(true),
       quipKey: 'samm.token',
     };
@@ -164,7 +177,7 @@ export function gamble(bet: number): GambleResult | null {
     payout: 0,
     itemId: null,
     itemName: null,
-    lockedTokens: 0,
+    tokens: 0,
     reels: reelsFor(false),
     quipKey: 'samm.lose',
   };
