@@ -15,8 +15,8 @@
 //
 // The catalog is SCAFFOLD/PLACEHOLDER. Real items, names, rarity vocabulary
 // and any lore are an open owner Q&A — see docs/design/clicker-minigame.md §14
-// and docs/lore/007. Token-priced goods stay hard-locked (canon: bit_spekter
-// has no Server-Space wallet). Isolated: no scene/network/server imports.
+// and docs/lore/007. Token-priced premium items are now buyable via the proxy
+// wallet (lore 009). Isolated: no scene/network/server imports.
 import { type EquipSlot, getEconomy, hasFreeSlot, ownsItem, purchaseItem } from './economy.js';
 
 export type Rarity = 'normal' | 'rare' | 'ultra';
@@ -37,8 +37,8 @@ export interface ShopItem {
   rarity?: Rarity;
   slot?: EquipSlot;
   visual?: ClothingVisual;
-  // Canon hook: a Token-priced cosmetic can ship hard-locked (bit_spekter has
-  // no Server-Space wallet; proxy-wallet planned, lore 003/007).
+  // Currency the item is priced in (default Credits). Token items are premium.
+  currency?: 'credits' | 'tokens';
   locked?: boolean;
   lockReason?: string;
 }
@@ -161,6 +161,28 @@ export const SHOP_CATALOG: ShopItem[] = [
     slot: 'pet',
     visual: { palette: 'aurora', effect: 'orbit', texture: 'glyph' },
   },
+  {
+    id: 'cloth.head.token_crown',
+    name: 'aurora crown',
+    blurb: 'head · premium · token-priced',
+    kind: 'clothing',
+    cost: 3,
+    currency: 'tokens',
+    rarity: 'ultra',
+    slot: 'head',
+    visual: { palette: 'aurora', effect: 'halo', texture: 'glyph' },
+  },
+  {
+    id: 'pet.token_seraph',
+    name: 'data seraph',
+    blurb: 'premium pet · token-priced · a radiant escort',
+    kind: 'pet',
+    cost: 8,
+    currency: 'tokens',
+    rarity: 'ultra',
+    slot: 'pet',
+    visual: { palette: 'aurora', effect: 'orbit', texture: 'glyph' },
+  },
 ];
 
 const BY_ID = new Map<string, ShopItem>(SHOP_CATALOG.map((i) => [i.id, i]));
@@ -173,6 +195,10 @@ export function priceOf(item: ShopItem): number {
   return item.cost;
 }
 
+export function currencyOf(item: ShopItem): 'credits' | 'tokens' {
+  return item.currency ?? 'credits';
+}
+
 export function isOwned(item: ShopItem): boolean {
   return ownsItem(item.id);
 }
@@ -180,8 +206,10 @@ export function isOwned(item: ShopItem): boolean {
 export function evaluate(item: ShopItem): BuyResult {
   if (item.locked) return { ok: false, reason: item.lockReason ?? 'locked' };
   if (ownsItem(item.id)) return { ok: false, reason: 'owned' };
-  if (getEconomy().credits < item.cost) {
-    return { ok: false, reason: 'insufficient credits' };
+  const cur = currencyOf(item);
+  const bal = cur === 'tokens' ? getEconomy().tokens : getEconomy().credits;
+  if (bal < item.cost) {
+    return { ok: false, reason: cur === 'tokens' ? 'insufficient tokens' : 'insufficient credits' };
   }
   if (!hasFreeSlot()) return { ok: false, reason: 'inventory full' };
   return { ok: true };
@@ -189,5 +217,5 @@ export function evaluate(item: ShopItem): BuyResult {
 
 export function buy(item: ShopItem): boolean {
   if (!evaluate(item).ok) return false;
-  return purchaseItem(item.id, item.cost).ok;
+  return purchaseItem(item.id, item.cost, currencyOf(item)).ok;
 }

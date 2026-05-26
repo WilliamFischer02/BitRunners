@@ -102,6 +102,19 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
             <span className="panel-val">{className}</span>
           </div>
           <div className="panel-row">
+            <span className="panel-key">change runner</span>
+            <button
+              type="button"
+              className="panel-toggle is-on"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('bitrunners:change-runner'));
+                onClose();
+              }}
+            >
+              [ switch ]
+            </button>
+          </div>
+          <div className="panel-row">
             <span className="panel-key">session</span>
             <span className="panel-val">guest · no user_id</span>
           </div>

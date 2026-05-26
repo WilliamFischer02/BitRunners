@@ -13,6 +13,8 @@ export const APPEARANCE_EVENT = 'bitrunners:appearance-changed';
 
 export const STEP = 8;
 export const CREDITS_PER_PASSCODE = 4;
+// Proxy-wallet exchange rate: Credits to buy one Token (one-way). Tunable.
+export const CREDITS_PER_TOKEN = 100;
 export const INVENTORY_SLOTS = 16;
 
 export type RefinableTier = 'bits' | 'strings' | 'serials';
@@ -41,9 +43,9 @@ export interface EconomyState {
   // Cumulative passcodes ever minted (never decremented when spent in the
   // skill tree). Gates the tree: "after reaching 1 passcode created".
   lifetimePasscodes: number;
-  // Tokens won from SAMM that the player cannot yet hold/spend (bit_spekter has
-  // no Server-Space wallet — canon). Display-only until the proxy-wallet ships.
-  lockedTokens: number;
+  // Spendable Tokens (premium currency). The proxy-wallet unlock (lore 009)
+  // made these real; legacy `lockedTokens` blobs are folded in on load.
+  tokens: number;
   // First-play tutorial + unlocked classes (device-local; migrates with the
   // account later). Completing the tutorial unlocks server_speaker.
   tutorialDone: boolean;
@@ -78,7 +80,7 @@ function defaultState(): EconomyState {
     repBitrunner: 0,
     lifetimeScrapes: 0,
     lifetimePasscodes: 0,
-    lockedTokens: 0,
+    tokens: 0,
     tutorialDone: false,
     unlocks: [],
     owned: [],
@@ -154,7 +156,7 @@ function normalize(parsed: EconomyState): EconomyState {
     // Additive field: old v1 blobs predate it. Seed from current passcodes so
     // a player who already minted some isn't locked out of the skill tree.
     lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
-    lockedTokens: fin(p.lockedTokens),
+    tokens: fin(p.tokens) + fin(p.lockedTokens),
     tutorialDone: p.tutorialDone === true,
     unlocks: strArray(p.unlocks),
     owned: strArray(p.owned),
@@ -395,16 +397,29 @@ export interface MutResult {
   reason?: string;
 }
 
-/** Buy a one-time inventory item (clothing/pet). Atomic; needs a free slot. */
-export function purchaseItem(id: string, cost: number): MutResult {
+/** Buy a one-time inventory item (clothing/pet) with Credits or Tokens.
+ *  Atomic; needs a free slot. */
+export function purchaseItem(
+  id: string,
+  cost: number,
+  currency: 'credits' | 'tokens' = 'credits',
+): MutResult {
   if (cost < 0) return { ok: false, reason: 'invalid' };
   if (state.owned.includes(id)) return { ok: false, reason: 'owned' };
-  if (state.credits < cost) return { ok: false, reason: 'insufficient credits' };
+  const balance = currency === 'tokens' ? state.tokens : state.credits;
+  if (balance < cost) {
+    return {
+      ok: false,
+      reason: currency === 'tokens' ? 'insufficient tokens' : 'insufficient credits',
+    };
+  }
   const slots = state.slots.slice();
   const idx = slots.findIndex((c) => c === null);
   if (idx < 0) return { ok: false, reason: 'inventory full' };
   slots[idx] = id;
-  state = { ...state, credits: state.credits - cost, owned: [...state.owned, id], slots };
+  const wallet =
+    currency === 'tokens' ? { tokens: state.tokens - cost } : { credits: state.credits - cost };
+  state = { ...state, ...wallet, owned: [...state.owned, id], slots };
   persist();
   return { ok: true };
 }
@@ -425,11 +440,30 @@ export function addCredits(amount: number): void {
   persist();
 }
 
-/** Record Tokens the player cannot yet hold (SAMM win; proxy-wallet pending). */
-export function addLockedTokens(amount: number): void {
+/** Award spendable Tokens (SAMM token prize, exchange). */
+export function addTokens(amount: number): void {
   if (!Number.isFinite(amount) || amount <= 0) return;
-  state = { ...state, lockedTokens: state.lockedTokens + amount };
+  state = { ...state, tokens: state.tokens + amount };
   persist();
+}
+
+/** Spend Tokens (token bet / token-priced item). False if insufficient. */
+export function spendTokens(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (state.tokens < amount) return false;
+  state = { ...state, tokens: state.tokens - amount };
+  persist();
+  return true;
+}
+
+/** Proxy-wallet exchange: buy `qty` Tokens with Credits (one-way; lore 009). */
+export function exchangeCreditsForTokens(qty: number): MutResult {
+  if (!Number.isInteger(qty) || qty <= 0) return { ok: false, reason: 'invalid' };
+  const cost = qty * CREDITS_PER_TOKEN;
+  if (state.credits < cost) return { ok: false, reason: 'insufficient credits' };
+  state = { ...state, credits: state.credits - cost, tokens: state.tokens + qty };
+  persist();
+  return { ok: true };
 }
 
 /** Grant an inventory item for free (e.g. a SAMM prize). Needs a free slot. */

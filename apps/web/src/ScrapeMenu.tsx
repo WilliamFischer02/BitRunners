@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  CREDITS_PER_TOKEN,
   EQUIP_SLOTS,
   type EconomyState,
   type Faction,
@@ -11,6 +12,7 @@ import {
   canTabulateAll,
   creditsPerPasscode,
   equip,
+  exchangeCreditsForTokens,
   getEconomy,
   getEquipped,
   hasAutoScrape,
@@ -29,6 +31,7 @@ import {
   SHOP_CATALOG,
   type ShopItem,
   buy,
+  currencyOf,
   evaluate,
   getShopItem,
   isOwned,
@@ -173,11 +176,11 @@ function DataHud({ eco, auto }: { eco: EconomyState; auto: boolean }): JSX.Eleme
         <span className="scrape-hud-bar" />
         <span className="scrape-hud-val">{eco.credits}</span>
       </div>
-      <div className="scrape-hud-row scrape-hud--locked">
-        <span className="scrape-hud-glyph">⌷</span>
+      <div className="scrape-hud-row scrape-hud--currency">
+        <span className="scrape-hud-glyph">⬢</span>
         <span className="scrape-hud-name">tokens</span>
-        <span className="scrape-hud-bar">no wallet</span>
-        <span className="scrape-hud-val">—</span>
+        <span className="scrape-hud-bar" />
+        <span className="scrape-hud-val">{eco.tokens}</span>
       </div>
       <div className="scrape-hud-stat">lifetime scrapes · {eco.lifetimeScrapes}</div>
     </section>
@@ -195,7 +198,7 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
       ? equippedHere
         ? '[ equipped ]'
         : '[ owned ]'
-      : `[ ${priceOf(item)} cr ]`;
+      : `[ ${priceOf(item)} ${currencyOf(item) === 'tokens' ? 'tk' : 'cr'} ]`;
   return (
     <div className={`shop-item ${rarityClass(item)} ${owned ? 'is-owned' : ''}`}>
       <div className="shop-item-main">
@@ -220,11 +223,40 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
   );
 }
 
-function ShopView({ credits }: { credits: number }): JSX.Element {
+function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section">
-      <div className="panel-section-title">$ shop · trade credits</div>
-      <div className="shop-credits">credits available · {credits}</div>
+      <div className="panel-section-title">$ shop · credits &amp; tokens</div>
+      <div className="shop-credits">
+        credits · {eco.credits} · tokens · {eco.tokens}
+      </div>
+      <div className="panel-row">
+        <span className="panel-key">buy tokens · {CREDITS_PER_TOKEN} cr each</span>
+        <span className="shop-exchange">
+          <button
+            type="button"
+            className={eco.credits >= CREDITS_PER_TOKEN ? 'scrape-mini is-ready' : 'scrape-mini'}
+            disabled={eco.credits < CREDITS_PER_TOKEN}
+            onClick={() => {
+              exchangeCreditsForTokens(1);
+            }}
+          >
+            [ +1 ]
+          </button>
+          <button
+            type="button"
+            className={
+              eco.credits >= CREDITS_PER_TOKEN * 5 ? 'scrape-mini is-ready' : 'scrape-mini'
+            }
+            disabled={eco.credits < CREDITS_PER_TOKEN * 5}
+            onClick={() => {
+              exchangeCreditsForTokens(5);
+            }}
+          >
+            [ +5 ]
+          </button>
+        </span>
+      </div>
       {SHOP_GROUPS.map((g) => {
         const items = SHOP_CATALOG.filter((i) => i.kind === g.kind && !i.locked);
         if (items.length === 0) return null;
@@ -620,7 +652,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         )}
 
         {view === 'tree' && <TreeView eco={eco} />}
-        {view === 'shop' && <ShopView credits={eco.credits} />}
+        {view === 'shop' && <ShopView eco={eco} />}
         {view === 'inventory' && <InventoryView />}
 
         <footer className="panel-footer">
