@@ -87,9 +87,17 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
 
   return (
     <div className="panel-backdrop" onMouseDown={onClose}>
-      <div className="panel" onMouseDown={(e) => e.stopPropagation()}>
+      <dialog
+        open
+        className="panel"
+        aria-modal="true"
+        aria-labelledby="profile-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <header className="panel-header">
-          <span className="panel-title">{'// profile'}</span>
+          <span className="panel-title" id="profile-dialog-title">
+            {'// profile'}
+          </span>
           <button type="button" className="panel-close" onClick={onClose}>
             close ✕
           </button>
@@ -143,7 +151,7 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
         <footer className="panel-footer">
           press [esc] or click outside to close · placeholder until account system lands
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

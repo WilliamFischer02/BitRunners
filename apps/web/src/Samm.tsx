@@ -104,9 +104,17 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
 
   return (
     <div className="panel-backdrop" onMouseDown={onClose}>
-      <div className="panel samm-panel" onMouseDown={(e) => e.stopPropagation()}>
+      <dialog
+        open
+        className="panel samm-panel"
+        aria-modal="true"
+        aria-labelledby="samm-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <header className="panel-header">
-          <span className="panel-title">{'// SAMM'}</span>
+          <span className="panel-title" id="samm-dialog-title">
+            {'// SAMM'}
+          </span>
           <button type="button" className="panel-close" onClick={onClose}>
             ✕
           </button>
@@ -130,7 +138,9 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
               {result.kind === 'token' && `+${result.lockedTokens} token (locked)`}
             </div>
           )}
-          <div className="samm-quip">{msg}</div>
+          <div className="samm-quip" aria-live="polite" aria-atomic="true">
+            {msg}
+          </div>
         </section>
 
         <section className="panel-section">
@@ -142,6 +152,8 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
                 key={t}
                 className={bet === t ? 'samm-bet is-on' : 'samm-bet'}
                 disabled={spinning || getEconomy().credits < t}
+                aria-label={`bet ${t} credits`}
+                aria-pressed={bet === t}
                 onClick={() => setBet(t)}
               >
                 {t}
@@ -152,6 +164,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
             type="button"
             className={!spinning && canBet(bet) ? 'samm-pull is-ready' : 'samm-pull'}
             disabled={spinning || !canBet(bet)}
+            aria-label={spinning ? 'pulling…' : `pull — bet ${bet} credits`}
             onClick={onPull}
           >
             {spinning ? '…' : `[ PULL · ${bet} ]`}
@@ -180,7 +193,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
         <footer className="panel-footer">
           the State thanks you · press [esc] or step away to close
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

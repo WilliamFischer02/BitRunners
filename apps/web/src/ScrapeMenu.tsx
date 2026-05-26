@@ -494,10 +494,19 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const tradeReady = canCalculate();
   const showAll = tabulateReach() >= 1;
 
+  const VIEW_LABELS: Record<View, string> = {
+    scrape: 'scrape',
+    tree: 'skill tree',
+    shop: 'shop',
+    inventory: 'inventory',
+  };
+
   const nav = (target: View, text: string): JSX.Element => (
     <button
       type="button"
       className={view === target ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+      aria-pressed={view === target}
+      aria-label={VIEW_LABELS[target]}
       onClick={() => setView(target)}
     >
       {text}
@@ -513,12 +522,17 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
 
   return (
     <div className="panel-backdrop" onMouseDown={requestClose}>
-      <div
+      <dialog
+        open
         className={`panel scrape-panel ${closing ? 'scrape-panel--out' : 'scrape-panel--in'}`}
+        aria-modal="true"
+        aria-labelledby="scrape-dialog-title"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="panel-header">
-          <span className="panel-title">{titles[view]}</span>
+          <span className="panel-title" id="scrape-dialog-title">
+            {titles[view]}
+          </span>
           <div className="scrape-headbtns">
             {nav('scrape', 'scrape')}
             {nav('tree', 'tree')}
@@ -639,7 +653,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         <footer className="panel-footer">
           press [esc] or click outside to close · progress saved on this device
         </footer>
-      </div>
+      </dialog>
     </div>
   );
 }

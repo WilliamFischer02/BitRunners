@@ -61,7 +61,7 @@ export function Tutorial(): JSX.Element | null {
 
   if (phase === 'reward') {
     return (
-      <div className="tutorial-card tutorial-card--reward">
+      <section className="tutorial-card tutorial-card--reward" aria-label="tutorial reward">
         <div className="tutorial-title">a new stack</div>
         <div className="tutorial-body">
           the Admin reshaped your code. you've earned <b>server_speaker</b> — choose it at your next
@@ -76,7 +76,7 @@ export function Tutorial(): JSX.Element | null {
             [ done ]
           </button>
         </div>
-      </div>
+      </section>
     );
   }
 
@@ -89,7 +89,7 @@ export function Tutorial(): JSX.Element | null {
   };
 
   return (
-    <div className="tutorial-card">
+    <section className="tutorial-card" aria-label="tutorial">
       <div className="tutorial-step">
         tutorial · {step + 1}/{STEPS.length}
       </div>
@@ -113,6 +113,6 @@ export function Tutorial(): JSX.Element | null {
           </button>
         )}
       </div>
-    </div>
+    </section>
   );
 }
