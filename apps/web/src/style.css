@@ -690,6 +690,12 @@ body,
   padding: 16px;
   backdrop-filter: blur(2px);
 }
+/* Reset native <dialog> defaults so .panel class controls all visual styling */
+dialog.panel {
+  padding: 0;
+  border: none;
+  margin: 0;
+}
 .panel {
   background: #0b0e0d;
   border: 1px solid #2a3340;

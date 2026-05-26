@@ -1,4 +1,4 @@
-# Handoff — 2026-05-26, session: security pass + SAMM proximity glow + hold/auto-scrape glow
+# Handoff — 2026-05-26, session: accessibility modal dialog semantics
 
 ## State of the build
 
@@ -16,54 +16,71 @@
 
 ## What I did this session
 
-**Security pass** (every-run mandatory):
-- Found one `innerHTML` instance (`scene.ts:882`, playerCode — alphanumeric 6-char, low actual
-  risk). Replaced with `createElement`+`textContent` for defence-in-depth. No other findings.
-- Full table of results in devlog 0049. All RLS policies intact. No secrets, no free-text input,
-  no client-trusted privilege escalation.
+**Security pass** (every-run mandatory): clean. No new findings.
+Full results in devlog 0050.
 
-**SAMM proximity glow** (`scene.ts`):
-- The vending machine screen (`vendingScreen`) now drives `emissiveIntensity` from its baseline
-  0.7 up to ~1.5± in the render loop based on player distance to SAMM coordinates. Pulsing at
-  ~0.5 Hz (3.1 rad/s). Mirrors the existing port/depot glow pattern exactly.
+**Accessibility: modal dialog semantics (devlog 0050):**
 
-**Hold/auto-scrape glow** (`ScrapeMenu.tsx`, `style.css`):
-- Added `holding` state (set `onScrapeDown`, cleared `stopHold`).
-- Glow div now gets `is-holding` (dim sustained glow, 0.5 opacity) when holding and `is-auto`
-  (repeating 650ms pulse animation) when auto-scrape runs.
-- `is-on` (manual press flash) is declared last in CSS so it wins cascade over the new states.
-- Reduced-motion safe: animations suppressed, static opacity fallbacks.
+- **All four modal panels** (SAMM, Admin, Profile, Data Scrape) changed from
+  `<div role="dialog" aria-modal aria-labelledby>` to native `<dialog open>`.
+  Biome 1.9.4 flags the div pattern; native `<dialog>` is the correct element.
+  A CSS reset (`dialog.panel { padding: 0; border: none; margin: 0; }`) was
+  added to `style.css` to clear browser-default `<dialog>` styles.
+
+- **SAMM quip** — added `aria-live="polite" aria-atomic="true"`. Screen readers
+  will now announce the result message after each pull. Bet buttons got
+  `aria-label` ("bet N credits") and `aria-pressed`. Pull button got a
+  descriptive `aria-label`.
+
+- **Tutorial cards** — changed from `<div role="region">` to native `<section>`
+  (satisfies Biome; no CSS change needed).
+
+- **ScrapeMenu nav buttons** — added `aria-pressed` + expanded `aria-label`
+  (so "inv" reads as "inventory").
+
+- **Profile panel** — added `aria-labelledby` and converted to `<dialog open>`.
 
 ## What's blocking forward progress
 
-- **Browser verification.** Headless — all three visual changes (SAMM glow, hold glow, auto
-  glow) need eyeballing on a live preview. Logic is sound; CSS values are first-pass.
-- **Owner-side service wiring.** Supabase + Resend + OAuth still unblocked. Follow
-  `docs/setup/SERVICES.md` §1 critical path.
-- **Admin phases 3 + 4** (user table + grants, activity stats) gated on server-authoritative
-  economy (shared with p2p-trading-epic P1) and live auth.
+- **Browser verification.** The `<dialog open>` change needs a live eyeball:
+  open each panel and confirm it still renders correctly. If any panel looks
+  wrong (extra padding, border, alignment), tune `dialog.panel` in `style.css`.
+- **Owner-side service wiring.** Supabase + Resend + OAuth still pending.
+  Follow `docs/setup/SERVICES.md` §1 critical path.
+- **Admin phases 3 + 4** gated on server-authoritative economy (p2p-trading-epic
+  P1) and live auth.
 
 ## What I would do next, in priority order
 
 1. **Owner-side: execute `docs/setup/SERVICES.md` §1 critical path.** Highest leverage.
-2. **Two-client live test:** emote sync, seam visibility, smooth movement.
-3. **Tune visual values** after live eyeball:
-   - SAMM glow: if too subtle raise the `0.85` multiplier; if too harsh lower it.
-   - Scrape hold/auto: `is-holding` opacity 0.5 and `is-auto` range 0.35–0.7 are first-pass.
-4. **Admin phase 3: user table + grants** — blocked on live auth + server-authoritative economy.
-5. **Admin phase 4: activity stats** — hand-rolled SVG chart, session logging migration.
-   Could build the migration schema now (no owner action needed); wiring needs auth live.
-6. **Faction-reward Q&A** — unblocks reputation reward curve + 20-achievements design.
-7. **P2P trading epic** — gated on auth + server-authoritative tradeables (epic doc at
-   `docs/design/p2p-trading-epic.md`).
-8. **Aether snapshot on `onLeave`** — Phase 2 polish; needs Upstash (SERVICES.md §12).
+2. **Live eyeball — verify `<dialog open>` panels.** Each of the four panels
+   (SAMM, Admin, Profile, Data Scrape). Expected: identical visual output to
+   before (the CSS reset handles it). If wrong: `dialog.panel` in `style.css`.
+3. **`<dialog>` → `.showModal()` upgrade.** Gives native focus trapping. Requires:
+   - `useRef<HTMLDialogElement>` + `useEffect(() => ref.current?.showModal(), [])`
+   - Handle `cancel` event to call `onClose`
+   - Remove existing keyboard Escape handlers (browser handles it)
+   - Address `::backdrop` pseudo-element vs `.panel-backdrop` div interaction
+   This is a medium refactor; defer until the panels are confirmed visually stable.
+4. **Two-client live test:** emote sync, seam visibility, smooth movement.
+5. **Admin phase 3: user table + grants** — blocked on live auth + server economy.
+6. **Admin phase 4: activity stats** — owner Q&A open:
+   "Proceed with admin phase 4 session-logging migration schema (no owner action
+   needed; just writes a `.sql` file)?" Recommend: yes — it's additive, purely
+   a schema draft, and the owner runs it manually. No wiring until auth is live.
+7. **Faction-reward Q&A** — unblocks reputation reward curve.
+8. **P2P trading epic** — gated on auth + server economy.
+9. **Aether snapshot on `onLeave`** — Phase 2 polish; needs Upstash.
 
 ## Files touched this session
 
-- `apps/web/src/scene.ts` — innerHTML→textContent fix; SAMM proximity glow in render loop.
-- `apps/web/src/ScrapeMenu.tsx` — `holding` state; updated `stopHold`/`onScrapeDown`; glow class list.
-- `apps/web/src/style.css` — `is-holding`, `is-auto` CSS rules; consolidated reduced-motion block.
-- `docs/devlog/0049-samm-glow-hold-auto-scrape-glow-security-pass.md` — new.
+- `apps/web/src/Samm.tsx` — `<dialog open>`, `aria-live` quip, bet button labels.
+- `apps/web/src/AdminConsole.tsx` — `<dialog open>`.
+- `apps/web/src/ProfileIcon.tsx` — `<dialog open>`, `aria-labelledby`.
+- `apps/web/src/ScrapeMenu.tsx` — `<dialog open>`, nav `aria-pressed`+`aria-label`.
+- `apps/web/src/Tutorial.tsx` — `<section aria-label>` (was `<div role="region">`).
+- `apps/web/src/style.css` — `dialog.panel` browser-default reset.
+- `docs/devlog/0050-accessibility-modal-dialog-semantics.md` — new.
 - `.claude/handoff.md` — this file.
 
 ## Do NOT do these things
@@ -78,8 +95,13 @@
 
 ## Open questions for the owner
 
-- After live eyeball: SAMM glow — too subtle / too harsh? Target: "clearly brighter when nearby."
-- Hold glow (0.5 opacity, 80ms transition): reads as feedback? Or too dim?
-- Auto-scrape pulse (650ms cycle, 0.35→0.7 opacity, 0.95→1.03 scale): clear indicator? Or too busy?
-- Proceed with admin phase 4 session-logging migration (no owner action needed, just writes a `.sql` file)?
-- Two-client emote/seam test results (from prior open questions)?
+- **Panel visual check:** do all four panels (SAMM, Admin, Profile, Data Scrape)
+  still render correctly with `<dialog open>`? The CSS reset should handle it.
+- **Proceed with `.showModal()` upgrade?** Gives real focus trapping; medium effort.
+- **Proceed with admin phase 4 session-logging migration schema?** (no owner infra
+  needed; just drafts a `.sql` file). Recommend yes.
+- Prior open questions (visual tuning):
+  - SAMM glow: too subtle / too harsh? Target: "clearly brighter when nearby."
+  - Hold glow (0.5 opacity, 80ms transition): reads as feedback?
+  - Auto-scrape pulse (650ms, 0.35→0.7 opacity, 0.95→1.03 scale): clear indicator?
+- Two-client emote/seam test results?

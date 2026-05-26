@@ -69,9 +69,17 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
 
   return (
     <div className="panel-backdrop" onMouseDown={onClose}>
-      <div className="panel" onMouseDown={(e) => e.stopPropagation()}>
+      <dialog
+        open
+        className="panel"
+        aria-modal="true"
+        aria-labelledby="admin-dialog-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <header className="panel-header">
-          <span className="panel-title">{'// admin console'}</span>
+          <span className="panel-title" id="admin-dialog-title">
+            {'// admin console'}
+          </span>
           <button type="button" className="panel-close" onClick={onClose}>
             ✕
           </button>
@@ -108,7 +116,7 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
         </section>
 
         <footer className="panel-footer">owner-only · actions are server-enforced</footer>
-      </div>
+      </dialog>
     </div>
   );
 }
