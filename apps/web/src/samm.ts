@@ -59,20 +59,10 @@ export interface GambleResult {
   itemName: string | null;
   lockedTokens: number;
   reels: [string, string, string];
-  quip: string;
+  // Dialogue registry key (dialogue.ts) — the UI resolves the actual text, so
+  // samm.ts stays network-isolated (no dialogue/supabase import here).
+  quipKey: string;
 }
-
-export const SAMM_GREETING = 'GREETINGS, VALUED PARTICIPANT. THE STATE WELCOMES YOUR CONTRIBUTION.';
-export const SAMM_INSUFFICIENT =
-  'INSUFFICIENT CREDITS, PARTICIPANT. THE STATE ENCOURAGES THRIFT — THEN RETURN.';
-
-const QUIP = {
-  lose: 'A GENEROUS DONATION TO THE PUBLIC COFFERS. THE STATE THANKS YOU MOST WARMLY.',
-  small: 'A MODEST DISBURSEMENT, DULY NOTED IN THE LEDGER. CONGRATULATIONS, CITIZEN.',
-  big: 'A BANNER DAY FOR PARTICIPANT AND STATE ALIKE. JUBILATION!',
-  item: 'A PHYSICAL PRIZE! PLEASE COLLECT IT FROM YOUR ALLOCATION. HOW DELIGHTFUL.',
-  token: 'A TOKEN PRIZE! ALAS, NO WALLET ON FILE — IT IS HELD IN TRUST FOR YOU. JOY!',
-};
 
 export function minBet(): number {
   return BET_TIERS[0] ?? 10;
@@ -124,7 +114,7 @@ export function gamble(bet: number): GambleResult | null {
       itemName: null,
       lockedTokens: 0,
       reels: reelsFor(true),
-      quip: spec.mult >= 5 ? QUIP.big : QUIP.small,
+      quipKey: spec.mult >= 5 ? 'samm.big' : 'samm.small',
     };
   }
 
@@ -139,7 +129,7 @@ export function gamble(bet: number): GambleResult | null {
         itemName: getShopItem(id)?.name ?? id,
         lockedTokens: 0,
         reels: reelsFor(true),
-        quip: QUIP.item,
+        quipKey: 'samm.item',
       };
     }
     // Already owned / inventory full → consolation Credits so the win isn't lost.
@@ -152,7 +142,7 @@ export function gamble(bet: number): GambleResult | null {
       itemName: null,
       lockedTokens: 0,
       reels: reelsFor(true),
-      quip: QUIP.small,
+      quipKey: 'samm.small',
     };
   }
 
@@ -165,7 +155,7 @@ export function gamble(bet: number): GambleResult | null {
       itemName: null,
       lockedTokens: 1,
       reels: reelsFor(true),
-      quip: QUIP.token,
+      quipKey: 'samm.token',
     };
   }
 
@@ -176,6 +166,6 @@ export function gamble(bet: number): GambleResult | null {
     itemName: null,
     lockedTokens: 0,
     reels: reelsFor(false),
-    quip: QUIP.lose,
+    quipKey: 'samm.lose',
   };
 }
