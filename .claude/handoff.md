@@ -1,103 +1,107 @@
-# Handoff — 2026-05-26, session: accessibility modal dialog semantics
+# Handoff — 2026-05-26, session: admin phase 3 (user table + grants) + RLS security fix
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE:** prod `main` (`735f225`) has everything through the **combined PR #43** (merged): proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases 1–4 (incl. activity stats), SAMM glow + security. **All migrations 0001–0005 are run; auth + account-economy + admin role/config are LIVE.**
-- **Tokens are LIVE** (proxy-wallet, lore 009) — spendable, account-synced, exchange + token shop + SAMM token bets. Canon "bit_spekter can't hold Tokens" RETIRED — do not re-lock.
+- **⚠️ DEPLOY STATE:** prod `main` (`0ab40c9`) has everything through **PR #47**
+  (merged): proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases
+  1/2/4, SAMM glow + security, the autonomous open-PR protocol, distinct pet
+  shapes. **Migrations 0001–0005 are run.**
+- **⚠️ NEW MIGRATION 0006 — NOT YET RUN.** This session adds
+  `0006_admin_user_management.sql`. It is **additive** and **closes a critical
+  pre-existing privilege-escalation hole** (see below). Owner: run it in the
+  Supabase SQL editor.
+- **Tokens are LIVE** (proxy-wallet, lore 009) — spendable, account-synced.
+  Canon "bit_spekter can't hold Tokens" RETIRED — do not re-lock. (The *clicker*
+  still mints Credits only, never Tokens directly — that's unchanged.)
 - **Live server (Fly):** protocol v1, idle-disconnect, ambient NPCs.
-- **This session (devlog 0052, NEW PR, Pages-only, no migration):** hardened `.claude/autonomous-task.md` with an **open-PR coordination protocol** (instances run in separate containers → coordinate via open PRs; check before picking, claim early, disjoint files, branch off latest main) + fixed stale brief lines (epics now live; Tokens unlocked). Plus **distinct pet shapes** in `scene.ts` (per-pet primitive geometry).
-- **Next big items (focused sessions):** admin phase 3 (user table + credit/token grants — security-critical) · trading backend (server-authoritative economy).
-- **Process:** the scheduled autonomous task + manual sessions ran in parallel and caused the #43–#46 pileup; the brief's new §1b mitigates it. Owner: consider pausing the schedule during active manual sessions.
-- **CI status:** local gates green — `pnpm lint` clean (53 files), `pnpm typecheck` 8/8, `pnpm build` 5/5.
+- **This session (devlog 0053, NEW branch `claude/admin-phase3-user-grants`,
+  PR pending):** admin phase 3 — owner-only user table + permissions/tier
+  controls + credit/token grants (via an append-only ledger) — plus the RLS fix.
+- **Next big item:** trading backend (server-authoritative economy, p2p-trading
+  P1). Once it lands, grants can move from the ledger to direct authoritative
+  writes, and the clicker auto-click "premium" gate can key off `tier='elevated'`.
+- **CI status:** local gates green — `pnpm lint` clean (53 files),
+  `pnpm typecheck` 8/8, `pnpm build` 5/5.
+
+## ⚠️ Critical security finding this session (FIXED in migration 0006)
+
+RLS is **row-level, not column-level.** `profiles_update_own` (0001) lets a user
+UPDATE their own row; Supabase's default column grants then let that update touch
+**any** column. So once 0003 added `role`, any authenticated user could
+`PATCH /profiles?id=eq.<self> {"role":"admin"}` and **self-escalate to admin.**
+0006 revokes table-wide UPDATE and re-grants only the display-name columns;
+role/tier now change solely via SECURITY DEFINER `admin_set_*`.
+
+> **Owner:** running 0006 closes it. Quick audit after:
+> `SELECT id, role FROM profiles WHERE role <> 'user';` — expect only you.
 
 ## What I did this session
 
-**Security pass** (every-run mandatory): clean. No new findings.
-Full results in devlog 0050.
+- **Migration 0006:** `profiles.tier` (free|elevated) + the column-grant
+  lockdown; `economy_grants` ledger (append-only, SELECT-own RLS only);
+  SECURITY DEFINER fns `admin_list_users` (email exposed to admins only),
+  `admin_grant_economy`, `admin_set_tier`, `admin_set_role` (blocks self-role
+  change), `claim_economy_grants` (atomic, exactly-once, own-rows).
+- **`supabase.ts`:** `AdminUser`/`Tier` + `adminListUsers`/`adminGrantEconomy`/
+  `adminSetTier`/`adminSetRole`/`claimEconomyGrants`.
+- **`economy-sync.ts`:** claims pending grants right after the load guard clears,
+  folds them into the balance, pushes up. Emits `bitrunners:grant-received`.
+- **`AdminConsole.tsx`:** `$ users` section (list + per-user editor: role select,
+  tier select, grant form). Replaced the "$ coming next" stub.
+- **`style.css`:** user-table styles.
 
-**Accessibility: modal dialog semantics (devlog 0050):**
+## Design note — grant *ledger*, not direct blob write
 
-- **All four modal panels** (SAMM, Admin, Profile, Data Scrape) changed from
-  `<div role="dialog" aria-modal aria-labelledby>` to native `<dialog open>`.
-  Biome 1.9.4 flags the div pattern; native `<dialog>` is the correct element.
-  A CSS reset (`dialog.panel { padding: 0; border: none; margin: 0; }`) was
-  added to `style.css` to clear browser-default `<dialog>` styles.
+Economy is account-**synced**, not server-**authoritative** (client owns its
+blob, 0002). A direct admin write to another user's blob would be clobbered by
+that user's own sync. So grants append to `economy_grants`; the recipient claims
+them exactly-once on load. Robust + audited **without** the full
+server-authoritative economy (that stays with the trading epic). Failure mode is
+benign: a crash between claim and persist loses the grant (never duplicates it).
 
-- **SAMM quip** — added `aria-live="polite" aria-atomic="true"`. Screen readers
-  will now announce the result message after each pull. Bet buttons got
-  `aria-label` ("bet N credits") and `aria-pressed`. Pull button got a
-  descriptive `aria-label`.
+## What's blocking / not verified
 
-- **Tutorial cards** — changed from `<div role="region">` to native `<section>`
-  (satisfies Biome; no CSS change needed).
-
-- **ScrapeMenu nav buttons** — added `aria-pressed` + expanded `aria-label`
-  (so "inv" reads as "inventory").
-
-- **Profile panel** — added `aria-labelledby` and converted to `<dialog open>`.
-
-## What's blocking forward progress
-
-- **Browser verification.** The `<dialog open>` change needs a live eyeball:
-  open each panel and confirm it still renders correctly. If any panel looks
-  wrong (extra padding, border, alignment), tune `dialog.panel` in `style.css`.
-- **Owner-side service wiring.** Supabase + Resend + OAuth still pending.
-  Follow `docs/setup/SERVICES.md` §1 critical path.
-- **Admin phases 3 + 4** gated on server-authoritative economy (p2p-trading-epic
-  P1) and live auth.
+- **Not verifiable headless.** Needs live auth + 0006 run + an admin account.
+  See devlog 0053 "Honest status" for the 4-step verification checklist.
+- **Trading backend** (server-authoritative economy) still the prerequisite for
+  a "real" economy; the ledger is the scoped bridge until then.
 
 ## What I would do next, in priority order
 
-1. **Owner-side: execute `docs/setup/SERVICES.md` §1 critical path.** Highest leverage.
-2. **Live eyeball — verify `<dialog open>` panels.** Each of the four panels
-   (SAMM, Admin, Profile, Data Scrape). Expected: identical visual output to
-   before (the CSS reset handles it). If wrong: `dialog.panel` in `style.css`.
-3. **`<dialog>` → `.showModal()` upgrade.** Gives native focus trapping. Requires:
-   - `useRef<HTMLDialogElement>` + `useEffect(() => ref.current?.showModal(), [])`
-   - Handle `cancel` event to call `onClose`
-   - Remove existing keyboard Escape handlers (browser handles it)
-   - Address `::backdrop` pseudo-element vs `.panel-backdrop` div interaction
-   This is a medium refactor; defer until the panels are confirmed visually stable.
-4. **Two-client live test:** emote sync, seam visibility, smooth movement.
-5. **Admin phase 3: user table + grants** — blocked on live auth + server economy.
-6. **Admin phase 4: activity stats** — owner Q&A open:
-   "Proceed with admin phase 4 session-logging migration schema (no owner action
-   needed; just writes a `.sql` file)?" Recommend: yes — it's additive, purely
-   a schema draft, and the owner runs it manually. No wiring until auth is live.
-7. **Faction-reward Q&A** — unblocks reputation reward curve.
-8. **P2P trading epic** — gated on auth + server economy.
-9. **Aether snapshot on `onLeave`** — Phase 2 polish; needs Upstash.
+1. **Owner: run migration 0006** (closes the escalation hole) + the role audit.
+2. **Verify admin phase 3 on the deploy preview** (devlog 0053 checklist):
+   list users, set role/tier, confirm self-role-change is blocked, grant
+   currency to a 2nd account and confirm it lands on their next load, and
+   confirm a normal user can't `PATCH` their own role.
+3. **Trading backend** (p2p-trading P1) — the next big focused session.
+4. Optional: in-game toast on `bitrunners:grant-received`.
+5. Deferred polish: client auto-reconnect after idle-disconnect; tutorial-card
+   placement eyeball; `.showModal()` focus-trap upgrade for the panels.
 
 ## Files touched this session
 
-- `apps/web/src/Samm.tsx` — `<dialog open>`, `aria-live` quip, bet button labels.
-- `apps/web/src/AdminConsole.tsx` — `<dialog open>`.
-- `apps/web/src/ProfileIcon.tsx` — `<dialog open>`, `aria-labelledby`.
-- `apps/web/src/ScrapeMenu.tsx` — `<dialog open>`, nav `aria-pressed`+`aria-label`.
-- `apps/web/src/Tutorial.tsx` — `<section aria-label>` (was `<div role="region">`).
-- `apps/web/src/style.css` — `dialog.panel` browser-default reset.
-- `docs/devlog/0050-accessibility-modal-dialog-semantics.md` — new.
-- `.claude/handoff.md` — this file.
+- `supabase/migrations/0006_admin_user_management.sql` — new.
+- `apps/web/src/supabase.ts` — admin fns + grant claim.
+- `apps/web/src/economy-sync.ts` — claim/apply grants on load.
+- `apps/web/src/AdminConsole.tsx` — `$ users` table + editor.
+- `apps/web/src/style.css` — user-table styles.
+- `docs/devlog/0053-admin-phase3-user-table-grants.md` — new.
+- `.claude/handoff.md` (this), `.claude/decisions.md`.
 
 ## Do NOT do these things
 
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
-- Don't build a passcode-gated diagnostics/tester menu or Stripe setup section (retracted prompt).
-- Don't let the clicker mint Tokens (`bit_spekter` has no wallet — lore 003/007).
-- Don't edit `docs/lore/_sealed/`.
-- Don't hand-edit `pnpm-lock.yaml`.
+- Don't let the *clicker* mint Tokens (it mints Credits; Tokens come from
+  exchange / SAMM — lore 007/009).
+- Don't add a client-side `profiles` UPDATE of `role`/`tier` — that would
+  re-open the escalation hole. Use the `admin_set_*` functions.
+- Don't edit `docs/lore/_sealed/`. Don't hand-edit `pnpm-lock.yaml`.
 - Don't deploy to Fly from shell — GitHub Actions owns deploys.
 
 ## Open questions for the owner
 
-- **Panel visual check:** do all four panels (SAMM, Admin, Profile, Data Scrape)
-  still render correctly with `<dialog open>`? The CSS reset should handle it.
-- **Proceed with `.showModal()` upgrade?** Gives real focus trapping; medium effort.
-- **Proceed with admin phase 4 session-logging migration schema?** (no owner infra
-  needed; just drafts a `.sql` file). Recommend yes.
-- Prior open questions (visual tuning):
-  - SAMM glow: too subtle / too harsh? Target: "clearly brighter when nearby."
-  - Hold glow (0.5 opacity, 80ms transition): reads as feedback?
-  - Auto-scrape pulse (650ms, 0.35→0.7 opacity, 0.95→1.03 scale): clear indicator?
-- Two-client emote/seam test results?
+- **Run migration 0006?** (closes the escalation hole; additive.) Strongly yes.
+- After 0006: any unexpected admin/dev rows in `profiles`? (the audit query.)
+- Grant caps OK (≤10M credits / ≤1M tokens per grant)? Tune if needed.
+- Trading backend: ready to scope a dedicated session?

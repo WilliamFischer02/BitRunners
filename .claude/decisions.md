@@ -227,3 +227,15 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (b) — distinct pet shapes:** `scene.ts` `petGeometryFor(itemId)` gives each pet a distinct primitive (sphere/octahedron/tetrahedron/cone/icosahedron/torus); the appearance applier rebuilds the pet mesh when the equipped id changes. Isolated via the appearance seam.
 
 **Next big items (focused sessions, not marathon tails):** admin phase 3 (user table + grants — security-critical SECURITY DEFINER + auth.users email exposure + cross-user economy writes) and the trading backend.
+
+## 2026-05-26 — Admin phase 3: user table + currency grants + profiles RLS fix (devlog 0053)
+
+**Decision (a) — currency grants use an append-only LEDGER, not a direct blob write.** The economy is account-*synced* (client owns its `player_economy.blob`, own-row RLS, 0002), not server-*authoritative*. An admin writing another user's blob would be clobbered by that user's own client sync (last-write-wins by `updatedAt`). So `admin_grant_economy` (SECURITY DEFINER, re-checks `is_admin`) appends to `economy_grants`; the recipient claims via `claim_economy_grants()` — one atomic `UPDATE … RETURNING` CTE that marks all their unclaimed rows claimed and returns the sums (exactly-once, own-rows-only). `economy-sync.ts` claims after the load guard clears, folds into the balance, pushes up. This is the scoped bridge until the trading epic's server-authoritative economy exists — at which point grants can become direct authoritative writes.
+
+**Decision (b) — CRITICAL pre-existing security fix: profiles column-grant lockdown.** RLS is row-level, not column-level. `profiles_update_own` (0001) + Supabase default column grants let any authenticated user `PATCH` their own profile to `role='admin'` and self-escalate (the 0003 "no client UPDATE policy grants it" note was wrong). 0006 `REVOKE UPDATE ON profiles FROM PUBLIC, anon, authenticated` then `GRANT UPDATE (display_name, display_name_status, display_name_note) TO authenticated`. role/tier now writable only via SECURITY DEFINER `admin_set_*`. **Future sessions: never add a client-side profiles UPDATE of role/tier — it re-opens the hole.**
+
+**Decision (c) — admin reads of others' data go through a SECURITY DEFINER function with the `is_admin` gate in the WHERE clause** (`admin_list_users` returns zero rows to non-admins), so `auth.users.email` is exposed to admins only. `admin_set_role` blocks changing your *own* role (lockout guard — bootstrap admin via SQL, 0003). Grants are capped (≤10M credits / ≤1M tokens) against fat-finger minting.
+
+**Decision (d) — `account tier` = `profiles.tier` (`free`|`elevated`).** Names the deferred premium concept; the clicker auto-click "premium" gate can later key off `tier='elevated'` instead of being free.
+
+**Owner action:** run `0006_admin_user_management.sql` (closes the escalation hole). Audit: `SELECT id, role FROM profiles WHERE role <> 'user';` — expect only the owner.

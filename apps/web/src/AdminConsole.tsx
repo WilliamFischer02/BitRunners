@@ -1,7 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { listDialogue, saveDialogue } from './dialogue.js';
 import {
+  type AdminUser,
   type DailySignin,
+  type Role,
+  type Tier,
+  adminGrantEconomy,
+  adminListUsers,
+  adminSetRole,
+  adminSetTier,
   fetchActivityStats,
   fetchUnderConstruction,
   getMyRole,
@@ -112,12 +119,7 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
 
         <ActivityStats />
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ coming next</div>
-          <div className="panel-stub">
-            ─── user table + token/credit grants (needs live economy).
-          </div>
-        </section>
+        <UserTable />
 
         <footer className="panel-footer">owner-only · actions are server-enforced</footer>
       </dialog>
@@ -303,5 +305,208 @@ function ActivityStats(): JSX.Element {
         </div>
       )}
     </section>
+  );
+}
+
+// ── User table + currency grants (admin phase 3, migration 0006) ───────────────
+
+function UserTable(): JSX.Element {
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setErr(null);
+    const data = await adminListUsers();
+    if (data === null) {
+      setErr('could not load (run migration 0006?)');
+      setUsers([]);
+    } else {
+      setUsers(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const selected = users?.find((u) => u.id === selId) ?? null;
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ users</div>
+      {err && <div className="panel-stub">─── {err}</div>}
+      {!err && users === null && <div className="panel-stub">─── loading…</div>}
+      {!err && users !== null && users.length === 0 && (
+        <div className="panel-stub">─── no accounts yet.</div>
+      )}
+      {users !== null && users.length > 0 && (
+        <div className="admin-userlist">
+          {users.map((u) => (
+            <button
+              key={u.id}
+              type="button"
+              className={u.id === selId ? 'admin-userrow is-sel' : 'admin-userrow'}
+              aria-pressed={u.id === selId}
+              onClick={() => setSelId(u.id === selId ? null : u.id)}
+            >
+              <span className="admin-user-email">
+                {u.email || u.displayName || u.id.slice(0, 8)}
+              </span>
+              <span className="admin-user-meta">
+                {u.role}
+                {u.tier === 'elevated' ? ' ★' : ''}
+              </span>
+              <span className="admin-user-bal">
+                ¢{u.credits} ◈{u.tokens}
+                {u.pendingCredits > 0 || u.pendingTokens > 0 ? (
+                  <span className="admin-user-pending"> +pending</span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selected && (
+        <UserEditor
+          key={selected.id}
+          user={selected}
+          onChanged={() => {
+            void load();
+          }}
+        />
+      )}
+    </section>
+  );
+}
+
+function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void }): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [credits, setCredits] = useState('');
+  const [tokens, setTokens] = useState('');
+  const [reason, setReason] = useState('');
+
+  const run = async (fn: () => Promise<{ error: string | null }>, ok: string): Promise<void> => {
+    if (busy) return;
+    setBusy(true);
+    setMsg(null);
+    const res = await fn();
+    setMsg(res.error ? `! ${res.error}` : ok);
+    setBusy(false);
+    if (!res.error) onChanged();
+  };
+
+  const changeRole = (role: Role): void => {
+    if (role === user.role) return;
+    void run(() => adminSetRole(user.id, role), 'role updated ✓');
+  };
+
+  const changeTier = (tier: Tier): void => {
+    if (tier === user.tier) return;
+    void run(() => adminSetTier(user.id, tier), 'tier updated ✓');
+  };
+
+  const grant = (): void => {
+    const c = Math.floor(Number(credits) || 0);
+    const t = Math.floor(Number(tokens) || 0);
+    if (c <= 0 && t <= 0) {
+      setMsg('! enter a credit or token amount');
+      return;
+    }
+    void run(async () => {
+      const res = await adminGrantEconomy(user.id, c, t, reason);
+      if (!res.error) {
+        setCredits('');
+        setTokens('');
+        setReason('');
+      }
+      return res;
+    }, 'queued ✓ — applies on their next load');
+  };
+
+  const pending =
+    user.pendingCredits > 0 || user.pendingTokens > 0
+      ? ` · pending ¢${user.pendingCredits} ◈${user.pendingTokens}`
+      : '';
+
+  return (
+    <div className="admin-usereditor">
+      <div className="admin-user-headline">
+        {user.email || '(no email)'}
+        <span className="admin-user-sub">
+          ¢{user.credits} ◈{user.tokens}
+          {pending}
+        </span>
+      </div>
+
+      <div className="panel-row">
+        <span className="panel-key">permissions</span>
+        <select
+          className="admin-select admin-inline-select"
+          value={user.role}
+          disabled={busy}
+          onChange={(e) => changeRole(e.target.value as Role)}
+          aria-label="permissions role"
+        >
+          <option value="user">user</option>
+          <option value="dev">dev</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+
+      <div className="panel-row">
+        <span className="panel-key">account tier</span>
+        <select
+          className="admin-select admin-inline-select"
+          value={user.tier}
+          disabled={busy}
+          onChange={(e) => changeTier(e.target.value as Tier)}
+          aria-label="account tier"
+        >
+          <option value="free">free</option>
+          <option value="elevated">elevated ★</option>
+        </select>
+      </div>
+
+      <div className="admin-grant-row">
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="¢ credits"
+          value={credits}
+          disabled={busy}
+          onChange={(e) => setCredits(e.target.value)}
+          aria-label="grant credits"
+        />
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="◈ tokens"
+          value={tokens}
+          disabled={busy}
+          onChange={(e) => setTokens(e.target.value)}
+          aria-label="grant tokens"
+        />
+        <button type="button" className="panel-toggle is-on" disabled={busy} onClick={grant}>
+          [ grant ]
+        </button>
+      </div>
+      <input
+        className="admin-select"
+        type="text"
+        maxLength={200}
+        placeholder="reason (optional)"
+        value={reason}
+        disabled={busy}
+        onChange={(e) => setReason(e.target.value)}
+        aria-label="grant reason"
+      />
+      {msg && <div className="panel-stub">─── {msg}</div>}
+    </div>
   );
 }
