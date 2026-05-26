@@ -26,6 +26,7 @@ function makeRainLine(): string {
 export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
   const [rain, setRain] = useState<string[]>(() => Array.from({ length: 4 }, makeRainLine));
   const [open, setOpen] = useState(false);
+  const [authEmail, setAuthEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -33,6 +34,14 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
     }, 380);
     return () => clearInterval(id);
   }, []);
+
+  useEffect(
+    () =>
+      subscribeAuth((s) =>
+        setAuthEmail(s.status === 'authenticated' ? (s.user?.email ?? 'signed in') : null),
+      ),
+    [],
+  );
 
   return (
     <>
@@ -52,7 +61,9 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
         <div className="profile-box">
           <div className="profile-label">{'// profile'}</div>
           <div className="profile-class">{className}</div>
-          <div className="profile-status">{'// guest'}</div>
+          <div className="profile-status">
+            {authEmail ? `// ${authEmail.split('@')[0] || 'member'}` : '// guest'}
+          </div>
         </div>
       </button>
       {open && <ProfilePanel className={className} onClose={() => setOpen(false)} />}
@@ -146,10 +157,17 @@ function AccountSection(): JSX.Element {
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [synced, setSynced] = useState(false);
   const configured = isAuthConfigured();
 
   useEffect(() => {
     return subscribeAuth(setAuth);
+  }, []);
+
+  useEffect(() => {
+    const on = (): void => setSynced(true);
+    window.addEventListener('bitrunners:economy-synced', on);
+    return () => window.removeEventListener('bitrunners:economy-synced', on);
   }, []);
 
   if (!configured) {
@@ -178,6 +196,10 @@ function AccountSection(): JSX.Element {
         <div className="panel-row">
           <span className="panel-key">user id</span>
           <span className="panel-val">{auth.user?.id?.slice(0, 8) ?? '─'}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">progress</span>
+          <span className="panel-val">{synced ? 'synced ✓' : 'syncing…'}</span>
         </div>
         <button
           type="button"

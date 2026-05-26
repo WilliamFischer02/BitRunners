@@ -1,6 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
 import { Boot } from './Boot.js';
+import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Samm } from './Samm.js';
@@ -31,24 +33,24 @@ export function App(): JSX.Element {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  if (slug) {
-    return (
-      <Suspense
-        fallback={
-          <div className="board">
-            <header className="board-header">
-              <span className="board-title">bitrunners · writer board</span>
-              <span className="board-status">loading editor…</span>
-            </header>
-          </div>
-        }
-      >
-        <Board slug={slug} />
-      </Suspense>
-    );
-  }
+  const content = slug ? (
+    <Suspense
+      fallback={
+        <div className="board">
+          <header className="board-header">
+            <span className="board-title">bitrunners · writer board</span>
+            <span className="board-status">loading editor…</span>
+          </header>
+        </div>
+      }
+    >
+      <Board slug={slug} />
+    </Suspense>
+  ) : (
+    <Shell />
+  );
 
-  return <Shell />;
+  return <ConstructionGate>{content}</ConstructionGate>;
 }
 
 function Shell(): JSX.Element {
@@ -123,6 +125,7 @@ function Game({ className }: GameProps): JSX.Element {
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />
+      <AdminConsole />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
     </div>
   );

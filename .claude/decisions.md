@@ -171,3 +171,23 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (b) — NPCs are server-only `PlayerState` entries** (`npc:N` ids) in the room state, wandering + emoting via the sim tick. They ride the existing player sync (no client change), don't count against the 40-human cap or matchmaking fullness, and don't keep empty rooms alive (auto-dispose is client-based). No schema change.
 
 **Note:** these are server changes → merging triggers a Fly redeploy (owner-gated).
+
+## 2026-05-21 — Account-synced economy + autonomous-task brief (devlog 0046)
+
+**Decision (a) — account economy is SYNC, not server-authoritative (yet).** Signed-in progress saves as one JSONB blob (`exportProgress()`) to a dedicated `player_economy` table (migration 0002) with own-row RLS; load-on-login adopts the newer of account/local by `updatedAt` (last-write-wins). The bridge is `economy-sync.ts` — the ONLY place economy.ts meets the network (economy.ts stays isolated). Used a dedicated table, NOT a `profiles` column, because the `profiles` UPDATE policy's WITH CHECK is tied to `display_name_status` and would block economy writes once a name is approved. **Trading still needs the stricter server-authoritative validation (p2p-trading-epic P1) — do not treat this sync as trade-safe.**
+
+**Decision (b) — profile button label is now auth-driven** (was hardcoded `// guest`). Part of the "signed in but still guest" fix.
+
+**Decision (c) — owner must run `0002_player_economy.sql`** for saving to work; until then sync silently no-ops.
+
+**Decision (d) — autonomous daily task** is governed by `.claude/autonomous-task.md` (standing brief). Guardrails: dev branch only, never push main, never merge, gates before commit, draft PRs, no paid resources / no Fly deploy / no silent dep bumps, canon + sealed-lore safe, no destructive git, security pass every run, escalate big/ambiguous calls to the handoff rather than guessing. Owner wires the schedule in Claude Code on the web.
+
+## 2026-05-21 — Admin console phase 1: role + RLS-gated config, fail-open construction gate (devlog 0047)
+
+**Decision (a) — admin privilege is DB + RLS, never client.** `profiles.role` (user/dev/admin) set only via SQL editor; `is_admin()`/`is_dev_or_admin()` SECURITY-DEFINER helpers; admin actions (e.g. the under-construction flag in `app_config`) gated by RLS policies, not by UI visibility. The client admin gate is convenience only. No service-role key in the client. This is the standing pattern for ALL future admin features (user table, grants, dialogue writes, stats) — enforce server-side.
+
+**Decision (b) — under-construction gate FAILS OPEN.** `ConstructionGate` blocks non-dev/admin only when it positively reads the flag as on; any fetch error → app stays visible. A config/DB hiccup must never lock everyone (incl. the owner) out. `app_config` is readable by anon (the flag must gate guests too); writable only by admins.
+
+**Decision (c) — account continuity surfaced** via a `bitrunners:economy-synced` event + a "progress · synced ✓" row in the account panel.
+
+**Owner actions:** run `0003_admin_role_and_config.sql`; set own `profiles.role='admin'` via SQL. Phases left: dialogue editor, user table + token/credit grants, activity stats — each needs its own admin-RLS migration; grants additionally need the server-authoritative economy (shared with trading).

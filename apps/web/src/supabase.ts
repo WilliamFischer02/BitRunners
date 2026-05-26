@@ -104,3 +104,43 @@ export async function signOut(): Promise<void> {
 export function isAuthConfigured(): boolean {
   return getSupabase() !== null;
 }
+
+export type Role = 'user' | 'dev' | 'admin';
+
+/** The signed-in user's role ('user' if guest / unconfigured / on error). */
+export async function getMyRole(): Promise<Role> {
+  const sb = getSupabase();
+  if (!sb) return 'user';
+  const { data: sess } = await sb.auth.getSession();
+  const uid = sess.session?.user?.id;
+  if (!uid) return 'user';
+  const { data, error } = await sb.from('profiles').select('role').eq('id', uid).maybeSingle();
+  if (error || !data) return 'user';
+  const role = (data as { role?: string }).role;
+  return role === 'admin' || role === 'dev' ? role : 'user';
+}
+
+/** Global under-construction flag. Fails OPEN (false) so a DB hiccup can't lock
+ *  everyone out. */
+export async function fetchUnderConstruction(): Promise<boolean> {
+  const sb = getSupabase();
+  if (!sb) return false;
+  const { data, error } = await sb
+    .from('app_config')
+    .select('value')
+    .eq('key', 'under_construction')
+    .maybeSingle();
+  if (error || !data) return false;
+  return (data as { value?: unknown }).value === true;
+}
+
+/** Admin-only (enforced by RLS). Flips the under-construction flag. */
+export async function setUnderConstruction(on: boolean): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb
+    .from('app_config')
+    .update({ value: on, updated_at: new Date().toISOString() })
+    .eq('key', 'under_construction');
+  return { error: error?.message ?? null };
+}
