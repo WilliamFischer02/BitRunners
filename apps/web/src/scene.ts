@@ -879,7 +879,14 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   })();
   const playerTagEl = document.createElement('div');
   playerTagEl.className = 'player-tag';
-  playerTagEl.innerHTML = `<span class="player-tag-name">${playerCode}</span><span class="player-tag-sub">// session</span>`;
+  const playerTagName = document.createElement('span');
+  playerTagName.className = 'player-tag-name';
+  playerTagName.textContent = playerCode;
+  const playerTagSub = document.createElement('span');
+  playerTagSub.className = 'player-tag-sub';
+  playerTagSub.textContent = '// session';
+  playerTagEl.appendChild(playerTagName);
+  playerTagEl.appendChild(playerTagSub);
   host.appendChild(playerTagEl);
 
   function resize(): void {
@@ -1099,6 +1106,16 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();
     checkSammApproach();
+
+    // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
+    const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
+    const sammDz = wrapDelta(rig.root.position.z - SAMM_Z);
+    const sammProx = Math.max(
+      0,
+      Math.min(1, 1 - Math.sqrt(sammDx * sammDx + sammDz * sammDz) / SAMM_TRIGGER_DIST),
+    );
+    (vendingScreen.material as MeshStandardMaterialType).emissiveIntensity =
+      0.7 + sammProx * (0.85 + Math.sin(elapsed * 3.1) * 0.22);
 
     const portRelX = rig.root.position.x - port.position.x;
     const portRelZ = rig.root.position.z - port.position.z;
