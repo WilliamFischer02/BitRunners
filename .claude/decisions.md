@@ -191,3 +191,13 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (c) — account continuity surfaced** via a `bitrunners:economy-synced` event + a "progress · synced ✓" row in the account panel.
 
 **Owner actions:** run `0003_admin_role_and_config.sql`; set own `profiles.role='admin'` via SQL. Phases left: dialogue editor, user table + token/credit grants, activity stats — each needs its own admin-RLS migration; grants additionally need the server-authoritative economy (shared with trading).
+
+## 2026-05-25 — Admin phase 2: editable NPC dialogue (devlog 0048)
+
+**Decision (a) — dialogue editor = registry + override-or-default.** `dialogue.ts` holds in-code defaults for 12 entries (Admin opening + 4 replies; SAMM greeting/insufficient + 5 quips); the `dialogue` table (migration 0004) stores only admin-edited overrides; `getLines()` returns override ?? default. Components read the registry instead of hardcoded constants. Adding more entries later (tutorial copy, etc.) is just more registry rows.
+
+**Decision (b) — dialogue writes are admin-RLS-enforced** (world-readable, `is_admin()` write) — same server-enforced model as the construction flag. Admin-authored text is exempt from no-free-text (owner-only).
+
+**Decision (c) — samm.ts stays network-isolated** by returning a `quipKey` (registry key) from `gamble()`; the UI (`Samm.tsx`) resolves the text via `dialogue.getLine()`. samm.ts never imports the dialogue/network layer.
+
+**Owner action:** run `0004_dialogue.sql`. Next admin phases: user table + token/credit grants (needs admin-read RLS + auth.users email via a view/function + server-authoritative economy), then activity stats (session logging + chart).

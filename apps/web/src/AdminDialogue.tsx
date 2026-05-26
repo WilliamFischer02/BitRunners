@@ -1,18 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { EMOTE_GLYPHS, type EmoteId } from './EmoteWheel.js';
+import { getLines } from './dialogue.js';
 
 interface AdminDialogueProps {
   onClose(): void;
 }
-
-const ADMIN_OPENING = ['so —', 'another shape finds me.', 'i have read you already.'];
-
-const ADMIN_RESPONSES: Record<EmoteId, string[]> = {
-  happy: ['warmth. logged.', 'it will not save you.'],
-  tired: ['rest is a rumor here.', 'the cloud never sleeps.'],
-  okay: ['compliance. noted.', 'we will speak again.'],
-  help: ['i am always here.', 'that is the trouble.'],
-};
 
 const TYPE_MS = 38;
 const POST_TYPE_HOLD_MS = 320;
@@ -28,8 +20,8 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
 
   // The line to currently reveal, computed from phase + lineIdx + chosen.
   const targetLine = (() => {
-    if (phase === 'opening') return ADMIN_OPENING[lineIdx] ?? '';
-    if (phase === 'response' && chosen) return ADMIN_RESPONSES[chosen][lineIdx] ?? '';
+    if (phase === 'opening') return getLines('admin.opening')[lineIdx] ?? '';
+    if (phase === 'response' && chosen) return getLines(`admin.${chosen}`)[lineIdx] ?? '';
     return '';
   })();
 
@@ -71,7 +63,7 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
       return;
     }
     if (phase === 'opening') {
-      if (lineIdx < ADMIN_OPENING.length - 1) {
+      if (lineIdx < getLines('admin.opening').length - 1) {
         setLineIdx((i) => i + 1);
       } else {
         setPhase('prompt');
@@ -79,7 +71,7 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
       return;
     }
     if (phase === 'response') {
-      const lines = chosen ? ADMIN_RESPONSES[chosen] : [];
+      const lines = chosen ? getLines(`admin.${chosen}`) : [];
       if (lineIdx < lines.length - 1) {
         setLineIdx((i) => i + 1);
       } else {

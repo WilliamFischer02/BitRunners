@@ -1,14 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { getLine } from './dialogue.js';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
-import {
-  BET_TIERS,
-  type GambleResult,
-  SAMM_GREETING,
-  SAMM_INSUFFICIENT,
-  canBet,
-  gamble,
-  minBet,
-} from './samm.js';
+import { BET_TIERS, type GambleResult, canBet, gamble, minBet } from './samm.js';
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -45,7 +38,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [result, setResult] = useState<GambleResult | null>(null);
   const [spinning, setSpinning] = useState(false);
   const [reels, setReels] = useState<[string, string, string]>(['◆', '◆', '◆']);
-  const [msg, setMsg] = useState<string>(SAMM_GREETING);
+  const [msg, setMsg] = useState<string>(getLine('samm.greeting'));
   const spinRef = useRef<number | null>(null);
   const timers = useRef<number[]>([]);
 
@@ -73,19 +66,19 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
   const onPull = (): void => {
     if (spinning) return;
     if (!canBet(bet)) {
-      setMsg(SAMM_INSUFFICIENT);
+      setMsg(getLine('samm.insufficient'));
       return;
     }
     const r = gamble(bet);
     if (!r) {
-      setMsg(SAMM_INSUFFICIENT);
+      setMsg(getLine('samm.insufficient'));
       return;
     }
     setResult(null);
     if (REDUCED_MOTION) {
       setReels(r.reels);
       setResult(r);
-      setMsg(r.quip);
+      setMsg(getLine(r.quipKey));
       return;
     }
     setSpinning(true);
@@ -100,7 +93,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
       }
       setReels(r.reels);
       setResult(r);
-      setMsg(r.quip);
+      setMsg(getLine(r.quipKey));
       setSpinning(false);
     }, 720);
     timers.current.push(id);
