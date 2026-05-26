@@ -213,3 +213,9 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (d) — "change runner" = in-game class switch** (NOT a currency exchanger — owner corrected my read). `Boot` gains `startAtSelect`; a `bitrunners:change-runner` event returns to the class-select grid; a profile-panel button triggers it. Swapping re-inits the scene on the new class.
 
 **Note:** Tokens remain client-trusted (device-local blob); server-authoritative validation is the trading-epic concern. Trading's "Tokens excluded" assumption is now obsolete — revisit when trading is built.
+
+## 2026-05-26 — Combined four open PRs into one merge-ready PR; dropped #45 as a dup (devlog 0051)
+
+**Decision:** #43 (proxy-wallet + runner switch) couldn't merge — `main` advanced to `b5fa113` (PR #42 polish/security) and the scheduled autonomous task left #44/#45/#46 open. Combined `main` + #43 + #44 + #46 onto #43's branch via merges (resolving conflicts in `Samm.tsx`, `style.css`, `handoff.md`), gates green, so #43 is now conflict-free/merge-ready. **Dropped #45** — a duplicate of #46 (autonomous task built admin phase-4 activity-stats twice); kept #46 for its stronger security (SECURITY DEFINER aggregate, no raw-row client read). Close #44/#45/#46 as superseded.
+
+**Process caution:** parallel autonomous runs off divergent `main` snapshots caused the conflicts + the dup. The autonomous brief should check for an existing open PR on the same roadmap item before starting; the owner merging promptly (or pausing the schedule during manual sessions) prevents divergent bases. Single new migration from this combine: `0005_session_logging.sql`.
