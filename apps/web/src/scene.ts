@@ -962,6 +962,15 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   }
   const trackedEmotes: TrackedEmote[] = [];
 
+  const clearRemoteAvatars = (): void => {
+    for (const ra of remoteAvatars.values()) scene.remove(ra.group);
+    remoteAvatars.clear();
+    for (const te of trackedEmotes) {
+      if (te.anchor.parentNode === host) host.removeChild(te.anchor);
+    }
+    trackedEmotes.length = 0;
+  };
+
   function spawnRemoteEmote(group: Group, text: string): void {
     const anchor = document.createElement('div');
     anchor.className = 'emote-anchor';
@@ -979,6 +988,9 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   let netSession: NetworkSession | null = null;
   let lastNetSend = 0;
   const serverUrl = getServerUrl();
+  let sceneDisposed = false;
+  let reconnectAttempt = 0;
+  const RECONNECT_DELAYS = [3_000, 6_000, 12_000];
 
   const netEl = document.createElement('div');
   netEl.className = 'net-status';
@@ -992,14 +1004,16 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   if (!serverUrl) {
     setNet('net: offline · VITE_SERVER_URL unset', 'idle');
   } else {
-    setNet(`net: connecting · ${serverUrl}`, 'connecting');
     let roomCode = '';
     try {
       roomCode = (localStorage.getItem('bitrunners.settings.roomCode') ?? '').trim();
     } catch {
       // storage unavailable — use matchmaking
     }
-    void (async () => {
+
+    const connectSphere = async (): Promise<void> => {
+      if (sceneDisposed) return;
+      setNet(`net: connecting · ${serverUrl}`, 'connecting');
       try {
         const session = await joinSphere(
           serverUrl,
@@ -1041,9 +1055,23 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
               const ra = remoteAvatars.get(id);
               if (ra) spawnRemoteEmote(ra.group, text);
             },
+            onDisconnect(_code) {
+              if (sceneDisposed) return;
+              netSession = null;
+              clearRemoteAvatars();
+              if (reconnectAttempt < RECONNECT_DELAYS.length) {
+                const delay = RECONNECT_DELAYS[reconnectAttempt] ?? 3_000;
+                reconnectAttempt++;
+                setNet(`net: reconnecting in ${delay / 1000}s…`, 'connecting');
+                window.setTimeout(() => void connectSphere(), delay);
+              } else {
+                setNet('net: disconnected · reload to reconnect', 'error');
+              }
+            },
           },
           roomCode || undefined,
         );
+        reconnectAttempt = 0;
         netSession = session;
         setNet(`net: connected · session ${session.sessionId.slice(0, 6)}`, 'ok');
         try {
@@ -1059,7 +1087,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
         console.warn('[bitrunners] multiplayer disabled — connect failed:', err);
         setNet(`net: error · ${msg.slice(0, 80)}`, 'error');
       }
-    })();
+    };
+    void connectSphere();
   }
 
   const tempFwd = new Vector3();
@@ -1286,6 +1315,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   }
 
   const dispose = (): void => {
+    sceneDisposed = true;
     cancelAnimationFrame(raf);
     ro.disconnect();
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);

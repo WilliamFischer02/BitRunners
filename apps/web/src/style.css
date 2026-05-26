@@ -929,6 +929,53 @@ dialog.panel {
   text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
 }
 
+/* ──────────── grant-received toast ──────────── */
+.grant-toast {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 14px;
+  background: rgba(8, 20, 12, 0.9);
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--tint);
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+  box-shadow: 0 0 14px rgba(147, 224, 177, 0.25);
+  animation: grant-toast-in 0.25s ease-out;
+}
+.grant-toast-amount {
+  color: #a8f0c0;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.5);
+}
+.grant-toast-label {
+  color: var(--tint-dim);
+  font-size: 9px;
+}
+@keyframes grant-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grant-toast {
+    animation: none;
+  }
+}
+
 /* ──────────── joystick hidden state ──────────── */
 .stick.is-hidden {
   display: none;
