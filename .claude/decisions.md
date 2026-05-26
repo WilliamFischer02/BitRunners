@@ -202,7 +202,7 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 
 **Owner action:** run `0004_dialogue.sql`. Next admin phases: user table + token/credit grants (needs admin-read RLS + auth.users email via a view/function + server-authoritative economy), then activity stats (session logging + chart).
 
-## 2026-05-26 — Proxy-wallet (Tokens go live) + runner switch (devlog 0049)
+## 2026-05-26 — Proxy-wallet (Tokens go live) + runner switch (devlog 0050)
 
 **Decision (a) — the "bit_spekter has no Token wallet" canon is retired as the planned proxy-wallet unlock** (lore 009; owner chose "proxy-wallet unlock" framing). Tokens are now a real spendable currency in the account-synced economy blob (NO migration — JSONB blob). Legacy `lockedTokens` are folded into the spendable balance on load (the release moment). `economy.tokens` replaces `lockedTokens`. **Future sessions: do not re-lock Tokens for bit_spekter.**
 

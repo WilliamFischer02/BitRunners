@@ -427,6 +427,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
   const [verb, setVerb] = useState<Verb>('SCRAPE');
   const [pressed, setPressed] = useState(false);
+  const [holding, setHolding] = useState(false);
   const [gain, setGain] = useState<{ n: number; k: number } | null>(null);
   const [view, setView] = useState<View>(initialView);
   const [closing, setClosing] = useState(false);
@@ -493,6 +494,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     if (holdTimer.current !== null) {
       window.clearInterval(holdTimer.current);
       holdTimer.current = null;
+      setHolding(false);
     }
   };
 
@@ -500,6 +502,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   // tap is handled by onClick, so a fast tap stays a single scrape.
   const onScrapeDown = (): void => {
     if (!hasHoldScrape() || holdTimer.current !== null) return;
+    setHolding(true);
     holdTimer.current = window.setInterval(() => scrapeRef.current(false), HOLD_MS);
   };
 
@@ -562,7 +565,17 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         {view === 'scrape' && (
           <>
             <section className="panel-section scrape-stage">
-              <div className={pressed ? 'scrape-glow is-on' : 'scrape-glow'} aria-hidden="true" />
+              <div
+                className={[
+                  'scrape-glow',
+                  holding ? 'is-holding' : '',
+                  autoOn ? 'is-auto' : '',
+                  pressed ? 'is-on' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                aria-hidden="true"
+              />
               <button
                 type="button"
                 className={pressed ? 'scrape-btn is-pressed' : 'scrape-btn'}

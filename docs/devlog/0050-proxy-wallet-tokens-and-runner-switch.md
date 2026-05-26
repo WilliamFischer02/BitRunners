@@ -1,4 +1,4 @@
-# 0049 — Proxy-wallet (Tokens live) + runner switch
+# 0050 — Proxy-wallet (Tokens live) + runner switch
 
 **Date:** 2026-05-26
 **Branch:** `claude/bitrunners-collaboration-EcqBv`

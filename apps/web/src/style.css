@@ -2310,6 +2310,28 @@ body,
   -webkit-mask: radial-gradient(closest-side, #000 38%, transparent 76%);
   mask: radial-gradient(closest-side, #000 38%, transparent 76%);
 }
+/* Sustained dim glow while holding */
+.scrape-glow.is-holding {
+  opacity: 0.5;
+  transition: opacity 80ms ease-in;
+}
+/* Gentle repeating pulse while auto-scrape runs (period matches AUTO_MS = 650ms) */
+.scrape-glow.is-auto {
+  opacity: 0.55;
+  animation: scrape-glow-auto 650ms ease-in-out infinite;
+}
+@keyframes scrape-glow-auto {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  50% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1.03);
+  }
+}
+/* Manual press flash — declared after is-auto/is-holding so it wins cascade */
 .scrape-glow.is-on {
   opacity: 1;
   animation: scrape-glow-pulse 420ms ease-out;
@@ -2323,6 +2345,13 @@ body,
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .scrape-glow.is-holding {
+    opacity: 0.4;
+  }
+  .scrape-glow.is-auto {
+    animation: none;
+    opacity: 0.35;
+  }
   .scrape-glow.is-on {
     animation: none;
   }

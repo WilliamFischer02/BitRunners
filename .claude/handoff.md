@@ -1,103 +1,97 @@
-# Handoff — 2026-05-16, session: multiplayer emote-sync + smoothing, then services setup guide
+# Handoff — 2026-05-26, sessions: proxy-wallet + runner switch (PR #43) AND security pass + SAMM/scrape glow (PR #42)
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE:** prod `main` now has **everything through devlog 0038** — PR #34 merged 0032–0037 (06:07), PR #35 merged 0038 (the skill tree). Both were Cloudflare-Pages-only deploys (no server/packages changes). **Chunk A (devlog 0039) is NEW work, not yet on a PR** — it'll be its own PR (the branch advanced past #35's merge, the recurring strand pattern; expected).
-- **Live web (bitrunners.app):** clicker + skill tree + mobile pass all live. Chunk A (emote fix + polish) pending its PR/merge.
-- **Live server (bitrunners.fly.dev):** multiplayer (protocol v1, emote schema) live since the #33 merge. **Chunk A's emote fix is client-only — no server change, no Fly redeploy.**
-- **Admin console phase 1 BUILT (devlog 0047):** `profiles.role` + `is_admin()` RLS helpers + `app_config` (migration **0003**). `AdminConsole` (admin-only launcher), under-construction switch with dev-bypass (`ConstructionGate`, fails OPEN), account sync-status row.
-- **Admin console phase 2 BUILT (devlog 0048):** dialogue editor — `dialogue` table (migration **0004**, world-read/admin-write) + `dialogue.ts` registry (12 entries: Admin + SAMM; override-or-default); AdminDialogue + SAMM read from it (SAMM via `quipKey` to stay isolated); `$ dialogue` editor in the admin panel. Next admin phases: user table + grants (needs admin-read RLS + auth.users email + server-authoritative economy), then activity stats.
+- **⚠️ DEPLOY STATE:** prod `main` now has **everything through devlog 0049** — admin console phases 1 + 2 (dialogue editor) + SAMM proximity glow + hold/auto-scrape glow + security pass. **PR #43 (proxy-wallet + runner switch, devlog 0050) is pending merge** — a Pages-only change (no server/packages touches).
+- **Live web (bitrunners.app):** clicker, skill tree, SAMM (with proximity glow), admin console, dialogue editor, room-code join, email/password auth, hold/auto-scrape glow all live (through 0049).
+- **Live server (bitrunners.fly.dev):** protocol v1, idle-disconnect, ambient NPCs live. **No server change in either session.**
+- **Tokens are LIVE (devlog 0050, proxy-wallet, lore 009):** `economy.tokens` is a real spendable balance (replaced display-only `lockedTokens`; legacy locked tokens fold in on load). Credits→Tokens one-way exchange (shop, `CREDITS_PER_TOKEN=100`); token-priced premium shop items; SAMM bets Credits OR Tokens. **No migration** (tokens ride the synced blob). The "bit_spekter can't hold Tokens" canon is RETIRED — do not re-lock. Trading's "Tokens excluded" note is now obsolete.
+- **Runner switch (devlog 0050):** in-game "change runner" (profile panel) → back to class-select grid (`Boot startAtSelect`, `bitrunners:change-runner` event). Lets you swap between unlocked runners (e.g. server_speaker) mid-session.
 - **⚠️ Owner runs migrations in order: 0002, 0003, 0004**, and sets own `profiles.role='admin'` (SQL). The admin launcher only appears once role=admin.
-- **Tokens are LIVE (devlog 0049, proxy-wallet, lore 009):** `economy.tokens` is a real spendable balance (replaced display-only `lockedTokens`; legacy locked tokens fold in on load). Credits→Tokens one-way exchange (shop, `CREDITS_PER_TOKEN=100`); token-priced premium shop items; SAMM bets Credits OR Tokens. **No migration** (tokens ride the synced blob). The "bit_spekter can't hold Tokens" canon is RETIRED — do not re-lock. Trading's "Tokens excluded" note is now obsolete.
-- **Runner switch (devlog 0049):** in-game "change runner" (profile panel) → back to class-select grid (`Boot startAtSelect`, `bitrunners:change-runner` event). Lets you swap between unlocked runners (e.g. server_speaker) mid-session.
-- **⚠️ EVERYTHING since #38 is in unmerged PR #39** (auth redesign, room-code, server-hygiene, account-sync, admin phase-1). Until #39 merges, none of it is on the live site — so "still guest" tests reflect the OLD deployed code. Merging #39 = Pages + Fly deploy; also run migrations **0002** + **0003** in Supabase.
-- **Autonomous daily task:** standing brief at `.claude/autonomous-task.md` (owner wires the schedule in Claude Code web). Guardrails baked in: dev branch only, never main/merge, gates, draft PRs, security pass, escalate big calls.
-- **Active plan:** original 5-chunk sprint (devlog 0039) all merged/planned (A/B/C/E shipped; D = trading backend epic, deferred until auth). Auth-UI + room-code + server-hygiene on PR #39 (pending; merging #39 = Fly redeploy). Two backend epics gated on auth: trading + admin panel (`docs/design/*-epic.md` — admin MUST be server-enforced).
-- **Isolation boundary update:** as of Chunk B, `scene.ts` now imports `appearance.ts` (equipped cosmetics render on the rig) — this is the ONE designed crossing. The mini-game modules (economy/shop/skilltree/ScrapeMenu) still import nothing from scene/network/server. Recolor affects the LOCAL rig only (device-local appearance); remote players don't see each other's gear yet.
-- **Local repo branch:** `claude/bitrunners-collaboration-EcqBv` + Chunk A commit.
-- **CI status:** local gates green — `pnpm lint` clean (44 files), `pnpm typecheck` 8/8, `pnpm build` 5/5. No test suite (`vitest run` exits 1 on "no tests" — pre-existing, not a regression).
-- **⚠️ Emote fix unverifiable headless** — needs a live 2-client test; receiving tab's console logs `[bitrunners] remote emote …` on arrival (tells us send-vs-receive if it still fails).
+- **CI status:** gates green — `pnpm lint` clean (53 files), `pnpm typecheck` 8/8, `pnpm build` 5/5.
 
-## What I did this session
+## What was done (PR #42 — merged)
 
-Fixed the three reported multiplayer defects (full detail in `docs/devlog/0031`):
+**Security pass** (every-run mandatory):
+- Found one `innerHTML` instance (`scene.ts:882`, playerCode — alphanumeric 6-char, low actual risk). Replaced with `createElement`+`textContent` for defence-in-depth. No other findings.
+- Full table of results in devlog 0049. All RLS policies intact. No secrets, no free-text input, no client-trusted privilege escalation.
 
-1. **Emoticrons now sync to other players.** Added `emote`/`emoteSeq` to the player schema, an allowlisted `onMessage('emote')` server handler, `sendEmote`/`onEmote` client wiring, and screen-tracked emote bubbles above remote avatars. `triggerEmote()` now also sends to the server.
-2. **Remote players visible across the seam.** Root cause was the 3×3 world-wrap drawing avatars at the raw server coord. Now drawn at the nearest periodic image (`wrapDelta`). Pure client render math — no server/bandwidth cost, no AOI added.
-3. **Smooth remote movement.** `onUpdate` records a target; the render loop exponential-smooths position + rotation toward it. Seam wraps snap (invisible — identical tiles).
+**SAMM proximity glow** (`scene.ts`):
+- The vending machine screen (`vendingScreen`) now drives `emissiveIntensity` from its baseline 0.7 up to ~1.5± in the render loop based on player distance to SAMM coordinates. Pulsing at ~0.5 Hz (3.1 rad/s). Mirrors the existing port/depot glow pattern exactly.
 
-Also: moved the canonical emote glyph set + `isValidEmote()` to `@bitrunners/shared` (single source of truth; enforces the "no free-text" moderation rule server-side), bumped `PROTOCOL_VERSION` 0→1, wrote devlog 0031, logged the architectural calls in `.claude/decisions.md`.
+**Hold/auto-scrape glow** (`ScrapeMenu.tsx`, `style.css`):
+- Added `holding` state (set `onScrapeDown`, cleared `stopHold`).
+- Glow div now gets `is-holding` (dim sustained glow, 0.5 opacity) when holding and `is-auto` (repeating 650ms pulse animation) when auto-scrape runs.
+- `is-on` (manual press flash) is declared last in CSS so it wins cascade over the new states.
+- Reduced-motion safe: animations suppressed, static opacity fallbacks.
 
-**Second deliverable — `docs/setup/SERVICES.md` (devlog 0032):** the canonical master setup guide for every external service — what/why/free-tier/click-by-click/exact-secret-and-destination/verify, in dependency order. Built from an actual config-surface scan (only 6 secrets/bindings wired today; everything else explicitly labelled ACCOUNT-ONLY). Supersedes setup steps in devlogs 0020/0021/0026. Decisions recorded: Neon DEPRECATED, Stripe DEFERRED, Steam needs a custom Worker. The earlier in-chat "diagnostics/tester menu" + Stripe stack proposal was an **accidental prompt — out of scope, do not build**; verified it never entered a committed file. Docs-only commit; no code, no deploy impact.
+## What was done (PR #43 — this PR)
 
-**Third deliverable — Data Scrape mini-game design + scaffold (devlog 0033):** cookie-clicker economy in a new menu directly under the profile/account button. Design `docs/design/clicker-minigame.md`; lore Q&A `docs/lore/007-data-economy.md` (+ glossary/index). Code: `economy.ts` (pure model + device-local persistence) + `ScrapeMenu.tsx` (launcher + panel scaffold), mounted in `App.tsx`, styled in `style.css`. Loop: SCRAPE→bits, TABULATING up the 8× ladder (bits→strings→serials→passcodes), CALCULATING passcodes→Credits via Admin (destroy) / Company (recycle), +1 Samaritan on the matching track. Locked: device-local (IP-sync rejected — privacy), Credits not Tokens (canon preserved), serials 8×. Fully isolated from scene/network/server. Deferred: full iso ASCII art, press juice, balancing. Blocked seam: reputation reward curve (faction-reward Q&A). **Continued (devlog 0034):** aesthetic terminal HUD for the data/token section under the SCRAPE button (ASCII ladder micro-bars, locked Tokens row, scanline) + a `shop ▸` header button and isolated `shop.ts` framework — Credits-priced items, Token items hard-locked per canon, `owned` added to economy state (additive, no schema bump). Shop catalog is placeholder; real rewards = open Q&A. **Continued (devlog 0035):** framework for clothing (head/chest/legs, 3 escalating rarities), pets (priced ≫ clothing), rate upgrades (scrape wired live), a 16-slot inventory grid, equip/unequip, show/hide cosmetics — all additive in `economy.ts` (no schema bump). New `appearance.ts` is the **render isolation boundary** (resolves equipped→descriptor; nothing imports it yet; scene.ts wires it later). Concrete account-link seam added: `exportProgress`/`importProgress`. Polished the clicker (press-pop, scrape-yield readout, all timers cleaned on unmount). Catalog/rarity/pet lore still placeholder — open owner Q&A (lore 007). **Completion pass (devlog 0036):** wired the inert `tabulate` upgrade to a real cascading bulk `tabulate all` (8× canon preserved; manual, no idle); finished the open **and** close glitch transition (all close paths via `requestClose`); added SCRAPE `+N` juice + press-pop + iso scanline; surfaced `inventory full`/`owned`/`equipped`/`maxed` states; robustness (mount-once Esc, all timers cleaned). No new content; canon/isolation/no-IP unchanged. **Mobile/desktop + deploy-gap (devlog 0037):** found PR #33 only merged the multiplayer commit (rest stranded, no open PR) — opened a new PR for the 5+ stranded commits. Added `@media (max-width:540px)` (launcher scale + clicker header overflow fix) and `@media (pointer:coarse)` (38–46px tap targets) — append-only, desktop untouched. Not device-verified (headless) — use the Pages PR preview to eyeball before prod merge. **Skill tree + surfacing (devlog 0038):** owner Q&A locked 3 forks — (a) auto-click ships **functional & free**, premium is a deferred seam (`hasAutoScrape()`), no billing built; (b) Path 3 raises **Credits-per-passcode at the trade**, the locked 8× ladder is NOT touched (canon-safe); (c) rate upgrades **moved out of the Credits shop into a passcode skill tree** (shop now cosmetics-only; `purchaseUpgrade` removed, `purchaseTreeNode` + cumulative `lifetimePasscodes` added — additive, backward-compatible). New isolated `skilltree.ts` (3 paths, all balance numbers centralized). Wired hold-to-scrape + auto-scrape (panel-open, not offline idle). Main view: launcher renamed `> data scrape`, standalone **shop icon button** on the right rail, **inventory button in the emote-wheel centre**, new `tree` tab; cross-open via `bitrunners:open-scrape` event. Isolation preserved (no scene/net/server imports; EmoteWheel stays presentational). **Balance is a first pass, NOT tuned to the "≈1 week of 1 h" target — needs live play.** Not device-verified.
+**Proxy-wallet unlock (lore 009):**
+- `economy.tokens` is now a real spendable balance. Legacy `lockedTokens` fold into spendable on load.
+- Credits→Tokens one-way exchange (`+1`/`+5` in the shop, `CREDITS_PER_TOKEN=100`).
+- Token-priced premium items (aurora crown, data seraph); currency-aware buy; `tk`/`cr` labels.
+- SAMM: bet Credits or Tokens (currency toggle, token tiers `[1,3,10]`); payouts in the bet currency.
+- Real token balance shown in HUD / SAMM / shop; "no wallet" copy retired.
+
+**Runner switch:**
+- In-game "change runner" (profile panel → `[ switch ]`) returns to class-select grid (`Boot startAtSelect` + `bitrunners:change-runner`), re-skinning the scene on the chosen class.
 
 ## What's blocking forward progress
 
-- **Browser verification.** Headless env — I could not run two clients to eyeball the emote round-trip, seam visibility, or smoothing feel. Logic is gate-verified and reasoned against the real code paths; it needs a live two-client check on a deployed build.
-- Unchanged from prior: owner-side service wiring (Supabase keys, Resend DNS, OAuth IDs) still blocks the account system.
-
-## What the owner is doing in parallel
-
-- Wiring Supabase + Resend + OAuth — **now follow `docs/setup/SERVICES.md` (canonical), not devlog 0026 (history).** Critical-path order is in §1.
-- Owns prod deploy approvals. No `main` push happened or is requested this session.
+- **Browser verification.** All visual changes (SAMM glow, hold glow, auto glow, token UI, runner switch) need eyeballing on a live preview.
+- **Owner-side service wiring.** Supabase + Resend + OAuth still unblocked. Follow `docs/setup/SERVICES.md` §1 critical path.
+- **Admin phases 3 + 4** (user table + grants, activity stats) gated on server-authoritative economy (shared with p2p-trading-epic P1) and live auth.
 
 ## What I would do next, in priority order
 
-1. **Owner-side: execute `docs/setup/SERVICES.md` §1 critical path (steps 1–7).** Highest-leverage unblock — accounts/persistence/email/OAuth all wait on this. The guide is click-by-click with exact secret destinations.
-2. **Two-client live test on a deployed build:** emote appears over the correct remote avatar and fades; remote players stay visible when crossing the seam; movement reads smooth (not rubber-banding or jittering).
-3. Tune `REMOTE_LERP_K` (scene.ts, currently 14) if motion feels laggy (raise) or jittery (lower) live.
-4. Re-check the remote-crosses-seam pop (devlog 0031 known tradeoff) — only act if it reads badly.
-5. Still open: run-toggle + reworked-tendrils live eyeball (from 0030/0029).
-6. Phase 2: aether snapshot on `onLeave` (TODO in `sphere-room.ts`) — Upstash setup steps are in SERVICES.md §12.
-7. Steam login: build the OpenID→Supabase-session Worker (SERVICES.md §10 explains why it's a build task, not a toggle).
-8. Mini-game: get the **faction-reward Q&A** answered — it unblocks both the 20-achievements design AND the clicker's reputation rewards (currently a raw counter + emitted intent). Then the deferred polish pass: full isometric ASCII button render + press juice, glitch open/close polish, idle/balancing numbers. Implement `migrateEconomyToAccount()` (call `exportProgress`/`importProgress`) when Supabase lands.
-9. Mini-game content/render: owner Q&A for the real clothing/pet catalog + rarity/lore vocabulary (lore 007), then the deferred render pass — wire `scene.ts` to `appearance.ts` (`getEquippedAppearance`/`subscribeAppearance`) to actually re-skin the bit_spekter rig. That's the one place isolation is intentionally crossed; do it via the seam only.
+1. **Owner-side: execute `docs/setup/SERVICES.md` §1 critical path.** Highest leverage.
+2. **Two-client live test:** emote sync, seam visibility, smooth movement.
+3. **Tune visual values** after live eyeball:
+   - SAMM glow: if too subtle raise the `0.85` multiplier; if too harsh lower it.
+   - Scrape hold/auto: `is-holding` opacity 0.5 and `is-auto` range 0.35–0.7 are first-pass.
+4. **Admin phase 3: user table + grants** — blocked on live auth + server-authoritative economy.
+5. **Admin phase 4: activity stats** — hand-rolled SVG chart, session logging migration.
+6. **Faction-reward Q&A** — unblocks reputation reward curve + 20-achievements design.
+7. **P2P trading epic** — gated on auth + server-authoritative tradeables.
+8. **Aether snapshot on `onLeave`** — Phase 2 polish; needs Upstash (SERVICES.md §12).
 
-## Files touched this session
+## Files touched (combined)
 
-- `packages/shared/src/index.ts` — protocol bump; `EmoteId`/`EMOTE_GLYPHS`/`isValidEmote()` (new SoT).
-- `apps/web/src/EmoteWheel.tsx` — re-export from shared.
-- `apps/server/src/state.ts` — `emote` + `emoteSeq`.
-- `apps/server/src/sphere-room.ts` — allowlisted `emote` handler.
-- `apps/web/src/network.ts` — emote snapshot/interfaces, `onEmote`, `sendEmote`, seq tracking.
-- `apps/web/src/scene.ts` — `wrapDelta`, structured `remoteAvatars`, interpolation + nearest-image, tracked remote emote bubbles, send-on-emote, dispose cleanup.
-- `apps/web/src/style.css` — `.emote-anchor`.
-- `docs/devlog/0031-multiplayer-emote-sync-and-smoothing.md` — new.
-- `docs/setup/SERVICES.md` — new (master services setup guide; second deliverable).
-- `docs/devlog/0032-services-setup-master-guide.md` — new.
-- `docs/design/clicker-minigame.md` — new (mini-game architecture).
-- `docs/lore/007-data-economy.md` — new (economy Q&A); `docs/lore/README.md` — index + glossary updated.
-- `apps/web/src/economy.ts`, `apps/web/src/ScrapeMenu.tsx` — new (mini-game model + UI scaffold).
-- `apps/web/src/App.tsx` — mount `<ScrapeMenu/>` under `<ProfileIcon/>`; `apps/web/src/style.css` — scrape launcher/panel/button + glitch stub.
-- `docs/devlog/0033-clicker-minigame-scaffold.md` — new.
-- `apps/web/src/shop.ts` — new (shop framework); `economy.ts` — `owned` + purchase; `ScrapeMenu.tsx`/`style.css` — HUD + shop view; `docs/devlog/0034-clicker-hud-and-shop-scaffold.md` — new.
-- `apps/web/src/appearance.ts` — new (render isolation seam); `economy.ts`/`shop.ts` — clothing/pets/upgrades/inventory + export/import seam; `ScrapeMenu.tsx`/`style.css` — inventory view + nav + press polish; `docs/devlog/0035-clicker-clothing-inventory-framework.md` — new.
-- `economy.ts`/`shop.ts`/`ScrapeMenu.tsx`/`style.css` — completion pass (bulk tabulate-all, close transition, juice, surfaced failure states, robustness); `docs/design/clicker-minigame.md` §15; `docs/devlog/0036-clicker-completion-polish.md` — new.
-- `apps/web/src/style.css` — responsive (≤540px) + touch (pointer:coarse) rules for clicker/shop/inventory; `docs/devlog/0037-mobile-pass-and-deploy-gap.md` — new.
-- `apps/web/src/skilltree.ts` — new (3-path passcode tree, isolated); `economy.ts` — `lifetimePasscodes`/`creditsPerPasscode`/`hasHold`/`hasAuto`/`isTreeUnlocked`/`purchaseTreeNode`, `purchaseUpgrade` removed; `shop.ts` — cosmetics-only (upgrade kind dropped); `ScrapeMenu.tsx` — tree view + hold/auto + shop launcher + `openScrape`; `EmoteWheel.tsx`/`App.tsx` — emote-centre inventory button; `style.css` — appended; `docs/design/clicker-minigame.md` §16; `.claude/decisions.md` appended; `docs/devlog/0038-clicker-skill-tree-and-surfacing.md` — new.
-- `.claude/decisions.md` — appended (multiplayer; services/Neon/Stripe/Steam; mini-game privacy/canon/isolation).
+- `apps/web/src/scene.ts` — innerHTML→textContent fix; SAMM proximity glow in render loop.
+- `apps/web/src/ScrapeMenu.tsx` — `holding` state; updated `stopHold`/`onScrapeDown`; glow class list.
+- `apps/web/src/style.css` — `is-holding`, `is-auto` CSS rules; consolidated reduced-motion block.
+- `apps/web/src/App.tsx` — runner switch event wiring.
+- `apps/web/src/Boot.tsx` — `startAtSelect` prop for runner switch.
+- `apps/web/src/ProfileIcon.tsx` — "change runner" button.
+- `apps/web/src/Samm.tsx` — currency toggle (Credits/Tokens), token tiers.
+- `apps/web/src/economy.ts` — `tokens` balance, `exchangeCreditsForTokens`, legacy fold-in.
+- `apps/web/src/samm.ts` — token bet logic, currency-aware payouts.
+- `apps/web/src/shop.ts` — token-priced items, currency-aware buy.
+- `apps/web/src/dialogue.ts` — (auto-merged, no conflicts).
+- `docs/devlog/0049-samm-glow-hold-auto-scrape-glow-security-pass.md` — PR #42 devlog.
+- `docs/devlog/0050-proxy-wallet-tokens-and-runner-switch.md` — PR #43 devlog (renumbered from 0049).
+- `docs/lore/009-proxy-wallet.md` — new lore entry.
+- `docs/lore/README.md` — lore index update.
+- `.claude/decisions.md` — proxy-wallet + runner switch decisions.
 - `.claude/handoff.md` — this file.
 
-## Do NOT do these things (specific to right now)
+## Do NOT do these things
 
-- Don't push to `main` without explicit owner confirmation in the live conversation. Active branch is `claude/bitrunners-collaboration-EcqBv`. Server paths changed — a `main` push WILL trigger a Fly redeploy.
-- Don't add a server-side AOI/visibility radius to "fix" anything — the small-radius bug was a client render bug and is fixed client-side. An AOI would add cost for no benefit at 19×19 / current scale (see decisions.md).
-- Don't loosen the emote allowlist or accept free-text emotes — it's the server-side enforcement of a moderation rule.
-- Don't edit `.claude/settings.json` by append/prepend (see prior handoff/decisions).
-- **Don't build a passcode-gated diagnostics / in-game "tester" menu, and don't add a Stripe/payments setup section.** Both were an accidental in-chat prompt the owner explicitly retracted. SERVICES.md verification is intentionally manual (curl/browser). Stripe is deferred to its own future doc.
-- Don't treat devlog 0026 as the setup source anymore — `docs/setup/SERVICES.md` is canonical; devlogs are immutable history.
-- **Don't let the Data Scrape clicker mint Tokens** — it mints Credits only; Tokens are canon-scarce and `bit_spekter` can't earn them (lore 003/007). Don't couple `economy.ts`/`ScrapeMenu.tsx` to `scene.ts`/`network.ts`/server — isolation is deliberate so an off-roadmap feature can't regress Phase-2.
+- Don't push to `main` — prod branch; deploys Pages + Fly.
+- Don't merge any PR — owner-gated.
+- Don't build a passcode-gated diagnostics/tester menu or Stripe setup section (retracted prompt).
+- Don't re-lock Tokens for bit_spekter — the proxy-wallet unlock is canonical.
+- Don't edit `docs/lore/_sealed/`.
+- Don't hand-edit `pnpm-lock.yaml`.
+- Don't deploy to Fly from shell — GitHub Actions owns deploys.
 
 ## Open questions for the owner
 
-- After a live test: does emote sync / seam visibility / smoothing read correctly? Any rubber-banding?
-- `REMOTE_LERP_K = 14` acceptable, or want snappier/smoother?
-- The remote-crosses-seam pop (devlog 0031 tradeoff) — acceptable, or worth the extra complexity to smooth?
-- Re-confirm auto-merge-to-`main` policy if you want future sessions to ship without per-PR approval.
-
-## Retrospective (not sycophantic)
-
-- The "small radius" bug is the instructive one: the obvious read ("visibility/AOI problem → widen a radius") would have been wrong and would have *added server cost*. Reading the actual wrap render code showed it was a client-side toroidal nearest-image bug — opposite conclusion, zero cost. Worth restating: confirm the root cause in code before reaching for the config knob the symptom suggests.
-- Two of three fixes are pure client render math with no protocol/cost impact; only the emote feature touched the wire. Keeping that boundary explicit (and the allowlist in shared) is what kept a "make multiplayer feel better" request from quietly becoming a bandwidth or moderation regression.
-- Still no browser proof. Said so plainly rather than implying it works. Gates catch type/lint/build breakage, not "does it feel smooth with two real clients" — that gap is real and is the top next-step.
+- After live eyeball: SAMM glow — too subtle / too harsh? Target: "clearly brighter when nearby."
+- Hold glow (0.5 opacity, 80ms transition): reads as feedback? Or too dim?
+- Auto-scrape pulse (650ms cycle, 0.35→0.7 opacity, 0.95→1.03 scale): clear indicator? Or too busy?
+- Proceed with admin phase 4 session-logging migration (no owner action needed, just writes a `.sql` file)?
+- Two-client emote/seam test results (from prior open questions)?
+- Buy tokens with credits; bet tokens at SAMM; buy a token-priced item — all verified?
+- "Change runner" → select grid → pick a class → scene re-skins — verified?
