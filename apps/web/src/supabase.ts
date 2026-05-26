@@ -171,3 +171,96 @@ export async function fetchActivityStats(daysBack = 30): Promise<DailySignin[] |
     dau: Number(row.dau),
   }));
 }
+
+function normRole(r: unknown): Role {
+  return r === 'admin' || r === 'dev' ? r : 'user';
+}
+
+export type Tier = 'free' | 'elevated';
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  displayName: string | null;
+  role: Role;
+  tier: Tier;
+  createdAt: string;
+  credits: number;
+  tokens: number;
+  /** Granted-but-not-yet-claimed totals (applied on the user's next load). */
+  pendingCredits: number;
+  pendingTokens: number;
+}
+
+/** Admin-only (SECURITY DEFINER admin_list_users re-checks is_admin and exposes
+ *  auth.users.email only to admins). Returns null on error / unconfigured. */
+export async function adminListUsers(): Promise<AdminUser[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('admin_list_users');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id),
+    email: String(r.email ?? ''),
+    displayName: typeof r.display_name === 'string' ? r.display_name : null,
+    role: normRole(r.role),
+    tier: r.tier === 'elevated' ? 'elevated' : 'free',
+    createdAt: String(r.created_at ?? ''),
+    credits: Number(r.credits ?? 0),
+    tokens: Number(r.tokens ?? 0),
+    pendingCredits: Number(r.pending_credits ?? 0),
+    pendingTokens: Number(r.pending_tokens ?? 0),
+  }));
+}
+
+/** Admin-only. Queues a credit/token grant the recipient claims on next load. */
+export async function adminGrantEconomy(
+  target: string,
+  credits: number,
+  tokens: number,
+  reason: string,
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_grant_economy', {
+    target,
+    p_credits: credits,
+    p_tokens: tokens,
+    p_reason: reason,
+  });
+  return { error: error?.message ?? null };
+}
+
+/** Admin-only. Sets a user's account tier (free | elevated). */
+export async function adminSetTier(target: string, tier: Tier): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_set_tier', { target, p_tier: tier });
+  return { error: error?.message ?? null };
+}
+
+/** Admin-only. Sets a user's permissions role. Server blocks changing your own. */
+export async function adminSetRole(target: string, role: Role): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_set_role', { target, p_role: role });
+  return { error: error?.message ?? null };
+}
+
+export interface GrantClaim {
+  credits: number;
+  tokens: number;
+}
+
+/** Claims the signed-in user's pending economy grants exactly-once (atomic on
+ *  the server). Returns the summed amounts to apply locally, or null on error. */
+export async function claimEconomyGrants(): Promise<GrantClaim | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('claim_economy_grants');
+  if (error || !data) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const r = row as { credits?: unknown; tokens?: unknown };
+  return { credits: Number(r.credits ?? 0), tokens: Number(r.tokens ?? 0) };
+}

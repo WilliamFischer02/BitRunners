@@ -2830,3 +2830,92 @@ dialog.panel {
   margin: 6px 0 2px;
   overflow: visible;
 }
+
+/* ── admin user table + currency grants (devlog 0053 admin phase 3) ── */
+.admin-userlist {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 168px;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+.admin-userrow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  background: rgba(8, 12, 14, 0.6);
+  border: 1px solid #243029;
+  border-radius: 3px;
+  color: #b6d4c2;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  padding: 5px 8px;
+  cursor: pointer;
+}
+.admin-userrow:hover {
+  border-color: #3a4a40;
+}
+.admin-userrow.is-sel {
+  border-color: #93e0b1;
+  color: #e6fff0;
+}
+.admin-user-email {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.admin-user-meta {
+  color: #8aa597;
+  letter-spacing: 0.04em;
+}
+.admin-user-bal {
+  color: #c9a23a;
+  white-space: nowrap;
+}
+.admin-user-pending {
+  color: #93e0b1;
+}
+.admin-usereditor {
+  border: 1px solid #3a4a40;
+  border-radius: 3px;
+  padding: 8px;
+  margin-top: 4px;
+  background: rgba(8, 12, 14, 0.4);
+}
+.admin-user-headline {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  color: #e6fff0;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.admin-user-sub {
+  color: #c9a23a;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.admin-inline-select {
+  width: auto;
+  margin-bottom: 0;
+}
+.admin-grant-row {
+  display: flex;
+  gap: 6px;
+  margin: 6px 0;
+}
+.admin-grant-num {
+  flex: 1;
+  margin-bottom: 0;
+}
+@media (pointer: coarse) {
+  .admin-userrow {
+    min-height: 40px;
+  }
+}

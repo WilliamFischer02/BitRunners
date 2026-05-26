@@ -9,12 +9,14 @@
 // trading needs stricter server validation (p2p-trading-epic.md P1).
 import {
   type EconomyState,
+  addCredits,
+  addTokens,
   exportProgress,
   getEconomy,
   importProgress,
   subscribeEconomy,
 } from './economy.js';
-import { getSupabase, subscribeAuth } from './supabase.js';
+import { claimEconomyGrants, getSupabase, subscribeAuth } from './supabase.js';
 
 const SAVE_DEBOUNCE_MS = 1500;
 const TABLE = 'player_economy';
@@ -52,6 +54,26 @@ async function loadFromAccount(uid: string): Promise<void> {
     }
   } finally {
     loading = false;
+  }
+  // After the load guard clears so addCredits/addTokens persist + sync back up.
+  await applyPendingGrants(uid);
+}
+
+/**
+ * Claim any admin-issued grants (migration 0006) and fold them into the local
+ * balance. The server claim is exactly-once/atomic; we then push the new balance
+ * straight up so a second device sees it even before the debounced save.
+ */
+async function applyPendingGrants(uid: string): Promise<void> {
+  const grant = await claimEconomyGrants();
+  if (!grant || (grant.credits <= 0 && grant.tokens <= 0)) return;
+  if (grant.credits > 0) addCredits(grant.credits);
+  if (grant.tokens > 0) addTokens(grant.tokens);
+  await saveNow(uid);
+  try {
+    window.dispatchEvent(new CustomEvent('bitrunners:grant-received', { detail: grant }));
+  } catch {
+    // non-DOM env — ignore
   }
 }
 
