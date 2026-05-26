@@ -2919,3 +2919,89 @@ dialog.panel {
     min-height: 40px;
   }
 }
+
+/* ════════ prefers-reduced-motion: global accessibility pass (devlog 0054) ════════
+   Covers every animation / transform-transition not handled by the inline
+   @media blocks above (scrape-panel, scrape-gain, scrape-glow, samm-prompt).
+   Policy:
+   - Ambient infinite loops → animation: none (visual still present, no motion).
+   - Rain transition  → instant hide (opacity: 0; animation: none).
+   - Blinking carets  → animation: none; element stays solid and readable.
+   - Interactive transform presses → remove translateY / lift; color / shadow
+     feedback preserved so the affordance is still clear.
+   - Short opacity-only transitions (< 200ms, opacity only) are left as-is —
+     they are not vestibular triggers.
+*/
+@media (prefers-reduced-motion: reduce) {
+  /* boot screen — atmospheric scan + ambient pulses */
+  .boot-screen::before,
+  .boot-screen::after {
+    animation: none;
+  }
+  .boot-banner {
+    animation: none;
+  }
+  /* boot caret — keep solid (no blink); still readable */
+  .boot-caret {
+    animation: none;
+  }
+  /* boot tile hover — drop the translateY(-1px) lift */
+  .boot-tile {
+    transition: border-color 140ms ease-out, background 140ms ease-out, box-shadow 140ms ease-out;
+  }
+  .boot-tile:hover:not(:disabled) {
+    transform: none;
+  }
+  /* selected tile — no breathe pulse */
+  .boot-tile--active {
+    animation: none;
+  }
+
+  /* rain transition — skip entirely; scene below is already ready */
+  .rain {
+    animation: none;
+    opacity: 0;
+  }
+  .rain-col {
+    animation: none;
+  }
+
+  /* profile icon — glowing frame flicker */
+  .profile::before,
+  .profile::after {
+    animation: none;
+  }
+
+  /* emote buttons — decorative flicker */
+  .emote-btn {
+    animation: none;
+  }
+  /* floating emote bubble — fade only; no upward float */
+  .emote-float {
+    transition: opacity 300ms ease-out;
+  }
+
+  /* dialogue — caret stays solid; continue indicator stops bouncing */
+  .dialogue-caret {
+    animation: none;
+  }
+  .dialogue-cont {
+    animation: none;
+  }
+
+  /* clicker scrape button — keep 3-D tilt; remove press-down translateY */
+  .scrape-btn {
+    transition: box-shadow 70ms ease-out;
+  }
+  .scrape-btn:active {
+    transform: perspective(520px) rotateX(11deg);
+    box-shadow: 0 2px 0 #16241d, 0 3px 8px rgba(0, 0, 0, 0.5);
+  }
+  /* mini tab buttons — no press translateY */
+  .scrape-mini {
+    transition: none;
+  }
+  .scrape-mini.is-ready:active {
+    transform: none;
+  }
+}
