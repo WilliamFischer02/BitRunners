@@ -59,14 +59,25 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
     };
   }, []);
 
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  // Open as a true modal: native focus trap + Escape via cancel event.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onCloseRef.current();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    const onCancel = (e: Event): void => {
+      e.preventDefault();
+      onCloseRef.current();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    dialog.addEventListener('cancel', onCancel);
+    return () => {
+      dialog.removeEventListener('cancel', onCancel);
+      trigger?.focus();
+    };
   }, []);
 
   const onPull = (): void => {
@@ -109,111 +120,112 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
     result?.kind === 'lose' ? 'samm-result--lose' : result ? 'samm-result--win' : '';
 
   return (
-    <div className="panel-backdrop" onMouseDown={onClose}>
-      <dialog
-        open
-        className="panel samm-panel"
-        aria-modal="true"
-        aria-labelledby="samm-dialog-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="panel-header">
-          <span className="panel-title" id="samm-dialog-title">
-            {'// SAMM'}
-          </span>
-          <button type="button" className="panel-close" onClick={onClose}>
-            ✕
-          </button>
-        </header>
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click is pointer-only; keyboard close is handled by the native cancel event (Escape) wired in the useEffect above
+    <dialog
+      ref={dialogRef}
+      className="panel samm-panel"
+      aria-modal="true"
+      aria-labelledby="samm-dialog-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <span className="panel-title" id="samm-dialog-title">
+          {'// SAMM'}
+        </span>
+        <button type="button" className="panel-close" onClick={onClose}>
+          ✕
+        </button>
+      </header>
 
-        <section className="panel-section samm-stage">
-          <div className="samm-sub">state authored money machine</div>
-          <div className={`samm-reels ${spinning ? 'is-spinning' : ''}`}>
-            {reels.map((g, i) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed 3-reel display
-              <span className="samm-reel" key={`reel-${i}`}>
-                {g}
-              </span>
-            ))}
+      <section className="panel-section samm-stage">
+        <div className="samm-sub">state authored money machine</div>
+        <div className={`samm-reels ${spinning ? 'is-spinning' : ''}`}>
+          {reels.map((g, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed 3-reel display
+            <span className="samm-reel" key={`reel-${i}`}>
+              {g}
+            </span>
+          ))}
+        </div>
+        {result && (
+          <div className={`samm-result ${resultClass}`}>
+            {result.kind === 'lose' && 'no payout'}
+            {result.kind === 'credits' && `+${result.payout} ${currency}`}
+            {result.kind === 'item' && `prize: ${result.itemName}`}
+            {result.kind === 'token' && `+${result.tokens} token`}
           </div>
-          {result && (
-            <div className={`samm-result ${resultClass}`}>
-              {result.kind === 'lose' && 'no payout'}
-              {result.kind === 'credits' && `+${result.payout} ${currency}`}
-              {result.kind === 'item' && `prize: ${result.itemName}`}
-              {result.kind === 'token' && `+${result.tokens} token`}
-            </div>
-          )}
-          <div className="samm-quip" aria-live="polite" aria-atomic="true">
-            {msg}
-          </div>
-        </section>
+        )}
+        <div className="samm-quip" aria-live="polite" aria-atomic="true">
+          {msg}
+        </div>
+      </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ place a bet</div>
-          <div className="samm-cur">
-            <button
-              type="button"
-              className={currency === 'credits' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
-              disabled={spinning}
-              onClick={() => switchCurrency('credits')}
-            >
-              credits
-            </button>
-            <button
-              type="button"
-              className={currency === 'tokens' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
-              disabled={spinning}
-              onClick={() => switchCurrency('tokens')}
-            >
-              tokens
-            </button>
-          </div>
-          <div className="samm-bets">
-            {betTiers(currency).map((t) => (
-              <button
-                type="button"
-                key={t}
-                className={bet === t ? 'samm-bet is-on' : 'samm-bet'}
-                disabled={spinning || (currency === 'tokens' ? eco.tokens : eco.credits) < t}
-                aria-label={`bet ${t} ${currency}`}
-                aria-pressed={bet === t}
-                onClick={() => setBet(t)}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
+      <section className="panel-section">
+        <div className="panel-section-title">$ place a bet</div>
+        <div className="samm-cur">
           <button
             type="button"
-            className={!spinning && canBet(bet, currency) ? 'samm-pull is-ready' : 'samm-pull'}
-            disabled={spinning || !canBet(bet, currency)}
-            aria-label={spinning ? 'pulling…' : `pull — bet ${bet} ${currency}`}
-            onClick={onPull}
+            className={currency === 'credits' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
+            disabled={spinning}
+            onClick={() => switchCurrency('credits')}
           >
-            {spinning ? '…' : `[ PULL · ${bet} ${currency} ]`}
+            credits
           </button>
-        </section>
+          <button
+            type="button"
+            className={currency === 'tokens' ? 'samm-cur-btn is-on' : 'samm-cur-btn'}
+            disabled={spinning}
+            onClick={() => switchCurrency('tokens')}
+          >
+            tokens
+          </button>
+        </div>
+        <div className="samm-bets">
+          {betTiers(currency).map((t) => (
+            <button
+              type="button"
+              key={t}
+              className={bet === t ? 'samm-bet is-on' : 'samm-bet'}
+              disabled={spinning || (currency === 'tokens' ? eco.tokens : eco.credits) < t}
+              aria-label={`bet ${t} ${currency}`}
+              aria-pressed={bet === t}
+              onClick={() => setBet(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          className={!spinning && canBet(bet, currency) ? 'samm-pull is-ready' : 'samm-pull'}
+          disabled={spinning || !canBet(bet, currency)}
+          aria-label={spinning ? 'pulling…' : `pull — bet ${bet} ${currency}`}
+          onClick={onPull}
+        >
+          {spinning ? '…' : `[ PULL · ${bet} ${currency} ]`}
+        </button>
+      </section>
 
-        <section className="panel-section samm-wallet">
-          <div className="scrape-hud-row scrape-hud--currency">
-            <span className="scrape-hud-glyph">▣</span>
-            <span className="scrape-hud-name">credits</span>
-            <span className="scrape-hud-bar" />
-            <span className="scrape-hud-val">{eco.credits}</span>
-          </div>
-          <div className="scrape-hud-row scrape-hud--currency">
-            <span className="scrape-hud-glyph">⬢</span>
-            <span className="scrape-hud-name">tokens</span>
-            <span className="scrape-hud-bar" />
-            <span className="scrape-hud-val">{eco.tokens}</span>
-          </div>
-        </section>
+      <section className="panel-section samm-wallet">
+        <div className="scrape-hud-row scrape-hud--currency">
+          <span className="scrape-hud-glyph">▣</span>
+          <span className="scrape-hud-name">credits</span>
+          <span className="scrape-hud-bar" />
+          <span className="scrape-hud-val">{eco.credits}</span>
+        </div>
+        <div className="scrape-hud-row scrape-hud--currency">
+          <span className="scrape-hud-glyph">⬢</span>
+          <span className="scrape-hud-name">tokens</span>
+          <span className="scrape-hud-bar" />
+          <span className="scrape-hud-val">{eco.tokens}</span>
+        </div>
+      </section>
 
-        <footer className="panel-footer">
-          the State thanks you · press [esc] or step away to close
-        </footer>
-      </dialog>
-    </div>
+      <footer className="panel-footer">
+        the State thanks you · press [esc] or step away to close
+      </footer>
+    </dialog>
   );
 }
