@@ -1,80 +1,82 @@
-# Handoff — 2026-05-26, session: auto-reconnect + grant toast (devlog 0054)
+# Handoff — 2026-05-27, combined: profile panel live economy + showModal focus-trap
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE:** prod `main` (`5d70d20`) has everything through **PR #48**
+- **⚠️ DEPLOY STATE:** prod `main` (`2874496`) has everything through **PR #52**
   (merged): proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases
-  1/2/4, SAMM glow + security, the autonomous open-PR protocol, distinct pet
-  shapes, **admin phase 3 (user table + grants + RLS fix)**. **Migrations
-  0001–0005 are run. Migration 0006 is NOT YET RUN** (closes the column-grant
-  privilege escalation hole — owner must run it in the Supabase SQL editor).
-- **Tokens are LIVE** (proxy-wallet, lore 009) — spendable, account-synced.
-- **Live server (Fly):** protocol v1, idle-disconnect (120 s silence), ambient NPCs.
-- **This session (devlog 0054, branch `claude/peaceful-thompson-TfjaS`,
-  PR pending):** auto-reconnect on server kick + grant-received toast.
-- **CI status:** local gates green — `pnpm lint` clean (52 files),
-  `pnpm typecheck` 8/8, `pnpm build` 5/5.
+  1–4, SAMM glow + security, distinct pet shapes, admin phase 3 (user table +
+  grants + profiles RLS fix), **showModal() focus-trap for AdminConsole + Samm**.
+  **Migrations 0001–0005 are run.** Migration **0006 is pending** (closes the
+  profiles privilege-escalation hole — devlog 0053; owner runs in Supabase SQL
+  editor).
+- **Live server (Fly):** protocol v1, idle-disconnect, ambient NPCs.
+- **Open draft PRs (do NOT start work that overlaps these):**
+  - **#49** (`claude/peaceful-thompson-TfjaS`) — auto-reconnect + grant-received toast
+  - **#50** (`claude/peaceful-thompson-Ls9H1`) — reduced-motion a11y full pass
+  - **#51** (`claude/peaceful-thompson-F9dTL`) — profile panel live economy wiring + stale copy fixes
+- **CI status:** gates green — `pnpm lint` clean (52 files), `pnpm typecheck` 8/8,
+  `pnpm build` 5/5.
 
-## What I did this session
+## What has been done recently
 
-- **Auto-reconnect (`network.ts`, `scene.ts`):** when the server kicks an idle
-  client, the client now attempts to reconnect with a 3 s → 6 s → 12 s backoff
-  (3 attempts). On success, `reconnectAttempt` resets. After 3 failures, status
-  shows "reload to reconnect". Intentional disconnects (runner swap, unmount)
-  are guarded by `intentionalLeave`/`sceneDisposed` flags so they never
-  trigger the reconnect loop. Remote avatars + emote DOM are cleaned up before
-  each reconnect attempt.
-- **Grant toast (`App.tsx`, `style.css`):** the `Game` component now listens for
-  `bitrunners:grant-received` and shows a brief `<output>` live region centered
-  below the hint line, with glowing amount labels and a "admin grant received"
-  label. Auto-dismisses after 4.5 s; reduced-motion safe.
+**Devlog 0053 (PR #48, merged):** admin phase 3 — user table + currency grants +
+profiles RLS security fix.
 
-## ⚠️ Migration 0006 still needs to be run
+**PR #52 (merged, devlog 0054):** `showModal()` focus-trap for `AdminConsole.tsx`
+and `Samm.tsx`. Added `dialog.panel::backdrop`, margin/max-width for top-layer
+centering.
 
-`0006_admin_user_management.sql` (added last session, devlog 0053) closes the
-column-grant privilege escalation hole. Until it runs, any authenticated user
-can PATCH their own `profiles.role` to `'admin'`. Run it and audit:
-`SELECT id, role FROM profiles WHERE role <> 'user';` — expect only you.
+**PR #51 (open, this branch):** profile panel `$ economy` section wired to live
+economy state (`credits`, `tokens`, `items owned`, `repCorporate`, `repBitrunner`).
+Stale InventoryView stub text updated. Dead hidden stub section removed.
+
+## What is NOT yet done
+
+`ScrapeMenu.tsx` and `ProfileIcon.tsx` still use `<dialog open>` + `.panel-backdrop`
+(not `showModal()`). Both are touched by open PR #51.
+**Complete the showModal migration for those two after PR #51 merges** — same
+~10-line pattern as the AdminConsole/Samm migration.
 
 ## What's blocking / not verified
 
-- **Not verifiable headless.** Auto-reconnect needs a live server + 120 s idle
-  or a forced server-side `client.leave()`. Toast needs a live admin grant.
-- Both paths are correct by inspection; the signal wiring is established.
+- **Not verifiable headless.** Profile panel changes need a browser. AdminConsole +
+  Samm showModal changes need a browser to confirm focus trap + Escape + backdrop.
+- **Migration 0006** still pending (owner action — closes the privilege-escalation hole).
+- **PR #51** must merge before completing ScrapeMenu/ProfileIcon showModal migration.
 
-## What to do next, in priority order
+## What I would do next, in priority order
 
-1. **Owner: run migration 0006** (closes the escalation hole). Critical.
-2. **Verify admin phase 3 + reconnect + toast on the deploy preview.**
-3. **Trading backend** (p2p-trading P1) — the next big focused session. Hard
-   prerequisites: live accounts + server-authoritative tradeable economy.
-4. Optional polish deferred from prior sessions:
-   - Tutorial card placement (eyeball on preview).
-   - `.showModal()` focus-trap upgrade for the panels.
-   - In-world toast for SAMM quips (lower priority).
+1. **Owner: run migration 0006** (closes the profiles escalation hole; additive).
+   Audit after: `SELECT id, role FROM profiles WHERE role <> 'user';` — expect only you.
+2. **Verify and merge PRs #49, #50, #51** on the deploy preview.
+3. **Complete showModal migration for ScrapeMenu + ProfileIcon** after #51 merges
+   (~20 lines; same pattern as AdminConsole/Samm).
+4. **Trading backend** (p2p-trading-epic P1) — next focused session once auth is live.
+5. Optional: toast on `bitrunners:grant-received` is already in PR #49.
+6. Board API rate limiting — minor concern; add once DAU warrants it.
 
-## Files touched this session
+## Files touched this session (PR #51)
 
-- `apps/web/src/network.ts` — `onDisconnect` callback + `intentionalLeave`.
-- `apps/web/src/scene.ts` — reconnect refactor (clearRemoteAvatars, connectSphere,
-  sceneDisposed, reconnectAttempt, RECONNECT_DELAYS).
-- `apps/web/src/App.tsx` — grant toast state + listener + `<output>` element.
-- `apps/web/src/style.css` — grant toast styles.
-- `docs/devlog/0054-auto-reconnect-and-grant-toast.md` — new.
+- `apps/web/src/ProfileIcon.tsx`
+- `apps/web/src/ScrapeMenu.tsx`
+- `docs/devlog/0054-profile-panel-live-economy-data.md` — new.
 - `.claude/handoff.md` (this).
 
 ## Do NOT do these things
 
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
+- Don't touch `ScrapeMenu.tsx` or `ProfileIcon.tsx` for showModal until PR #51 merges.
+- Don't re-lock Tokens for bit_spekter (proxy-wallet canon retired, lore 009).
 - Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the
-  escalation hole. Use the `admin_set_*` functions.
-- Don't let the clicker mint Tokens (it mints Credits only).
-- Don't deploy to Fly from shell — GitHub Actions owns deploys.
+  escalation hole fixed in migration 0006.
+- Don't let the clicker mint Tokens (mints Credits; Tokens come from exchange / SAMM).
 - Don't edit `docs/lore/_sealed/`. Don't hand-edit `pnpm-lock.yaml`.
+- Don't deploy to Fly from shell — GitHub Actions owns deploys.
 
 ## Open questions for the owner
 
-- **Run migration 0006?** (closes the escalation hole; additive.) Strongly yes.
+- **Run migration 0006?** (Strongly yes — closes profiles privilege-escalation hole.)
+- After 0006: audit `SELECT id, role FROM profiles WHERE role <> 'user';`
 - Trading backend: ready to scope a dedicated session?
-- Grant caps OK (≤10M credits / ≤1M tokens per grant)? Tune if needed.
+- Board API rate limiting: prioritize now or wait until DAU warrants it?
