@@ -95,11 +95,18 @@ interface GameProps {
   className: string;
 }
 
+interface GrantDetail {
+  credits: number;
+  tokens: number;
+}
+
 function Game({ className }: GameProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null);
   const controlsRef = useRef<SceneControls | null>(null);
   const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
   const [sammInRange, setSammInRange] = useState(false);
+  const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
+  const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -124,6 +131,18 @@ function Game({ className }: GameProps): JSX.Element {
     };
   }, []);
 
+  useEffect(() => {
+    const onGrant = (e: Event): void => {
+      const d = (e as CustomEvent<GrantDetail>).detail;
+      if (!d || (d.credits <= 0 && d.tokens <= 0)) return;
+      setGrantToast(d);
+      if (grantDismissRef.current !== null) window.clearTimeout(grantDismissRef.current);
+      grantDismissRef.current = window.setTimeout(() => setGrantToast(null), 4500);
+    };
+    window.addEventListener('bitrunners:grant-received', onGrant);
+    return () => window.removeEventListener('bitrunners:grant-received', onGrant);
+  }, []);
+
   const onEmote = useCallback((id: EmoteId) => {
     controlsRef.current?.triggerEmote(EMOTE_GLYPHS[id]);
   }, []);
@@ -138,6 +157,17 @@ function Game({ className }: GameProps): JSX.Element {
       <Tutorial />
       <AdminConsole />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
+      {grantToast && (
+        <output className="grant-toast">
+          {grantToast.credits > 0 && (
+            <span className="grant-toast-amount">+{grantToast.credits.toLocaleString()}¢</span>
+          )}
+          {grantToast.tokens > 0 && (
+            <span className="grant-toast-amount">+{grantToast.tokens.toLocaleString()}◈</span>
+          )}
+          <span className="grant-toast-label">admin grant received</span>
+        </output>
+      )}
     </div>
   );
 }
