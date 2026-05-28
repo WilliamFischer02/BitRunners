@@ -417,7 +417,7 @@ function InventoryView(): JSX.Element {
         </button>
       </div>
       <div className="panel-stub">
-        ─── equipped look feeds appearance.ts; the 3D render reads it in a later pass.
+        ─── tap a slot to equip it. equipped clothing + pets appear on your runner in the 3D scene.
       </div>
     </section>
   );

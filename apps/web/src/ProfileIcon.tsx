@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 import { getJoinedRoomId } from './network.js';
 import {
   type AuthSnapshot,
@@ -77,6 +78,10 @@ interface ProfilePanelProps {
 }
 
 function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
+  const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
+
+  useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (e.key === 'Escape') onClose();
@@ -129,32 +134,33 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
         </section>
 
         <AccountSection />
-        <section className="panel-section" hidden>
-          <div className="panel-section-title">$ account-stub</div>
-        </section>
 
         <section className="panel-section">
-          <div className="panel-section-title">$ inventory</div>
-          <div className="panel-stub">─── empty. tokens and outfits unlock in phase 3.</div>
+          <div className="panel-section-title">$ economy</div>
+          <div className="panel-row">
+            <span className="panel-key">credits</span>
+            <span className="panel-val">{eco.credits}</span>
+          </div>
           <div className="panel-row">
             <span className="panel-key">tokens</span>
-            <span className="panel-val">─</span>
+            <span className="panel-val">{eco.tokens}</span>
           </div>
           <div className="panel-row">
-            <span className="panel-key">outfits</span>
-            <span className="panel-val">─</span>
+            <span className="panel-key">items owned</span>
+            <span className="panel-val">{eco.owned.length > 0 ? eco.owned.length : '─'}</span>
           </div>
+          <div className="panel-stub">─── full inventory + shop in the data scrape panel.</div>
         </section>
 
         <section className="panel-section">
           <div className="panel-section-title">$ samaritan status</div>
           <div className="panel-row">
             <span className="panel-key">corporate</span>
-            <span className="panel-val">0</span>
+            <span className="panel-val">{eco.repCorporate}</span>
           </div>
           <div className="panel-row">
             <span className="panel-key">bitrunner</span>
-            <span className="panel-val">0</span>
+            <span className="panel-val">{eco.repBitrunner}</span>
           </div>
         </section>
 
