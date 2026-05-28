@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { listDialogue, saveDialogue } from './dialogue.js';
 import {
   type AdminUser,
@@ -53,17 +53,30 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Open as a true modal: native focus trap + Escape via cancel event.
   useEffect(() => {
-    void fetchUnderConstruction().then(setConstruction);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    const onCancel = (e: Event): void => {
+      e.preventDefault();
+      onCloseRef.current();
+    };
+    dialog.addEventListener('cancel', onCancel);
+    return () => {
+      dialog.removeEventListener('cancel', onCancel);
+      trigger?.focus();
+    };
   }, []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+    void fetchUnderConstruction().then(setConstruction);
+  }, []);
 
   const toggle = async (): Promise<void> => {
     if (busy || construction === null) return;
@@ -77,53 +90,54 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
   };
 
   return (
-    <div className="panel-backdrop" onMouseDown={onClose}>
-      <dialog
-        open
-        className="panel"
-        aria-modal="true"
-        aria-labelledby="admin-dialog-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="panel-header">
-          <span className="panel-title" id="admin-dialog-title">
-            {'// admin console'}
-          </span>
-          <button type="button" className="panel-close" onClick={onClose}>
-            ✕
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click is pointer-only; keyboard close is handled by the native cancel event (Escape) wired in the useEffect above
+    <dialog
+      ref={dialogRef}
+      className="panel"
+      aria-modal="true"
+      aria-labelledby="admin-dialog-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <header className="panel-header">
+        <span className="panel-title" id="admin-dialog-title">
+          {'// admin console'}
+        </span>
+        <button type="button" className="panel-close" onClick={onClose}>
+          ✕
+        </button>
+      </header>
+
+      <section className="panel-section">
+        <div className="panel-section-title">$ site</div>
+        <div className="panel-row">
+          <span className="panel-key">under construction</span>
+          <button
+            type="button"
+            className={construction ? 'panel-toggle is-on' : 'panel-toggle'}
+            disabled={busy || construction === null}
+            onClick={() => {
+              void toggle();
+            }}
+          >
+            {construction === null ? '…' : construction ? '[ on ]' : '[ off ]'}
           </button>
-        </header>
+        </div>
+        <div className="panel-stub">
+          ─── when on, only dev/admin accounts can enter. live-testing gate.
+        </div>
+        {err && <div className="auth-error">! {err}</div>}
+      </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ site</div>
-          <div className="panel-row">
-            <span className="panel-key">under construction</span>
-            <button
-              type="button"
-              className={construction ? 'panel-toggle is-on' : 'panel-toggle'}
-              disabled={busy || construction === null}
-              onClick={() => {
-                void toggle();
-              }}
-            >
-              {construction === null ? '…' : construction ? '[ on ]' : '[ off ]'}
-            </button>
-          </div>
-          <div className="panel-stub">
-            ─── when on, only dev/admin accounts can enter. live-testing gate.
-          </div>
-          {err && <div className="auth-error">! {err}</div>}
-        </section>
+      <DialogueEditor />
 
-        <DialogueEditor />
+      <ActivityStats />
 
-        <ActivityStats />
+      <UserTable />
 
-        <UserTable />
-
-        <footer className="panel-footer">owner-only · actions are server-enforced</footer>
-      </dialog>
-    </div>
+      <footer className="panel-footer">owner-only · actions are server-enforced</footer>
+    </dialog>
   );
 }
 

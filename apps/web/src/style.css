@@ -690,11 +690,21 @@ body,
   padding: 16px;
   backdrop-filter: blur(2px);
 }
-/* Reset native <dialog> defaults so .panel class controls all visual styling */
+/* Reset native <dialog> defaults so .panel class controls all visual styling.
+   margin: auto centers the dialog in the top layer when opened with showModal().
+   max-width ensures 16 px edge gap on small viewports. */
 dialog.panel {
   padding: 0;
   border: none;
-  margin: 0;
+  margin: auto;
+  max-width: calc(100vw - 32px);
+}
+/* Backdrop for panels opened with showModal() (AdminConsole, Samm).
+   Matches the old .panel-backdrop look; panels still using the backdrop
+   div wrapper are unaffected (::backdrop only renders for modal dialogs). */
+dialog.panel::backdrop {
+  background: rgba(2, 4, 6, 0.7);
+  backdrop-filter: blur(2px);
 }
 .panel {
   background: #0b0e0d;
