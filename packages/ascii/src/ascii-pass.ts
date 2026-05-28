@@ -43,6 +43,7 @@ const FRAG = /* glsl */ `
   uniform float uBackgroundDim;
   uniform float uCharacterGlow;
   uniform float uHasNormals;
+  uniform float uOrderedDither;
 
   varying vec2 vUv;
 
@@ -54,6 +55,16 @@ const FRAG = /* glsl */ `
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
   }
 
+  // 4x4 ordered (Bayer) dither in 0..~0.94 — the classic "rendered" cross-hatch
+  // gradient, far cleaner than per-cell noise. Compact recursive 2x2 expansion.
+  float bayer2(vec2 a) {
+    a = floor(a);
+    return fract(a.x * 0.5 + a.y * a.y * 0.75);
+  }
+  float bayer4(vec2 a) {
+    return bayer2(0.5 * a) * 0.25 + bayer2(a);
+  }
+
   void main() {
     vec2 pixel = vUv * uResolution;
     vec2 cellIdx = floor(pixel / uCellSize);
@@ -63,7 +74,8 @@ const FRAG = /* glsl */ `
     vec3 sceneColor = texture2D(tDiffuse, cellCenterUv).rgb;
     float lumRaw = lumOf(sceneColor);
     float lum = pow(clamp(lumRaw * uLumGain + uLumBias, 0.0, 1.0), uGamma);
-    lum += (hash(cellIdx) - 0.5) * uDither / uGlyphCount;
+    float ditherVal = uOrderedDither > 0.5 ? bayer4(cellIdx) : hash(cellIdx);
+    lum += (ditherVal - 0.5) * uDither / uGlyphCount;
     lum = clamp(lum, 0.0, 1.0);
 
     float glyphIdx = floor(lum * uGlyphCount);
@@ -171,6 +183,8 @@ export interface AsciiPassOptions {
   edgeAtlas?: GlyphAtlas;
   /** Optional RGBA texture of scene normals (MeshNormalMaterial pass). Enables Stage B v0.2. */
   normalsTexture?: Texture;
+  /** Use a 4x4 ordered (Bayer) dither instead of per-cell noise. Default false. */
+  orderedDither?: boolean;
 }
 
 function placeholderTexture(): DataTexture {
@@ -197,6 +211,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
   const tintTop = options.tintTop ?? tint;
   const edgeAtlas = options.edgeAtlas ?? atlas;
   const normalsTexture = options.normalsTexture;
+  const orderedDither = options.orderedDither ?? false;
 
   const material = new ShaderMaterial({
     uniforms: {
@@ -223,6 +238,7 @@ export function createAsciiPass(options: AsciiPassOptions): ShaderPass {
       uBackgroundDim: new Uniform(backgroundDim),
       uCharacterGlow: new Uniform(characterGlow),
       uHasNormals: new Uniform(normalsTexture ? 1.0 : 0.0),
+      uOrderedDither: new Uniform(orderedDither ? 1.0 : 0.0),
     },
     vertexShader: VERT,
     fragmentShader: FRAG,
