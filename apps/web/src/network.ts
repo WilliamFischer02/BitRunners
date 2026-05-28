@@ -16,6 +16,8 @@ export interface NetworkCallbacks {
   onLeave?(id: string): void;
   onUpdate?(p: RemotePlayer): void;
   onEmote?(id: string, text: string): void;
+  /** Fired when the server closes the connection unexpectedly (e.g. idle kick). */
+  onDisconnect?(code: number): void;
 }
 
 export interface NetworkSession {
@@ -138,6 +140,11 @@ export async function joinSphere(
     });
   }
 
+  let intentionalLeave = false;
+  room.onLeave((code: number) => {
+    if (!intentionalLeave) callbacks.onDisconnect?.(code);
+  });
+
   return {
     sessionId: room.sessionId,
     roomId: room.roomId,
@@ -151,6 +158,7 @@ export async function joinSphere(
       room.send('class', { name });
     },
     async dispose() {
+      intentionalLeave = true;
       try {
         await room.leave(true);
       } catch {
