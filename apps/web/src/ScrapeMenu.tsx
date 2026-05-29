@@ -433,6 +433,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [closing, setClosing] = useState(false);
   const timers = useRef<number[]>([]);
   const holdTimer = useRef<number | null>(null);
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
 
@@ -464,11 +465,19 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   closeRef.current = requestClose;
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') closeRef.current();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    const onCancel = (e: Event): void => {
+      e.preventDefault(); // let our animation play before unmount
+      closeRef.current();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    dialog.addEventListener('cancel', onCancel);
+    return () => {
+      dialog.removeEventListener('cancel', onCancel);
+      trigger?.focus();
+    };
   }, []);
 
   const flash = (v: Exclude<Verb, 'SCRAPE'>): void => {
@@ -553,139 +562,137 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   };
 
   return (
-    <div className="panel-backdrop" onMouseDown={requestClose}>
-      <dialog
-        open
-        className={`panel scrape-panel ${closing ? 'scrape-panel--out' : 'scrape-panel--in'}`}
-        aria-modal="true"
-        aria-labelledby="scrape-dialog-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="panel-header">
-          <span className="panel-title" id="scrape-dialog-title">
-            {titles[view]}
-          </span>
-          <div className="scrape-headbtns">
-            {nav('scrape', 'scrape')}
-            {nav('tree', 'tree')}
-            {nav('shop', 'shop')}
-            {nav('inventory', 'inv')}
-            <button type="button" className="panel-close" onClick={requestClose}>
-              ✕
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click is pointer-only; keyboard close is handled by the native cancel event (Escape) wired in the useEffect above
+    <dialog
+      ref={dialogRef}
+      className={`panel scrape-panel ${closing ? 'scrape-panel--out' : 'scrape-panel--in'}`}
+      aria-labelledby="scrape-dialog-title"
+      onClick={(e) => e.target === e.currentTarget && requestClose()}
+    >
+      <header className="panel-header">
+        <span className="panel-title" id="scrape-dialog-title">
+          {titles[view]}
+        </span>
+        <div className="scrape-headbtns">
+          {nav('scrape', 'scrape')}
+          {nav('tree', 'tree')}
+          {nav('shop', 'shop')}
+          {nav('inventory', 'inv')}
+          <button type="button" className="panel-close" onClick={requestClose}>
+            ✕
+          </button>
+        </div>
+      </header>
+
+      {view === 'scrape' && (
+        <>
+          <section className="panel-section scrape-stage">
+            <div
+              className={[
+                'scrape-glow',
+                holding ? 'is-holding' : '',
+                autoOn ? 'is-auto' : '',
+                pressed ? 'is-on' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              aria-hidden="true"
+            />
+            <button
+              type="button"
+              className={pressed ? 'scrape-btn is-pressed' : 'scrape-btn'}
+              onClick={() => doScrape(true)}
+              onPointerDown={onScrapeDown}
+              onPointerUp={stopHold}
+              onPointerLeave={stopHold}
+              onPointerCancel={stopHold}
+            >
+              <span className="scrape-btn-face">{verb}</span>
             </button>
-          </div>
-        </header>
+            {hasHoldScrape() && <span className="scrape-hint">hold to repeat</span>}
+            {gain && (
+              <span key={gain.k} className="scrape-gain">
+                +{gain.n}
+              </span>
+            )}
+          </section>
 
-        {view === 'scrape' && (
-          <>
-            <section className="panel-section scrape-stage">
-              <div
-                className={[
-                  'scrape-glow',
-                  holding ? 'is-holding' : '',
-                  autoOn ? 'is-auto' : '',
-                  pressed ? 'is-on' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                aria-hidden="true"
-              />
-              <button
-                type="button"
-                className={pressed ? 'scrape-btn is-pressed' : 'scrape-btn'}
-                onClick={() => doScrape(true)}
-                onPointerDown={onScrapeDown}
-                onPointerUp={stopHold}
-                onPointerLeave={stopHold}
-                onPointerCancel={stopHold}
-              >
-                <span className="scrape-btn-face">{verb}</span>
-              </button>
-              {hasHoldScrape() && <span className="scrape-hint">hold to repeat</span>}
-              {gain && (
-                <span key={gain.k} className="scrape-gain">
-                  +{gain.n}
-                </span>
-              )}
-            </section>
+          <DataHud eco={eco} auto={autoOn} />
 
-            <DataHud eco={eco} auto={autoOn} />
-
-            <section className="panel-section">
-              <div className="panel-section-title">$ tabulate</div>
-              {TIER_STEPS.map((t) => {
-                const ready = canTabulate(t.from);
-                return (
-                  <div className="panel-row" key={t.from}>
-                    <span className="panel-key">{t.label}</span>
-                    <button
-                      type="button"
-                      className={ready ? 'scrape-mini is-ready' : 'scrape-mini'}
-                      disabled={!ready}
-                      onClick={() => onTabulate(t.from)}
-                    >
-                      {`[ ${STEP} → 1 ]`}
-                    </button>
-                  </div>
-                );
-              })}
-              {showAll && (
-                <div className="panel-row">
-                  <span className="panel-key">tabulate all · cache</span>
+          <section className="panel-section">
+            <div className="panel-section-title">$ tabulate</div>
+            {TIER_STEPS.map((t) => {
+              const ready = canTabulate(t.from);
+              return (
+                <div className="panel-row" key={t.from}>
+                  <span className="panel-key">{t.label}</span>
                   <button
                     type="button"
-                    className={canTabulateAll() ? 'scrape-mini is-ready' : 'scrape-mini'}
-                    disabled={!canTabulateAll()}
-                    onClick={onTabulateAll}
+                    className={ready ? 'scrape-mini is-ready' : 'scrape-mini'}
+                    disabled={!ready}
+                    onClick={() => onTabulate(t.from)}
                   >
-                    [ all ]
+                    {`[ ${STEP} → 1 ]`}
                   </button>
                 </div>
-              )}
-            </section>
-
-            <section className="panel-section">
-              <div className="panel-section-title">
-                $ calculate · trade passcode · +{creditsPerPasscode()} cr each
-              </div>
+              );
+            })}
+            {showAll && (
               <div className="panel-row">
-                <span className="panel-key">the company · recycle</span>
+                <span className="panel-key">tabulate all · cache</span>
                 <button
                   type="button"
-                  className={tradeReady ? 'scrape-mini is-ready' : 'scrape-mini'}
-                  disabled={!tradeReady}
-                  onClick={() => onTrade('company')}
+                  className={canTabulateAll() ? 'scrape-mini is-ready' : 'scrape-mini'}
+                  disabled={!canTabulateAll()}
+                  onClick={onTabulateAll}
                 >
-                  [ trade ]
+                  [ all ]
                 </button>
               </div>
-              <div className="panel-row">
-                <span className="panel-key">the admin · destroy</span>
-                <button
-                  type="button"
-                  className={tradeReady ? 'scrape-mini is-ready' : 'scrape-mini'}
-                  disabled={!tradeReady}
-                  onClick={() => onTrade('admin')}
-                >
-                  [ trade ]
-                </button>
-              </div>
-              <div className="panel-stub">
-                ─── reputation: corporate {eco.repCorporate} · bitrunner {eco.repBitrunner}. reward
-                curve pending faction-reward Q&amp;A.
-              </div>
-            </section>
-          </>
-        )}
+            )}
+          </section>
 
-        {view === 'tree' && <TreeView eco={eco} />}
-        {view === 'shop' && <ShopView eco={eco} />}
-        {view === 'inventory' && <InventoryView />}
+          <section className="panel-section">
+            <div className="panel-section-title">
+              $ calculate · trade passcode · +{creditsPerPasscode()} cr each
+            </div>
+            <div className="panel-row">
+              <span className="panel-key">the company · recycle</span>
+              <button
+                type="button"
+                className={tradeReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                disabled={!tradeReady}
+                onClick={() => onTrade('company')}
+              >
+                [ trade ]
+              </button>
+            </div>
+            <div className="panel-row">
+              <span className="panel-key">the admin · destroy</span>
+              <button
+                type="button"
+                className={tradeReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                disabled={!tradeReady}
+                onClick={() => onTrade('admin')}
+              >
+                [ trade ]
+              </button>
+            </div>
+            <div className="panel-stub">
+              ─── reputation: corporate {eco.repCorporate} · bitrunner {eco.repBitrunner}. reward
+              curve pending faction-reward Q&amp;A.
+            </div>
+          </section>
+        </>
+      )}
 
-        <footer className="panel-footer">
-          press [esc] or click outside to close · progress saved on this device
-        </footer>
-      </dialog>
-    </div>
+      {view === 'tree' && <TreeView eco={eco} />}
+      {view === 'shop' && <ShopView eco={eco} />}
+      {view === 'inventory' && <InventoryView />}
+
+      <footer className="panel-footer">
+        press [esc] or click outside to close · progress saved on this device
+      </footer>
+    </dialog>
   );
 }

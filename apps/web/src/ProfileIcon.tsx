@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 import { getJoinedRoomId } from './network.js';
 import {
@@ -79,99 +79,103 @@ interface ProfilePanelProps {
 
 function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose();
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    const trigger = document.activeElement as HTMLElement | null;
+    dialog.showModal();
+    const onCancel = (): void => onClose();
+    dialog.addEventListener('cancel', onCancel);
+    return () => {
+      dialog.removeEventListener('cancel', onCancel);
+      trigger?.focus();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
   return (
-    <div className="panel-backdrop" onMouseDown={onClose}>
-      <dialog
-        open
-        className="panel"
-        aria-modal="true"
-        aria-labelledby="profile-dialog-title"
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="panel-header">
-          <span className="panel-title" id="profile-dialog-title">
-            {'// profile'}
-          </span>
-          <button type="button" className="panel-close" onClick={onClose}>
-            close ✕
+    // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop-click is pointer-only; keyboard close is handled by the native cancel event (Escape) wired in the useEffect above
+    <dialog
+      ref={dialogRef}
+      className="panel"
+      aria-labelledby="profile-dialog-title"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <header className="panel-header">
+        <span className="panel-title" id="profile-dialog-title">
+          {'// profile'}
+        </span>
+        <button type="button" className="panel-close" onClick={onClose}>
+          close ✕
+        </button>
+      </header>
+
+      <section className="panel-section">
+        <div className="panel-section-title">$ stack</div>
+        <div className="panel-row">
+          <span className="panel-key">class</span>
+          <span className="panel-val">{className}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">change runner</span>
+          <button
+            type="button"
+            className="panel-toggle is-on"
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent('bitrunners:change-runner'));
+              onClose();
+            }}
+          >
+            [ switch ]
           </button>
-        </header>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">session</span>
+          <span className="panel-val">guest · no user_id</span>
+        </div>
+      </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ stack</div>
-          <div className="panel-row">
-            <span className="panel-key">class</span>
-            <span className="panel-val">{className}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">change runner</span>
-            <button
-              type="button"
-              className="panel-toggle is-on"
-              onClick={() => {
-                window.dispatchEvent(new CustomEvent('bitrunners:change-runner'));
-                onClose();
-              }}
-            >
-              [ switch ]
-            </button>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">session</span>
-            <span className="panel-val">guest · no user_id</span>
-          </div>
-        </section>
+      <AccountSection />
 
-        <AccountSection />
+      <section className="panel-section">
+        <div className="panel-section-title">$ economy</div>
+        <div className="panel-row">
+          <span className="panel-key">credits</span>
+          <span className="panel-val">{eco.credits}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">tokens</span>
+          <span className="panel-val">{eco.tokens}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">items owned</span>
+          <span className="panel-val">{eco.owned.length > 0 ? eco.owned.length : '─'}</span>
+        </div>
+        <div className="panel-stub">─── full inventory + shop in the data scrape panel.</div>
+      </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ economy</div>
-          <div className="panel-row">
-            <span className="panel-key">credits</span>
-            <span className="panel-val">{eco.credits}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">tokens</span>
-            <span className="panel-val">{eco.tokens}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">items owned</span>
-            <span className="panel-val">{eco.owned.length > 0 ? eco.owned.length : '─'}</span>
-          </div>
-          <div className="panel-stub">─── full inventory + shop in the data scrape panel.</div>
-        </section>
+      <section className="panel-section">
+        <div className="panel-section-title">$ samaritan status</div>
+        <div className="panel-row">
+          <span className="panel-key">corporate</span>
+          <span className="panel-val">{eco.repCorporate}</span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-key">bitrunner</span>
+          <span className="panel-val">{eco.repBitrunner}</span>
+        </div>
+      </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ samaritan status</div>
-          <div className="panel-row">
-            <span className="panel-key">corporate</span>
-            <span className="panel-val">{eco.repCorporate}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">bitrunner</span>
-            <span className="panel-val">{eco.repBitrunner}</span>
-          </div>
-        </section>
+      <SettingsSection />
+      <RoomSection />
 
-        <SettingsSection />
-        <RoomSection />
-
-        <footer className="panel-footer">
-          press [esc] or click outside to close · placeholder until account system lands
-        </footer>
-      </dialog>
-    </div>
+      <footer className="panel-footer">
+        press [esc] or click outside to close · placeholder until account system lands
+      </footer>
+    </dialog>
   );
 }
 
