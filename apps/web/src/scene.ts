@@ -4,6 +4,7 @@ import {
   createCrtPass,
   setAsciiPassResolution,
 } from '@bitrunners/ascii';
+import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
 import {
   BackSide,
   BoxGeometry,
@@ -40,6 +41,8 @@ import {
   subscribeAppearance,
 } from './appearance.js';
 import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
+import { type BoxCollider, slideMoveInto } from './colliders.js';
+import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
@@ -54,8 +57,33 @@ function readRunEnabled(): boolean {
     return false;
   }
 }
-const PLATFORM_HALF = 9.5;
-const PLATFORM_SIZE = PLATFORM_HALF * 2;
+// PLATFORM_HALF / PLATFORM_SIZE now live in @bitrunners/shared so the server
+// can't drift from the client (Phase 3 doubled them to 19/38).
+
+// Player collision radius (tuned to the bit_spekter torso footprint; reads as
+// "your body" without being so fat that doorways feel pinched).
+const PLAYER_RADIUS = 0.35;
+
+// Solid colliders the local player slides against. AABBs in canonical world
+// coords; collision is wrap-aware (colliders.ts uses wrapDelta). The four
+// original decoration props get a footprint each, plus six new Phase 3
+// obstacles scattered through the doubled interior. Keep this list in sync
+// with the obstacle meshes added to `worldTile` below.
+const COLLIDERS: readonly BoxCollider[] = [
+  // existing decorations
+  { x: -6.5, z: -6.5, hx: 0.8, hz: 0.3 }, // port
+  { x: 6.0, z: -5.5, hx: 0.55, hz: 0.32 }, // vending (SAMM)
+  { x: 5.5, z: 5.5, hx: 0.4, hz: 0.4 }, // monolith / obelisk
+  { x: -5.5, z: 6.5, hx: 0.85, hz: 0.4 }, // terminal
+  // Phase 3 obstacles (interior; placed away from the seam at +/- PLATFORM_HALF
+  // so wrap-collision corner cases don't matter for these).
+  { x: -12, z: 4, hx: 0.5, hz: 0.5 }, // rust pillar
+  { x: 10, z: -10, hx: 0.9, hz: 0.7 }, // debris stack
+  { x: 12, z: 12, hx: 0.35, hz: 0.35 }, // broken column
+  { x: -10, z: -12, hx: 0.6, hz: 0.6 }, // crate cluster
+  { x: 0, z: 14, hx: 1.6, hz: 0.3 }, // wall slab (long X)
+  { x: 14, z: 0, hx: 0.3, hz: 1.2 }, // standing slab (long Z)
+];
 
 // Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
 // grid, so a remote player must be drawn at the periodic image nearest the
@@ -286,6 +314,50 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   terminalScreen.position.set(-5.5, 0.55, 6.81);
   terminalScreen.rotation.x = -0.3;
   worldTile.add(terminalScreen);
+
+  // ─── Phase 3 obstacles ───────────────────────────────────────────────
+  // Solid props scattered through the doubled interior; the player slides
+  // against them via COLLIDERS (above). Each mesh's footprint matches its
+  // collider entry (so visual + collision read identically).
+  const obstacleRustMat = new MeshStandardMaterial({
+    color: 0x6a3a1a,
+    emissive: 0xff6a20,
+    emissiveIntensity: 0.45,
+    metalness: 0.6,
+    roughness: 0.55,
+  });
+  const obstacleStoneMat = new MeshStandardMaterial({
+    color: 0x4a4e54,
+    emissive: 0x141820,
+    emissiveIntensity: 0.3,
+    metalness: 0.3,
+    roughness: 0.85,
+  });
+  const rustPillar = new MeshClass(new BoxGeometry(1.0, 2.6, 1.0), obstacleRustMat);
+  rustPillar.position.set(-12, 1.3, 4);
+  worldTile.add(rustPillar);
+  const debrisStack = new MeshClass(new BoxGeometry(1.8, 1.0, 1.4), obstacleStoneMat);
+  debrisStack.position.set(10, 0.5, -10);
+  worldTile.add(debrisStack);
+  const brokenColumn = new MeshClass(new BoxGeometry(0.7, 3.0, 0.7), obstacleStoneMat);
+  brokenColumn.position.set(12, 1.5, 12);
+  brokenColumn.rotation.z = 0.12;
+  worldTile.add(brokenColumn);
+  const crateA = new MeshClass(new BoxGeometry(0.8, 0.8, 0.8), obstacleRustMat);
+  crateA.position.set(-10.3, 0.4, -12.2);
+  worldTile.add(crateA);
+  const crateB = new MeshClass(new BoxGeometry(0.7, 0.7, 0.7), obstacleRustMat);
+  crateB.position.set(-9.7, 0.35, -11.7);
+  worldTile.add(crateB);
+  const crateC = new MeshClass(new BoxGeometry(0.6, 1.2, 0.6), obstacleRustMat);
+  crateC.position.set(-10.1, 0.6, -11.4);
+  worldTile.add(crateC);
+  const wallSlab = new MeshClass(new BoxGeometry(3.2, 1.2, 0.5), obstacleStoneMat);
+  wallSlab.position.set(0, 0.6, 14);
+  worldTile.add(wallSlab);
+  const standingSlab = new MeshClass(new BoxGeometry(0.5, 1.6, 2.4), obstacleStoneMat);
+  standingSlab.position.set(14, 0.8, 0);
+  worldTile.add(standingSlab);
 
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
@@ -829,7 +901,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
           {
             onJoin(p) {
               if (remoteAvatars.has(p.id)) return;
-              const group = buildRemoteAvatar(p.className ?? 'bit_spekter');
+              // Server NPCs (id "npc:*") get a dweller silhouette routed by
+              // className (the server cycles dweller.robot|husk|spirit).
+              // Human remotes get the per-class palette shell.
+              const group = p.id.startsWith('npc:')
+                ? buildDweller(p.className ?? 'dweller.robot')
+                : buildRemoteAvatar(p.className ?? 'bit_spekter');
               const dx = wrapDelta(p.x - rig.root.position.x);
               const dz = wrapDelta(p.z - rig.root.position.z);
               group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
@@ -936,7 +1013,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       tempRight.crossVectors(tempFwd, worldUp).normalize();
       tempMove.set(0, 0, 0).addScaledVector(tempFwd, -m.y).addScaledVector(tempRight, m.x);
       if (tempMove.lengthSq() > 1) tempMove.normalize();
-      rig.root.position.addScaledVector(tempMove, (runEnabled ? RUN_SPEED : WALK_SPEED) * dt);
+      // Obstacle collision: try the candidate XZ position; slide along walls.
+      const speed = (runEnabled ? RUN_SPEED : WALK_SPEED) * dt;
+      slideMoveInto(
+        rig.root.position,
+        rig.root.position.x + tempMove.x * speed,
+        rig.root.position.z + tempMove.z * speed,
+        PLAYER_RADIUS,
+        COLLIDERS,
+      );
       if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
       else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
       if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;

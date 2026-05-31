@@ -1,5 +1,11 @@
 import { TICK_HZ } from '@bitrunners/game-core';
-import { EMOTE_GLYPHS, isValidEmote } from '@bitrunners/shared';
+import {
+  DWELLER_ARCHETYPES,
+  EMOTE_GLYPHS,
+  PLATFORM_HALF,
+  PLATFORM_SIZE,
+  isValidEmote,
+} from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { PlayerState, SphereState } from './state.js';
 
@@ -11,8 +17,6 @@ interface MoveMessage {
 
 const MAX_HUMANS = 40;
 const TICK_MS = 1000 / TICK_HZ;
-const PLATFORM_HALF = 9.5;
-const PLATFORM_SIZE = PLATFORM_HALF * 2;
 
 // Disconnect a client we've heard NOTHING from for this long. A live client
 // sends 'move' every tick (~15 Hz) even when standing still, so silence means
@@ -106,6 +110,10 @@ export class SphereRoom extends Room<SphereState> {
       const id = `npc:${i}`;
       const p = new PlayerState();
       p.id = id;
+      // Cycle dweller archetypes so each spawned NPC has a distinct silhouette
+      // on the client (dweller.robot | dweller.husk | dweller.spirit). With
+      // NPC_COUNT=4 the cycle is robot,husk,spirit,robot — still mixed.
+      p.className = DWELLER_ARCHETYPES[i % DWELLER_ARCHETYPES.length] ?? 'dweller.robot';
       p.x = randCoord();
       p.z = randCoord();
       this.state.players.set(id, p);
