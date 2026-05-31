@@ -2646,6 +2646,42 @@ dialog.panel::backdrop {
   border-color: #c9a23a;
   box-shadow: 0 0 18px rgba(201, 162, 58, 0.4);
 }
+.tutorial-card--cta {
+  border-color: #6aa9d4;
+  box-shadow: 0 0 18px rgba(106, 169, 212, 0.32);
+}
+.tutorial-card--cta .tutorial-title {
+  color: #bfe2ff;
+}
+/* Pulsing dashed ring drawn around a HUD target while its tutorial step is
+   active. Pointer-events: none so it never intercepts clicks. Just under the
+   tutorial card (z-index 30) so the card sits visually on top. */
+.tutorial-highlight {
+  position: fixed;
+  pointer-events: none;
+  z-index: 28;
+  border: 2px dashed #93e0b1;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(147, 224, 177, 0.18), 0 0 14px rgba(147, 224, 177, 0.42);
+  transition: top 140ms ease, left 140ms ease, width 140ms ease, height 140ms ease;
+  animation: tutorial-highlight-pulse 1.4s ease-in-out infinite;
+}
+@keyframes tutorial-highlight-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tutorial-highlight {
+    animation: none;
+    transition: none;
+    opacity: 0.85;
+  }
+}
 .tutorial-step {
   font-size: 9px;
   letter-spacing: 0.12em;
