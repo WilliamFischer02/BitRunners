@@ -1,81 +1,92 @@
-# Handoff — 2026-05-28, six-phase feature push · Phase 1 (render polish) done
+# Handoff — 2026-05-28, Phase 2 (class identity + pets) DONE
 
-## The plan (owner-approved, phased PRs)
+## The plan (7 phases, owner-approved + expanded)
 
-A six-workstream push, delivered as **one focused draft PR per phase**, in order:
+Phased draft PRs, one per workstream, off latest `main`:
 
-1. **Render polish (PS2-in-ASCII)** ← **THIS PR (#?, devlog 0055)** — fog, ordered
-   dither, CRT pass. **DONE, awaiting review.**
-2. **2× world + collision + AI dwellers** — `PLATFORM_HALF 9.5 → 19`; add obstacle
-   collision (none exists today; movement is free at `scene.ts:~1130`); render the
-   server's existing `npc:*` entities (currently ignored) as robot/husk/spirit.
-3. **Tutorial highlighting + account CTA** — `Tutorial.tsx` exists (6 steps) but has no
-   element highlighting; add a spotlight overlay per step + a post-tutorial "Make Account
-   to Save Progress" CTA (reuse `AccountSection` in `ProfileIcon.tsx`).
-4. **Tap-to-lock camera + glow** — greenfield: add a raycaster, lock camera to a tapped
-   player/NPC, pulsing-emissive + halo glow (NOT OutlinePass — iOS), release on
-   tap-again / self / disconnect / distance.
-5. **Emoticron system** (largest) — compose → manual review → library + wheel editor.
-   Only 4 fixed glyphs exist today (`packages/shared/src/index.ts:6`). Owner chose the
-   full canon (compose from a word DB, manual review queue via the Admin console, approved
-   combos enter a per-user library; extra wheel slots **earned via play**). New migration
-   `0007_emoticrons.sql`.
+| # | Phase | Status |
+|---|---|---|
+| 1 | Render polish (fog, ordered dither, CRT) | **MERGED — PR #54** |
+| 2 | **Class identity + pet behaviours + clothing** | **DONE — this PR** |
+| 3 | 2× world + obstacle collision + AI dwellers (render `npc:*`) | queued (next) |
+| 4 | Tutorial highlighting + account CTA | queued |
+| 5 | Tap-to-lock camera + glow | queued |
+| 6 | Emoticron compose → review → library + wheel editor | queued |
+| 7 | Optimisation sweep (geometry/material sharing, LOD, draw-call merge, quality flag) | queued |
 
-Owner decisions locked: render = tasteful/in-budget; emoticrons = compose→review→library;
-extra slots = earned via play; delivery = phased PRs in the order above.
-Full plan file (this session): `/root/.claude/plans/nested-tickling-reddy.md`.
+Owner decisions locked: render = tasteful/in-budget; emoticrons = compose→review→
+library; extra wheel slots = earned via play; delivery = phased PRs. New since
+Phase 1: per-class visual identity grounded in `docs/lore/003-classes-origins.md`,
+per-pet movement behaviours, optimisation as both cross-cutting and a dedicated
+final phase.
+
+## Phase 2 — what I did (devlog 0056)
+
+- **`apps/web/src/class-rigs.ts`** (new): six per-class builders + shared limb
+  geometries + `ClassRig`/`SkinTarget`/`ClassId` types + `buildClassRig()` router
+  + `isValidClass()`. All six share the identical skeleton so the existing tick
+  animation drives them all unchanged.
+- **`apps/web/src/pets.ts`** (new): `petGeometryFor()` migrated; new
+  `applyPetBehaviour()` with six distinct motion patterns + a safe default.
+- **`apps/web/src/scene.ts`**: imports the new modules; removes the migrated
+  code; adds a `REMOTE_LOOKS` table → `buildRemoteAvatar(className)` swaps the
+  remote palette per class; `?class=NAME` debug override; aberration `0.4 → 0.13`
+  (owner feedback on PR #54).
+- Clothing reads different per class **for free** — distinct per-class base
+  armour materials → palette overlays naturally inherit different undertones.
+
+### Class visual signatures (canon-grounded)
+
+- **bit_spekter** — heavy plate, crosshair visor, white/grey *(baseline)*
+- **server_speaker** — tall slim, comm-ring head, robe-skirt, bluish-white + gold
+- **data_miner** — hunched stocky, backpack, orange jumpsuit tag + ankle bands, drab green/grey
+- **terminal_runner** — octahedral head, orbiting cube shards, purple/teal with strong emissive
+- **hash_kicker** — industrial single-strip visor, Company-orange brand stripe, chrome
+- **web_puller** — flat halo, cape panel, dark purple/black with gold accents
 
 ## State of the build
 
-- **prod `main`** has everything through the merged parallel PRs (#48–#53+): proxy-wallet,
-  runner switch, a11y/`showModal()`, admin phases 1–4, auto-reconnect + grant toast,
-  reduced-motion pass, profile live economy. **Migrations 0001–0005 run; 0006 still
-  pending** (closes the profiles privilege-escalation hole — devlog 0053; SQL was handed
-  to the owner this session, owner runs it in the Supabase SQL editor).
-- **This branch** `claude/render-polish-ps2-ascii` is off latest `main` (`1d3b12a`).
-- **CI/gates:** green — `pnpm lint` clean, `pnpm typecheck` 8/8, `pnpm build` 5/5.
-
-## Phase 1 — what I did (devlog 0055)
-
-- **Fog** (`scene.ts`): `Fog(0x0a1212, PLATFORM_HALF*0.8, PLATFORM_SIZE*2.0)`, nulled in
-  the character + normals passes so the runner stays crisp.
-- **Ordered dither** (`packages/ascii/ascii-pass.ts`): new `orderedDither` option +
-  `bayer4`; scene enables it. Default off → other callers unchanged.
-- **CRT pass** (`packages/ascii/crt-pass.ts`, new): scanlines + vignette + chromatic
-  split, inserted after ASCII / before OutputPass. `?crt=off` disables. Mobile-safe.
-- **Cool rim light** for silhouette separation.
+- **prod `main`** at `f94aec9` (PR #54 merged). Migration **0006 still pending**
+  (the SQL was handed to the owner — closes the privilege-escalation hole).
+- **This branch** `claude/class-identity-and-pets` is off latest `main`.
+- **CI/gates:** green — `pnpm lint` clean (54 files), `pnpm typecheck` 8/8,
+  `pnpm build` 5/5.
 
 ## What's blocking / not verified
 
-- **Not verifiable headless.** GLSL only compiles in a live WebGL context. Shaders are
-  correct by inspection + the bundle builds, but the **visual result + iOS Safari check
-  are owner-side**. A/B the CRT with `?crt=off`.
+- **Not verifiable headless.** Each class's silhouette + each pet's motion
+  needs a browser. Use `?class=server_speaker` / `?class=data_miner` /
+  `?class=terminal_runner` / `?class=hash_kicker` / `?class=web_puller` (and
+  default for `bit_spekter`). Pets need an equipped pet (SAMM prize or shop).
 - **Migration 0006** still pending (owner action).
 
 ## What I would do next, in priority order
 
-1. **Owner:** review/merge Phase 1 PR (eyeball the look; iOS Safari check).
-2. **Owner:** run migration 0006 (still pending) — audit
-   `SELECT id, role FROM profiles WHERE role <> 'user';`.
-3. **Phase 2** — 2× world + collision + AI dwellers (new branch off latest `main`).
+1. **Owner:** review Phase 2 PR — eyeball each class via `?class=…`. Tune palettes
+   if needed (per-class palette constants in `class-rigs.ts` are the dial).
+2. **Owner:** run migration 0006 (still pending).
+3. **Phase 3** — 2× world + obstacle collision + render `npc:*` dwellers as
+   robot/husk/spirit. Separate branch off latest `main`.
 
 ## Do NOT do these things
 
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
-- Don't re-lock Tokens for bit_spekter (proxy-wallet canon retired, lore 009).
-- Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the escalation
-  hole fixed in migration 0006.
-- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline (iOS Safari,
-  devlog 0008). The new CRT pass is plain-RGBA on purpose.
+- Don't re-allocate the shared limb `BoxGeometry`s in `class-rigs.ts` per-call —
+  the optimisation depends on the module-level singletons.
+- Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the
+  escalation hole fixed in migration 0006.
+- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline (iOS
+  Safari, devlog 0008).
 - Don't surface `docs/lore/_sealed/` content anywhere player-facing.
-- Don't write emoticron lore (the ~100-word DB) unilaterally — Q&A the owner in Phase 5.
-- Don't edit `docs/lore/_sealed/`. Don't hand-edit `pnpm-lock.yaml`. Don't deploy to Fly
-  from shell.
+- Don't unilaterally write emoticron lore (the ~100-word DB) — Q&A first in
+  Phase 6.
+- Don't deploy to Fly from shell. Don't hand-edit `pnpm-lock.yaml`.
 
 ## Open questions for the owner
 
-- Phase 1 look OK on desktop + iOS? Any CRT/fog/dither tuning before I carry the palette
-  into later phases?
-- Run migration 0006? (Strongly yes.)
-- Phase 5 emoticrons: ready to Q&A the ~100-word DB content when we get there?
+- Each class look right on desktop? Palettes/proportions to tune?
+- Pet behaviours feel right, or any specific ones too hyperactive / sluggish?
+- Phase 7 optimisation: ready to budget a focused session for it after Phase 6,
+  or fold a sub-set into each remaining phase opportunistically?
+- Migration 0006? (Strongly yes.)

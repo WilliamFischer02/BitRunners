@@ -9,27 +9,22 @@ import {
   BoxGeometry,
   type BufferGeometry,
   Color,
-  ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
   Fog,
   Group,
   HemisphereLight,
-  IcosahedronGeometry,
   type Mesh,
   Mesh as MeshClass,
   MeshNormalMaterial,
   MeshStandardMaterial,
   type MeshStandardMaterial as MeshStandardMaterialType,
-  OctahedronGeometry,
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
   Scene,
   ShaderMaterial,
   SphereGeometry,
-  TetrahedronGeometry,
-  TorusGeometry,
   Uniform,
   Vector3,
   WebGLRenderTarget,
@@ -44,8 +39,10 @@ import {
   getEquippedAppearance,
   subscribeAppearance,
 } from './appearance.js';
+import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
+import { applyPetBehaviour, petGeometryFor } from './pets.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -79,17 +76,38 @@ const CHARACTER_LAYER = 1;
 const NET_SEND_HZ = 15;
 const NET_SEND_MS = 1000 / NET_SEND_HZ;
 
-function buildRemoteAvatar(): Group {
+// Remote players use a simplified, non-animated shell — the 6 base meshes
+// (head, visor, torso, belt, legs, boots) are kept for shape continuity, but
+// the armour + accent palette swaps per class so each remote runner is
+// recognisable at a glance. Phase 7 will add per-class accent props (halo,
+// backpack, etc.) as a cheap follow-up; this PR only swaps the palette.
+interface RemoteLook {
+  armor: number;
+  dark: number;
+  emissive: number;
+}
+const REMOTE_LOOKS: Record<string, RemoteLook> = {
+  bit_spekter: { armor: 0xa8acb4, dark: 0x404448, emissive: 0x141820 },
+  server_speaker: { armor: 0xc8d8ee, dark: 0x2a3a52, emissive: 0x3a5878 },
+  data_miner: { armor: 0x7b8a7e, dark: 0x303834, emissive: 0x141c14 },
+  terminal_runner: { armor: 0x3a2a52, dark: 0x140828, emissive: 0x7eedc8 },
+  hash_kicker: { armor: 0xb0b4b8, dark: 0x4a4e54, emissive: 0xff8844 },
+  web_puller: { armor: 0x251a3a, dark: 0x18102a, emissive: 0x4a2880 },
+};
+
+function buildRemoteAvatar(className: string): Group {
+  const look = REMOTE_LOOKS[className] ?? REMOTE_LOOKS.bit_spekter;
+  if (!look) throw new Error('unreachable');
   const g = new Group();
   const armor = new MeshStandardMaterial({
-    color: 0xa8acb4,
+    color: look.armor,
     roughness: 0.7,
     metalness: 0.2,
-    emissive: 0x141820,
-    emissiveIntensity: 0.35,
+    emissive: look.emissive,
+    emissiveIntensity: 0.45,
   });
   const dark = new MeshStandardMaterial({
-    color: 0x404448,
+    color: look.dark,
     roughness: 0.8,
     metalness: 0.1,
   });
@@ -115,264 +133,25 @@ function buildRemoteAvatar(): Group {
   return g;
 }
 
-// One recolourable armour material + its factory defaults, so equipping a
-// cosmetic can tint it and un-equipping can restore the original exactly.
-interface SkinTarget {
-  mat: MeshStandardMaterialType;
-  baseColor: number;
-  baseEmissive: number;
-  baseEmissiveIntensity: number;
-}
-
-function snapshotSkin(mat: MeshStandardMaterialType): SkinTarget {
-  return {
-    mat,
-    baseColor: mat.color.getHex(),
-    baseEmissive: mat.emissive.getHex(),
-    baseEmissiveIntensity: mat.emissiveIntensity,
-  };
-}
-
-interface BitSpekterRig {
-  root: Group;
-  visual: Group;
-  chest: Group;
-  hip: Group;
-  armPivotL: Group;
-  armPivotR: Group;
-  legPivotL: Group;
-  legPivotR: Group;
-  // Recolour targets for equipped clothing + a node a pet primitive orbits.
-  skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget };
-  petAnchor: Group;
-}
-
-function buildBitSpekter(): BitSpekterRig {
-  const root = new Group();
-  const visual = new Group();
-  root.add(visual);
-
-  const chest = new Group();
-  chest.position.y = 1.0;
-  visual.add(chest);
-
-  const hip = new Group();
-  hip.position.y = 0.65;
-  visual.add(hip);
-
-  const armorHead = new MeshStandardMaterial({
-    color: 0xeef2f6,
-    roughness: 0.45,
-    metalness: 0.3,
-    emissive: 0x3a424c,
-    emissiveIntensity: 1.6,
-  });
-  const armorTorso = new MeshStandardMaterial({
-    color: 0xe4e8ec,
-    roughness: 0.5,
-    metalness: 0.25,
-    emissive: 0x222830,
-    emissiveIntensity: 1.0,
-  });
-  const armorLegs = new MeshStandardMaterial({
-    color: 0xc8ccd2,
-    roughness: 0.55,
-    metalness: 0.2,
-    emissive: 0x0c0e12,
-    emissiveIntensity: 0.35,
-  });
-  const darkUpper = new MeshStandardMaterial({
-    color: 0x52565c,
-    roughness: 0.6,
-    metalness: 0.2,
-    emissive: 0x1c2028,
-    emissiveIntensity: 0.8,
-  });
-  const darkLower = new MeshStandardMaterial({
-    color: 0x3a3e44,
-    roughness: 0.75,
-    metalness: 0.1,
-    emissive: 0x060810,
-    emissiveIntensity: 0.2,
-  });
-  const accent = new MeshStandardMaterial({
-    color: 0xcfd6e0,
-    roughness: 0.6,
-    metalness: 0.3,
-    emissive: 0x4a5a6e,
-    emissiveIntensity: 1.2,
-  });
-
-  // Skinnier, more angular robot rig (Marathon-Rook-inspired, miniaturized).
-  // Narrower torso, thinner limbs, antenna, segmented chest plate, knee
-  // sections, ankle wedges. Per devlog 0026 item 5.
-
-  const head = new MeshClass(new SphereGeometry(0.26, 14, 10), armorHead);
-  head.position.y = 0.58;
-  head.scale.set(0.95, 1.08, 0.88);
-  chest.add(head);
-
-  const antenna = new MeshClass(new BoxGeometry(0.04, 0.22, 0.04), accent);
-  antenna.position.set(0.08, 0.86, -0.04);
-  chest.add(antenna);
-  const antennaTip = new MeshClass(new BoxGeometry(0.07, 0.05, 0.07), accent);
-  antennaTip.position.set(0.08, 0.99, -0.04);
-  chest.add(antennaTip);
-
-  const visor = new MeshClass(new BoxGeometry(0.42, 0.12, 0.04), darkUpper);
-  visor.position.set(0, 0.6, 0.24);
-  chest.add(visor);
-
-  const visorCrossV = new MeshClass(new BoxGeometry(0.05, 0.42, 0.03), accent);
-  visorCrossV.position.set(0, 0.5, 0.27);
-  chest.add(visorCrossV);
-  const visorCrossH = new MeshClass(new BoxGeometry(0.36, 0.05, 0.03), accent);
-  visorCrossH.position.set(0, 0.62, 0.27);
-  chest.add(visorCrossH);
-
-  const neck = new MeshClass(new BoxGeometry(0.18, 0.1, 0.18), darkUpper);
-  neck.position.set(0, 0.42, 0);
-  chest.add(neck);
-
-  const torso = new MeshClass(new BoxGeometry(0.55, 0.62, 0.32), armorTorso);
-  torso.position.y = 0.05;
-  chest.add(torso);
-
-  const torsoSeam = new MeshClass(new BoxGeometry(0.57, 0.04, 0.34), darkUpper);
-  torsoSeam.position.y = 0.05;
-  chest.add(torsoSeam);
-
-  const chestPlateTop = new MeshClass(new BoxGeometry(0.38, 0.18, 0.04), accent);
-  chestPlateTop.position.set(0, 0.18, 0.17);
-  chest.add(chestPlateTop);
-  const chestPlateBot = new MeshClass(new BoxGeometry(0.32, 0.16, 0.04), darkUpper);
-  chestPlateBot.position.set(0, -0.04, 0.17);
-  chest.add(chestPlateBot);
-
-  const shoulderL = new MeshClass(new BoxGeometry(0.18, 0.16, 0.22), darkUpper);
-  shoulderL.position.set(-0.4, 0.3, 0);
-  chest.add(shoulderL);
-  const shoulderR = shoulderL.clone();
-  shoulderR.position.x = 0.4;
-  chest.add(shoulderR);
-
-  const beltSeam = new MeshClass(new BoxGeometry(0.62, 0.08, 0.36), darkUpper);
-  beltSeam.position.y = -0.32;
-  chest.add(beltSeam);
-
-  const armPivotL = new Group();
-  armPivotL.position.set(-0.4, 0.24, 0);
-  chest.add(armPivotL);
-  const armUpperL: Mesh = new MeshClass(new BoxGeometry(0.13, 0.34, 0.16), armorTorso);
-  armUpperL.position.y = -0.18;
-  armPivotL.add(armUpperL);
-  const elbowL: Mesh = new MeshClass(new BoxGeometry(0.15, 0.08, 0.18), darkUpper);
-  elbowL.position.y = -0.38;
-  armPivotL.add(elbowL);
-  const armLowerL: Mesh = new MeshClass(new BoxGeometry(0.11, 0.32, 0.14), armorTorso);
-  armLowerL.position.y = -0.58;
-  armPivotL.add(armLowerL);
-  const handL: Mesh = new MeshClass(new BoxGeometry(0.16, 0.14, 0.18), darkUpper);
-  handL.position.y = -0.81;
-  armPivotL.add(handL);
-
-  const armPivotR = new Group();
-  armPivotR.position.set(0.4, 0.24, 0);
-  chest.add(armPivotR);
-  const armUpperR: Mesh = new MeshClass(new BoxGeometry(0.13, 0.34, 0.16), armorTorso);
-  armUpperR.position.y = -0.18;
-  armPivotR.add(armUpperR);
-  const elbowR: Mesh = new MeshClass(new BoxGeometry(0.15, 0.08, 0.18), darkUpper);
-  elbowR.position.y = -0.38;
-  armPivotR.add(elbowR);
-  const armLowerR: Mesh = new MeshClass(new BoxGeometry(0.11, 0.32, 0.14), armorTorso);
-  armLowerR.position.y = -0.58;
-  armPivotR.add(armLowerR);
-  const handR: Mesh = new MeshClass(new BoxGeometry(0.16, 0.14, 0.18), darkUpper);
-  handR.position.y = -0.81;
-  armPivotR.add(handR);
-
-  const legPivotL = new Group();
-  legPivotL.position.set(-0.16, -0.05, 0);
-  hip.add(legPivotL);
-  const thighL: Mesh = new MeshClass(new BoxGeometry(0.17, 0.32, 0.2), armorLegs);
-  thighL.position.y = -0.17;
-  legPivotL.add(thighL);
-  const kneeL: Mesh = new MeshClass(new BoxGeometry(0.19, 0.09, 0.22), darkLower);
-  kneeL.position.y = -0.36;
-  legPivotL.add(kneeL);
-  const shinL: Mesh = new MeshClass(new BoxGeometry(0.15, 0.3, 0.18), armorLegs);
-  shinL.position.y = -0.56;
-  legPivotL.add(shinL);
-  const bootL: Mesh = new MeshClass(new BoxGeometry(0.22, 0.09, 0.3), darkLower);
-  bootL.position.set(0, -0.74, 0.04);
-  legPivotL.add(bootL);
-
-  const legPivotR = new Group();
-  legPivotR.position.set(0.16, -0.05, 0);
-  hip.add(legPivotR);
-  const thighR: Mesh = new MeshClass(new BoxGeometry(0.17, 0.32, 0.2), armorLegs);
-  thighR.position.y = -0.17;
-  legPivotR.add(thighR);
-  const kneeR: Mesh = new MeshClass(new BoxGeometry(0.19, 0.09, 0.22), darkLower);
-  kneeR.position.y = -0.36;
-  legPivotR.add(kneeR);
-  const shinR: Mesh = new MeshClass(new BoxGeometry(0.15, 0.3, 0.18), armorLegs);
-  shinR.position.y = -0.56;
-  legPivotR.add(shinR);
-  const bootR: Mesh = new MeshClass(new BoxGeometry(0.22, 0.09, 0.3), darkLower);
-  bootR.position.set(0, -0.74, 0.04);
-  legPivotR.add(bootR);
-
-  // Pet primitive orbits this node (offset child + spin in the tick).
-  const petAnchor = new Group();
-  petAnchor.position.set(0, 0.4, 0);
-  chest.add(petAnchor);
-
-  return {
-    root,
-    visual,
-    chest,
-    hip,
-    armPivotL,
-    armPivotR,
-    legPivotL,
-    legPivotR,
-    skin: {
-      head: snapshotSkin(armorHead),
-      chest: snapshotSkin(armorTorso),
-      legs: snapshotSkin(armorLegs),
-    },
-    petAnchor,
-  };
-}
-
-// Distinct primitive per equipped pet so they don't all look like a box.
-function petGeometryFor(itemId: string): BufferGeometry {
-  switch (itemId) {
-    case 'pet.byte_pup':
-      return new SphereGeometry(0.1, 12, 8);
-    case 'pet.glint_drone':
-      return new OctahedronGeometry(0.12);
-    case 'pet.null_kit':
-      return new TetrahedronGeometry(0.13);
-    case 'pet.spark':
-      return new ConeGeometry(0.08, 0.22, 6);
-    case 'pet.mote_ultra':
-      return new IcosahedronGeometry(0.12);
-    case 'pet.token_seraph':
-      return new TorusGeometry(0.09, 0.035, 8, 16);
-    default:
-      return new BoxGeometry(0.14, 0.14, 0.14);
-  }
-}
+// SkinTarget + the per-class rigs live in `./class-rigs.ts` — the BitSpekter
+// builder + scaffolding migrated out so the other five classes can share the
+// same shape and limb geometries. Pet geometry + per-pet motion behaviour
+// live in `./pets.ts` for the same reason.
 
 export interface SceneControls {
   dispose(): void;
   triggerEmote(text: string): void;
 }
 
-export function startScene(host: HTMLElement, _className: string): SceneControls {
+export function startScene(host: HTMLElement, classNameArg: string): SceneControls {
+  // `?class=NAME` overrides the boot-selected class for visual QA of locked
+  // classes (server_speaker etc. don't appear in the live class grid yet —
+  // they unlock via tutorial completion or owner action). Falls back to the
+  // boot-selected class on any unknown / missing value.
+  const classOverride =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('class') : null;
+  const className = classOverride && isValidClass(classOverride) ? classOverride : classNameArg;
+
   const renderer = new WebGLRenderer({ antialias: false });
   renderer.setPixelRatio(1);
   renderer.toneMappingExposure = 1.15;
@@ -619,7 +398,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   skybox.position.y = 8;
   scene.add(skybox);
 
-  const rig = buildBitSpekter();
+  const rig = buildClassRig(className);
   rig.root.traverse((obj) => {
     obj.layers.set(CHARACTER_LAYER);
   });
@@ -923,7 +702,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     typeof window === 'undefined' ||
     new URLSearchParams(window.location.search).get('crt') !== 'off';
   const crtPass = crtEnabled
-    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.4 })
+    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.13 })
     : null;
   if (crtPass) composer.addPass(crtPass);
 
@@ -1050,7 +829,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
           {
             onJoin(p) {
               if (remoteAvatars.has(p.id)) return;
-              const group = buildRemoteAvatar();
+              const group = buildRemoteAvatar(p.className ?? 'bit_spekter');
               const dx = wrapDelta(p.x - rig.root.position.x);
               const dz = wrapDelta(p.z - rig.root.position.z);
               group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
@@ -1190,11 +969,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     const idleBreathe = Math.sin(elapsed * 1.1) * 0.018 * idleAmt;
     rig.visual.position.y = hoverY + idleBreathe;
 
-    // Equipped pet: slow orbit + gentle bob.
-    if (petMesh) {
-      rig.petAnchor.rotation.y = elapsed * 0.8;
-      petMesh.position.y = Math.sin(elapsed * 2.2) * 0.05;
-    }
+    // Equipped pet: per-pet movement (see pets.ts). Allocation-free.
+    if (petMesh) applyPetBehaviour(petId, rig.petAnchor, petMesh, elapsed);
 
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();
