@@ -3,6 +3,19 @@
 // a connection handshake gate — so old/new clients still connect.
 export const PROTOCOL_VERSION = 1;
 
+// Square play area, torus-wrapped (3x3 visible tile grid). Doubled in Phase 3
+// (devlog 0057) from 9.5 -> 19 to give room for obstacles + dwellers without
+// shrinking the existing decoration layout. CLIENT and SERVER both import
+// these — defining them in two places previously courted desync.
+export const PLATFORM_HALF = 19;
+export const PLATFORM_SIZE = PLATFORM_HALF * 2;
+
+// Dweller archetypes the server tags NPC PlayerState rows with via className.
+// The client inspects `id.startsWith('npc:')` to decide whether to render an
+// NPC at all, then `className` picks the dweller silhouette.
+export const DWELLER_ARCHETYPES = ['dweller.robot', 'dweller.husk', 'dweller.spirit'] as const;
+export type DwellerArchetype = (typeof DWELLER_ARCHETYPES)[number];
+
 export type EmoteId = 'happy' | 'tired' | 'okay' | 'help';
 
 // Canonical emoticron glyphs. Single source of truth: the wheel UI imports

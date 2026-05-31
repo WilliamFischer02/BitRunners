@@ -1,92 +1,85 @@
-# Handoff — 2026-05-28, Phase 2 (class identity + pets) DONE
+# Handoff — 2026-05-31, Phase 3 (world + collision + dwellers) DONE
 
-## The plan (7 phases, owner-approved + expanded)
-
-Phased draft PRs, one per workstream, off latest `main`:
+## The plan (7 phases)
 
 | # | Phase | Status |
 |---|---|---|
 | 1 | Render polish (fog, ordered dither, CRT) | **MERGED — PR #54** |
-| 2 | **Class identity + pet behaviours + clothing** | **DONE — this PR** |
-| 3 | 2× world + obstacle collision + AI dwellers (render `npc:*`) | queued (next) |
-| 4 | Tutorial highlighting + account CTA | queued |
+| 2 | Class identity + pet behaviours + clothing | **MERGED — PR #57** |
+| 3 | **2× world + obstacle collision + AI dwellers (`npc:*` render)** | **DONE — this PR** |
+| 4 | Tutorial highlighting + account CTA | queued (next) |
 | 5 | Tap-to-lock camera + glow | queued |
 | 6 | Emoticron compose → review → library + wheel editor | queued |
-| 7 | Optimisation sweep (geometry/material sharing, LOD, draw-call merge, quality flag) | queued |
+| 7 | Optimisation sweep | queued |
 
-Owner decisions locked: render = tasteful/in-budget; emoticrons = compose→review→
-library; extra wheel slots = earned via play; delivery = phased PRs. New since
-Phase 1: per-class visual identity grounded in `docs/lore/003-classes-origins.md`,
-per-pet movement behaviours, optimisation as both cross-cutting and a dedicated
-final phase.
+## Phase 3 — what I did (devlog 0057)
 
-## Phase 2 — what I did (devlog 0056)
+- **`packages/shared/src/index.ts`** — `PLATFORM_HALF`/`PLATFORM_SIZE` moved
+  here (doubled to 19/38) so server + client can't drift. Plus
+  `DWELLER_ARCHETYPES` const + `DwellerArchetype` type.
+- **`apps/server/src/sphere-room.ts`** — imports the shared platform consts;
+  `spawnNpcs()` cycles `p.className` over the dweller archetypes so each NPC
+  has a server-side label.
+- **`apps/web/src/colliders.ts`** (new) — wrap-aware circle-vs-AABB,
+  axis-separated `slideMoveInto()`. Allocation-free; mutates a Vector3 in
+  place.
+- **`apps/web/src/dweller-rigs.ts`** (new) — three archetype builders
+  (`robot`/`husk`/`spirit`) routed by `buildDweller(kind)`. Cheap shells,
+  no animation (server drives position/rotation).
+- **`apps/web/src/scene.ts`** — drops the local platform consts; adds
+  `COLLIDERS` registry (10 entries: 4 existing decorations + 6 new
+  obstacles) + 6 new obstacle meshes inside `worldTile`; movement integration
+  uses `slideMoveInto`; `onJoin` routes `npc:*` ids to `buildDweller`.
 
-- **`apps/web/src/class-rigs.ts`** (new): six per-class builders + shared limb
-  geometries + `ClassRig`/`SkinTarget`/`ClassId` types + `buildClassRig()` router
-  + `isValidClass()`. All six share the identical skeleton so the existing tick
-  animation drives them all unchanged.
-- **`apps/web/src/pets.ts`** (new): `petGeometryFor()` migrated; new
-  `applyPetBehaviour()` with six distinct motion patterns + a safe default.
-- **`apps/web/src/scene.ts`**: imports the new modules; removes the migrated
-  code; adds a `REMOTE_LOOKS` table → `buildRemoteAvatar(className)` swaps the
-  remote palette per class; `?class=NAME` debug override; aberration `0.4 → 0.13`
-  (owner feedback on PR #54).
-- Clothing reads different per class **for free** — distinct per-class base
-  armour materials → palette overlays naturally inherit different undertones.
-
-### Class visual signatures (canon-grounded)
-
-- **bit_spekter** — heavy plate, crosshair visor, white/grey *(baseline)*
-- **server_speaker** — tall slim, comm-ring head, robe-skirt, bluish-white + gold
-- **data_miner** — hunched stocky, backpack, orange jumpsuit tag + ankle bands, drab green/grey
-- **terminal_runner** — octahedral head, orbiting cube shards, purple/teal with strong emissive
-- **hash_kicker** — industrial single-strip visor, Company-orange brand stripe, chrome
-- **web_puller** — flat halo, cape panel, dark purple/black with gold accents
+### Behaviour change to flag
+The four original decoration props (port, vending, monolith, terminal) used to
+be **walk-through**. They now **block movement**. If any need to stay
+walk-through for an interaction reason, comment out the corresponding entry in
+`COLLIDERS`.
 
 ## State of the build
 
-- **prod `main`** at `f94aec9` (PR #54 merged). Migration **0006 still pending**
-  (the SQL was handed to the owner — closes the privilege-escalation hole).
-- **This branch** `claude/class-identity-and-pets` is off latest `main`.
-- **CI/gates:** green — `pnpm lint` clean (54 files), `pnpm typecheck` 8/8,
+- **prod `main`** at `c4d9dc1` (PR #57 merged). Migration **0006 still
+  pending**.
+- **This branch** `claude/world-collision-and-dwellers` is off latest `main`.
+- **CI/gates:** green — `pnpm lint` clean (58 files), `pnpm typecheck` 8/8,
   `pnpm build` 5/5.
 
 ## What's blocking / not verified
 
-- **Not verifiable headless.** Each class's silhouette + each pet's motion
-  needs a browser. Use `?class=server_speaker` / `?class=data_miner` /
-  `?class=terminal_runner` / `?class=hash_kicker` / `?class=web_puller` (and
-  default for `bit_spekter`). Pets need an equipped pet (SAMM prize or shop).
+- **Not verifiable headless.** Need a browser + a running server to confirm
+  the doubled world reads right (camera/perf), the dwellers spawn with
+  distinct archetypes, obstacle collision feels right (sliding, no hitches),
+  and there are no perf regressions from the additional meshes.
 - **Migration 0006** still pending (owner action).
 
 ## What I would do next, in priority order
 
-1. **Owner:** review Phase 2 PR — eyeball each class via `?class=…`. Tune palettes
-   if needed (per-class palette constants in `class-rigs.ts` are the dial).
+1. **Owner:** review Phase 3 PR — verify dwellers, obstacles, world scale, no
+   regressions in routing/movement/multiplayer.
 2. **Owner:** run migration 0006 (still pending).
-3. **Phase 3** — 2× world + obstacle collision + render `npc:*` dwellers as
-   robot/husk/spirit. Separate branch off latest `main`.
+3. **Phase 4** — tutorial step highlighting + post-tutorial account CTA. Same
+   branching pattern.
 
 ## Do NOT do these things
 
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
-- Don't re-allocate the shared limb `BoxGeometry`s in `class-rigs.ts` per-call —
-  the optimisation depends on the module-level singletons.
+- Don't re-add local `PLATFORM_HALF` consts in client/server — they live in
+  `@bitrunners/shared` now and changing them in one place desyncs the wrap.
+- Don't allocate inside `slideMoveInto` — the per-frame budget depends on its
+  allocation-free contract.
 - Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the
   escalation hole fixed in migration 0006.
-- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline (iOS
-  Safari, devlog 0008).
-- Don't surface `docs/lore/_sealed/` content anywhere player-facing.
-- Don't unilaterally write emoticron lore (the ~100-word DB) — Q&A first in
-  Phase 6.
-- Don't deploy to Fly from shell. Don't hand-edit `pnpm-lock.yaml`.
+- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline (iOS,
+  devlog 0008).
+- Don't unilaterally write emoticron lore (Phase 6 needs Q&A).
 
 ## Open questions for the owner
 
-- Each class look right on desktop? Palettes/proportions to tune?
-- Pet behaviours feel right, or any specific ones too hyperactive / sluggish?
-- Phase 7 optimisation: ready to budget a focused session for it after Phase 6,
-  or fold a sub-set into each remaining phase opportunistically?
+- World scale feels right doubled, or should we go further?
+- Each dweller archetype reads as intended — robot/husk/spirit silhouettes
+  clear enough at this density?
+- Obstacle collision feel: any obstacles you'd want walk-through, or any
+  that need a wider/tighter footprint?
 - Migration 0006? (Strongly yes.)

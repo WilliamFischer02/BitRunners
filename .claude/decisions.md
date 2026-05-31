@@ -273,3 +273,21 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (g) — per-pet behaviours live in `pets.ts`** alongside `petGeometryFor`. Switched on `itemId` in the tick (one function call per frame), no per-frame allocations. The default branch preserves the prior shipped behaviour exactly → no regression for an absent or unrecognised pet.
 
 **Honest status:** GLSL/visual still not verifiable headless. Eyeball + tune per class via the override.
+
+## 2026-05-31 — Phase 3: 2x world + collision + dweller archetypes (devlog 0057)
+
+**Decision (a) — `PLATFORM_HALF`/`SIZE` moved to `@bitrunners/shared`** before doubling them, so server and client cannot drift. They had been duplicated in `scene.ts` (9.5) and `sphere-room.ts` (9.5). Phase 3 doubles to 19/38 in one place. Decorations stay at their interior positions (still <±7 from centre), so the same prop layout sits in a 4x area. Fog near/far derive from these so the depth cue auto-retunes.
+
+**Decision (b) — server tags NPC archetype via existing `className` field** (cycled over `DWELLER_ARCHETYPES = ['dweller.robot','dweller.husk','dweller.spirit']`), not a new schema field. Avoids a PROTOCOL_VERSION bump. Old clients receive the same payload shape; `dweller.*` className falls through `REMOTE_LOOKS` to the bit_spekter default, so old clients still render NPCs (just without archetype). The server-side concept is dweller, but the field is "string label" — flexible.
+
+**Decision (c) — client routes by id prefix, not className contents.** `onJoin`: `p.id.startsWith('npc:')` → `buildDweller(p.className)`; else `buildRemoteAvatar(p.className)`. id-prefix is the authoritative "is this an NPC" signal; className is the per-NPC kind. Player classes and dweller archetypes occupy disjoint className namespaces (`bit_spekter` etc. vs `dweller.*`).
+
+**Decision (d) — collision = wrap-aware circle-vs-AABB, axis-separated slide, allocation-free.** Chose AABB colliders (10 entries total) over per-mesh raycasts for cheapness and predictability. `slideMoveInto(pos, nextX, nextZ, r, cs)` mutates the player's Vector3 in place — no per-frame allocations. Wrap-awareness lives inside `colliders.ts` via `wrapDelta` so collision works across the seam without per-tile collider duplication.
+
+**Decision (e) — existing decorations (port/vending/monolith/terminal) get colliders, which is a behaviour change** (used to be walk-through). Reads as "real props" and matches the new "obstacles + AI dwellers" world feel. If owner wants any to stay walk-through for an interaction reason, comment its entry out of `COLLIDERS`.
+
+**Decision (f) — six new obstacle props added inside `worldTile`** (so they appear in all nine wrap clones via the existing tile-clone pattern). Two shared materials (`obstacleRustMat`, `obstacleStoneMat`) cover all six — module-level material sharing baked in per the Phase 7 cross-cutting optimisation principle.
+
+**Decision (g) — NPC count NOT bumped from 4.** The canon cap is 10 NPCs + 40 humans per sphere; staying at 4 keeps Phase 3 focused. Cycle distributes archetypes (robot/husk/spirit/robot) so all three are still represented. Owner can bump `NPC_COUNT` in `sphere-room.ts` independently.
+
+**Honest status:** Visual + collision feel still need a browser. PROTOCOL_VERSION not bumped (no schema/message change).
