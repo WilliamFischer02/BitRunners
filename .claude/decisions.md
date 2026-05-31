@@ -239,3 +239,17 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (d) — `account tier` = `profiles.tier` (`free`|`elevated`).** Names the deferred premium concept; the clicker auto-click "premium" gate can later key off `tier='elevated'` instead of being free.
 
 **Owner action:** run `0006_admin_user_management.sql` (closes the escalation hole). Audit: `SELECT id, role FROM profiles WHERE role <> 'user';` — expect only the owner.
+
+## 2026-05-28 — Six-phase feature push; Phase 1 = render polish (devlog 0055)
+
+**Context:** owner requested a big coordinated push (PS2-in-ASCII look, tutorial highlighting + account CTA, 2× world + collision + AI dwellers, canonical 2-word emoticron editor, tap-to-lock camera). Delivered as **phased draft PRs**, one per workstream, branched off latest `main` (coordination protocol, 0052). Plan file: `/root/.claude/plans/nested-tickling-reddy.md`.
+
+**Owner decisions (AskUserQuestion):** (a) render = **tasteful polish in budget** (not full retro emulation) — mobile/iOS-safe is the constraint; (b) emoticrons = **compose → manual review → library** (full canon, no-free-text), built incrementally; (c) extra wheel slots (the "6 for certain characters") = **earned via play** (progression), not tier/class; (d) delivery = **phased PRs in my proposed order** (render → world/collision/AI → tutorial/CTA → tap-lock → emoticrons).
+
+**Phase 1 decisions (devlog 0055):**
+- **Ordered (Bayer) dither replaces hash noise** in the ASCII shader, behind an `orderedDither` option (default off → no regression for other callers); scene opts in. The cross-hatch gradient is the core "rendered" upgrade.
+- **CRT/diode = a separate `ShaderPass`** (`packages/ascii/crt-pass.ts`) after ASCII / before OutputPass, **not** folded into the ASCII shader — keeps the glyph shader single-responsibility and lets `?crt=off` skip it cleanly. Plain-RGBA, UV-space math, no time roll → **iOS-safe by construction** (devlog 0008 lesson; no DepthTexture/MRT/float).
+- **Fog is nulled during the offscreen character + normals passes** (same save/restore the code already does for `scene.background`) so the hero never dims with camera distance and normal data isn't fog-corrupted. Fog near/far derive from `PLATFORM_*` so they auto-retune when Phase 2 doubles the world.
+- **No tone-mapping change.** `renderer.toneMappingExposure=1.15` is a latent no-op (toneMapping is None) but left alone — changing it interacts with OutputPass colour management and risked the pipeline; out of scope for "in budget".
+
+**Honest status:** GLSL isn't verifiable headless (no WebGL context); correct by inspection + bundle builds. Visual + iOS check are owner-side.

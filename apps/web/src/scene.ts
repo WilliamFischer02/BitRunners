@@ -1,4 +1,9 @@
-import { buildGlyphAtlas, createAsciiPass, setAsciiPassResolution } from '@bitrunners/ascii';
+import {
+  buildGlyphAtlas,
+  createAsciiPass,
+  createCrtPass,
+  setAsciiPassResolution,
+} from '@bitrunners/ascii';
 import {
   BackSide,
   BoxGeometry,
@@ -7,6 +12,7 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
+  Fog,
   Group,
   HemisphereLight,
   IcosahedronGeometry,
@@ -374,6 +380,12 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
 
   const scene = new Scene();
   scene.background = new Color(0x070a09);
+  // Depth cueing: distant ground + wrapped tiles fade toward a dark haze, which
+  // also widens the luminance gradient the ASCII edge pass reads (crisper
+  // silhouettes at depth). Near/far track the world constants so it stays tuned
+  // if the platform size changes. Nulled during the character pass (below) so
+  // the runner stays crisp regardless of camera distance.
+  scene.fog = new Fog(0x0a1212, PLATFORM_HALF * 0.8, PLATFORM_SIZE * 2.0);
 
   const camera = new PerspectiveCamera(38, 1, 0.1, 200);
   const cameraOffset = new Vector3(4.5, 9.5, 4.5);
@@ -390,6 +402,11 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
   fill.position.set(-5, 4, -5);
   fill.layers.enableAll();
   scene.add(fill);
+  // Cool back-rim to rake silhouette edges (separation the ASCII edge pass reads).
+  const rim = new DirectionalLight(0xbcd4ff, 0.5);
+  rim.position.set(-3, 3, -7);
+  rim.layers.enableAll();
+  scene.add(rim);
 
   const worldTile = new Group();
 
@@ -890,6 +907,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     lumBias: 0.04,
     gamma: 1.0,
     dither: 0.55,
+    orderedDither: true,
     edgeStrength: 1.0,
     edgeThreshold: 0.22,
     characterTexture: characterTarget.texture,
@@ -898,6 +916,17 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     normalsTexture: normalsTarget?.texture,
   });
   composer.addPass(asciiPass);
+
+  // CRT/diode finishing pass (scanlines + vignette + faint chromatic split).
+  // On by default; ?crt=off disables it (perf escape hatch on weak devices).
+  const crtEnabled =
+    typeof window === 'undefined' ||
+    new URLSearchParams(window.location.search).get('crt') !== 'off';
+  const crtPass = crtEnabled
+    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.4 })
+    : null;
+  if (crtPass) composer.addPass(crtPass);
+
   composer.addPass(new OutputPass());
 
   const fpsEl = document.createElement('div');
@@ -1236,11 +1265,14 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     camera.layers.set(CHARACTER_LAYER);
     const sceneBg = scene.background;
     scene.background = null;
+    const sceneFog = scene.fog;
+    scene.fog = null;
     renderer.setRenderTarget(characterTarget);
     renderer.clear();
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     scene.background = sceneBg;
+    scene.fog = sceneFog;
     camera.layers.enableAll();
     renderer.setClearColor(savedClear, savedAlpha);
 
@@ -1249,6 +1281,8 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
       scene.overrideMaterial = normalsMaterial;
       const prevBg = scene.background;
       scene.background = null;
+      const prevFog = scene.fog;
+      scene.fog = null;
       renderer.setClearColor(0x808080, 1);
       renderer.setRenderTarget(normalsTarget);
       renderer.clear();
@@ -1256,6 +1290,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
       renderer.setRenderTarget(null);
       scene.overrideMaterial = prevOverride;
       scene.background = prevBg;
+      scene.fog = prevFog;
       renderer.setClearColor(savedClear, savedAlpha);
     }
 
@@ -1334,6 +1369,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
       if (te.anchor.parentNode === host) host.removeChild(te.anchor);
     }
     trackedEmotes.length = 0;
+    crtPass?.material.dispose();
     composer.dispose();
     characterTarget.dispose();
     normalsTarget?.dispose();
