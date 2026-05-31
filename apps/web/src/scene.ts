@@ -923,7 +923,7 @@ export function startScene(host: HTMLElement, _className: string): SceneControls
     typeof window === 'undefined' ||
     new URLSearchParams(window.location.search).get('crt') !== 'off';
   const crtPass = crtEnabled
-    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.4 })
+    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.13 })
     : null;
   if (crtPass) composer.addPass(crtPass);
 
