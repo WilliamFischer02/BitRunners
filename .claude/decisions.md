@@ -291,3 +291,17 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 **Decision (g) — NPC count NOT bumped from 4.** The canon cap is 10 NPCs + 40 humans per sphere; staying at 4 keeps Phase 3 focused. Cycle distributes archetypes (robot/husk/spirit/robot) so all three are still represented. Owner can bump `NPC_COUNT` in `sphere-room.ts` independently.
 
 **Honest status:** Visual + collision feel still need a browser. PROTOCOL_VERSION not bumped (no schema/message change).
+
+## 2026-05-31 — Phase 4: tutorial highlight + account CTA (devlog 0058)
+
+**Decision (a) — highlight = pulsing dashed ring, NOT a darkened spotlight cutout.** Spotlight cutout (SVG mask or 4 shutter divs) was the agent's seam suggestion; I chose a simpler dashed-border ring. Reasons: easier CSS, no SVG mask complexity, mobile-cheap (no blur), terminal-ASCII aesthetic, doesn't fight existing modal z-index. Pointer-events: none keeps it from blocking clicks.
+
+**Decision (b) — `bitrunners:open-profile` event** to pop the panel open from outside. `ProfileIcon`'s `open` state stays internal; the tutorial CTA fires the event, ProfileIcon listens. Keeps the caller decoupled from `ProfileIcon`'s implementation and matches the codebase's existing event-driven cross-component pattern (e.g. `bitrunners:open-scrape`).
+
+**Decision (c) — three-phase tutorial: `steps | reward | cta`**, with `cta` only entered for guests. Authenticated players' "[ done ]" on reward dismisses the tutorial outright (no nag). Guests see one CTA, then their `setActive(false)` choice dismisses for the session — the `tutorialDone` flag is already set when reward fires, so the CTA never re-shows.
+
+**Decision (d) — no guest→account migration fix needed.** Audited `economy-sync.ts`: `loadFromAccount(uid)` does last-write-wins by `updatedAt`. Fresh account (no remote row) → falls to `saveNow(uid)` → local progress is pushed up. Existing account on fresh device → `importProgress(remote)` restores. The agent's seam suggestion ("confirm migration is correct") was the right one — the migration was already correct.
+
+**Decision (e) — target re-read uses both `window.resize` + capturing `window.scroll` + `ResizeObserver(target)` + a one-shot setTimeout retry.** Belt-and-braces: HUD elements rarely move but the retry covers the case where the target wasn't mounted at step-change time; the capturing scroll listener covers scrolling inside any internal panel; ResizeObserver covers the target re-laying out.
+
+**Honest status:** Visual + interactive verification needs a browser.

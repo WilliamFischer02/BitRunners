@@ -44,6 +44,15 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
     [],
   );
 
+  // Other components (e.g. the post-tutorial account CTA) can pop the profile
+  // panel open by dispatching this event — keeps callers decoupled from the
+  // panel's local state.
+  useEffect(() => {
+    const onOpen = (): void => setOpen(true);
+    window.addEventListener('bitrunners:open-profile', onOpen);
+    return () => window.removeEventListener('bitrunners:open-profile', onOpen);
+  }, []);
+
   return (
     <>
       <button
