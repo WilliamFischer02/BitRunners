@@ -253,3 +253,23 @@ Four forks locked via owner Q&A before scoping a 5-chunk sprint (vending machine
 - **No tone-mapping change.** `renderer.toneMappingExposure=1.15` is a latent no-op (toneMapping is None) but left alone — changing it interacts with OutputPass colour management and risked the pipeline; out of scope for "in budget".
 
 **Honest status:** GLSL isn't verifiable headless (no WebGL context); correct by inspection + bundle builds. Visual + iOS check are owner-side.
+
+## 2026-05-28 — Phase 2: per-class identity + pet behaviours (devlog 0056)
+
+**Context:** owner expanded the six-phase push with three new objectives: per-class visual identity (option (a) — rudimentary primitive rigs, not free CC0 assets), distinct pet movement behaviours, per-class clothing impact. Plus a dedicated optimisation sweep added as Phase 7 (cross-cutting principles also applied inside every phase). Plan file: `/root/.claude/plans/nested-tickling-reddy.md`.
+
+**Decision (a) — six classes share the IDENTICAL skeleton + `ClassRig` return shape**, so the existing tick animation drives them all unchanged. Differences live only in body geometry, props, and material palette. New `apps/web/src/class-rigs.ts` owns every class builder + `buildClassRig(className)` router. **Why:** zero animation-code surface area touched; trivial to add a 7th class later.
+
+**Decision (b) — limb geometries are module-level singletons** (`G_ARM_UPPER`, `G_HAND`, etc.) shared across all six class rigs (and the remote-avatar shell). Visually correct (limbs are similar enough across classes) and a real allocation win as we add more classes / per-class remote variants.
+
+**Decision (c) — data_miner's hunched lean = `root.rotation.x = 0.08`, not `chest.rotation.x`.** The tick OVERWRITES `chest.rotation.x` every frame (lean-while-walking), so a build-time chest tilt would be erased the moment the player moved or idled. `root.rotation` lives outside the animation surface and stacks cleanly. Camera follow uses `root.position`, not rotation, so the camera doesn't tilt.
+
+**Decision (d) — per-class clothing impact comes "for free" from distinct base materials.** No per-class clothing tuning code. Each class has its own armour material (different color/roughness/metalness/emissive), so the existing `applySkin()` palette overlay inherits a different undertone per class. A `applySkin()` amplifier per class is a one-line follow-up if owner wants louder.
+
+**Decision (e) — remote avatars are palette-only per class this PR**, not full per-class rigs. A `REMOTE_LOOKS` table swaps armour/dark/emissive; same 6-mesh shell. Cheap (no extra meshes per remote) and ships per-class colour identity for multiplayer immediately. Phase 7 can add one distinguishing prop per class to the remote shell if desired.
+
+**Decision (f) — `?class=NAME` URL override** for visual QA of locked classes. Boot's class-grid lock state is unchanged (lore-canon for which classes are selectable). The override is validated via `isValidClass()` to avoid arbitrary strings reaching the rig router.
+
+**Decision (g) — per-pet behaviours live in `pets.ts`** alongside `petGeometryFor`. Switched on `itemId` in the tick (one function call per frame), no per-frame allocations. The default branch preserves the prior shipped behaviour exactly → no regression for an absent or unrecognised pet.
+
+**Honest status:** GLSL/visual still not verifiable headless. Eyeball + tune per class via the override.
