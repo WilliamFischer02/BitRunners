@@ -2,18 +2,18 @@
 
 ## State of the build
 
-- **⚠️ DEPLOY STATE:** prod `main` (`1d3b12a`) has everything through **PR #53**
-  (merged): proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases
-  1–4, SAMM glow + security, distinct pet shapes, admin phase 3 (user table +
+- **⚠️ DEPLOY STATE:** prod `main` has everything through **PR #54** (merged):
+  proxy-wallet/Tokens, runner switch, a11y (`<dialog>`), admin phases 1–4,
+  SAMM glow + security, distinct pet shapes, admin phase 3 (user table +
   grants + profiles RLS fix), showModal() for AdminConsole + Samm, auto-reconnect
-  + grant-received toast, reduced-motion full pass, profile panel live economy.
+  + grant-received toast, reduced-motion full pass, profile panel live economy,
+  render polish — depth fog, ordered dither, CRT pass (PR #54).
   **Migrations 0001–0005 are run.** Migration **0006 is pending** (closes the
   profiles privilege-escalation hole — devlog 0053; owner runs in Supabase SQL
   editor).
 - **Live server (Fly):** protocol v1, idle-disconnect, ambient NPCs.
-- **Open draft PRs (do NOT start work that overlaps these):**
-  - **#54** (`claude/render-polish-ps2-ascii`) — depth fog, ordered dither, CRT pass
-  - **This session's work** (current branch `claude/peaceful-thompson-7k3R6`) — showModal for ScrapePanel + ProfilePanel (draft PR to be opened)
+- **This PR (#55)** (`claude/peaceful-thompson-7k3R6`) — showModal for
+  ScrapePanel + ProfilePanel.
 - **CI status:** gates green — `pnpm lint` clean (52 files), `pnpm typecheck` 8/8,
   `pnpm build` 5/5.
 
@@ -55,7 +55,7 @@ Security scan showed no new issues (see devlog 0055).
 
 1. **Owner: run migration 0006** (closes the profiles escalation hole; additive).
    Audit after: `SELECT id, role FROM profiles WHERE role <> 'user';` — expect only you.
-2. **Verify and merge PRs #54 and this branch's PR** on the deploy preview.
+2. **Verify and merge this PR (#55)** on the deploy preview.
 3. **CSS cleanup:** remove the now-dead `.panel-backdrop` rule from `style.css`
    (~10-line cleanup pass; low priority, no behaviour change).
 4. **Trading backend** (p2p-trading-epic P1) — next focused session once auth is live.
@@ -73,15 +73,18 @@ Security scan showed no new issues (see devlog 0055).
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
 - Don't re-lock Tokens for bit_spekter (proxy-wallet canon retired, lore 009).
-- Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the
-  escalation hole fixed in migration 0006.
-- Don't let the clicker mint Tokens (mints Credits; Tokens come from exchange / SAMM).
-- Don't edit `docs/lore/_sealed/`. Don't hand-edit `pnpm-lock.yaml`.
-- Don't deploy to Fly from shell — GitHub Actions owns deploys.
+- Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens the escalation
+  hole fixed in migration 0006.
+- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline (iOS Safari,
+  devlog 0008). The new CRT pass is plain-RGBA on purpose.
+- Don't surface `docs/lore/_sealed/` content anywhere player-facing.
+- Don't write emoticron lore (the ~100-word DB) unilaterally — Q&A the owner in Phase 5.
+- Don't edit `docs/lore/_sealed/`. Don't hand-edit `pnpm-lock.yaml`. Don't deploy to Fly
+  from shell.
 
 ## Open questions for the owner
 
-- **Run migration 0006?** (Strongly yes — closes profiles privilege-escalation hole.)
-- After 0006: audit `SELECT id, role FROM profiles WHERE role <> 'user';`
-- Trading backend: ready to scope a dedicated session?
-- Board API rate limiting: prioritize now or wait until DAU warrants it?
+- Phase 1 look OK on desktop + iOS? Any CRT/fog/dither tuning before I carry the palette
+  into later phases?
+- Run migration 0006? (Strongly yes.)
+- Phase 5 emoticrons: ready to Q&A the ~100-word DB content when we get there?
