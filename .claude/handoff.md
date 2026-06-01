@@ -1,4 +1,4 @@
-# Handoff — 2026-05-31, Phase 4 (tutorial highlight + account CTA) DONE
+# Handoff — 2026-05-31, Phase 5 (tap-to-lock + glow) DONE
 
 ## The plan (7 phases)
 
@@ -7,63 +7,70 @@
 | 1 | Render polish (fog, ordered dither, CRT) | **MERGED — PR #54** |
 | 2 | Class identity + pet behaviours + clothing | **MERGED — PR #57** |
 | 3 | 2× world + obstacle collision + AI dwellers (`npc:*`) | **MERGED — PR #58** |
-| 4 | **Tutorial highlighting + account CTA** | **DONE — this PR** |
-| 5 | Tap-to-lock camera + glow | queued (next) |
-| 6 | Emoticron compose → review → library + wheel editor | queued |
+| 4 | Tutorial highlighting + account CTA | **MERGED — PR #59** |
+| 5 | **Tap-to-lock camera + glow** | **DONE — this PR** |
+| 6 | Emoticron compose → review → library + wheel editor | queued (next; needs lore Q&A) |
 | 7 | Optimisation sweep | queued |
 
-## Phase 4 — what I did (devlog 0058)
+## Phase 5 — what I did (devlog 0059)
 
-- **`apps/web/src/Tutorial.tsx`** — added `target?: string` to each step;
-  built a `TutorialHighlight` inner component that draws a pulsing dashed
-  ring (`getBoundingClientRect` + `ResizeObserver`) around the HUD element
-  each step talks about. New `'cta'` phase between `reward` and dismiss —
-  only shown to guests, never authenticated players.
-- **`apps/web/src/ProfileIcon.tsx`** — added a `bitrunners:open-profile`
-  event listener so the tutorial CTA can pop the existing AccountSection
-  open without coupling to the panel's local state.
-- **`apps/web/src/style.css`** — `.tutorial-highlight` ring (pulsing
-  dashed; `prefers-reduced-motion` disables animation); `.tutorial-card
-  --cta` blue-accent variant.
-- Verified `economy-sync.ts` already handles guest → account migration
-  safely (last-write-wins by `updatedAt`). No fix needed.
+- **`apps/web/src/target-lock.ts`** (new) — `createTargetRaycaster()`,
+  `pickAvatar()` (closest-hit raycast against a map of lockable groups),
+  `applyLock()` (snapshot per-material emissiveIntensity + add halo torus),
+  `releaseLock()` (restore + dispose halo), `tickLock()` (per-frame pulse +
+  spin).
+- **`apps/web/src/scene.ts`** — `LOCK_RELEASE_DISTANCE = 14`; canvas-only
+  `click` listener (not on host, so HUD clicks don't bubble in); tap-lock
+  state declared **after** `remoteAvatars` so the closure references the
+  initialised map; `onLeave` releases on disconnect; camera follow picks the
+  locked avatar's `group.position` (already wrap-anchored near local, so
+  seam-crossing is seamless); per-frame distance check + glow tick; dispose
+  cleanup.
+- **No `OutlinePass`** — depth-fragile on iOS (devlog 0008). Glow = emissive
+  pulse + halo torus, all in the plain-RGBA pipeline. No new render pass.
+
+### Release conditions
+1. Tap the locked target again.
+2. Tap a different lockable target (auto-switches).
+3. Target disconnects (`onLeave`).
+4. Target walks `> 14` units (wrapped distance) from local player.
 
 ## State of the build
-- **prod `main`** at `ece183d` (PR #58 merged). Migration **0006 still
+- **prod `main`** at `68c178d` (PR #59 merged). Migration **0006 still
   pending**.
-- **This branch** `claude/tutorial-highlight-and-account-cta` is off latest
-  `main`.
-- **CI/gates:** green — `pnpm lint` clean (58 files), `pnpm typecheck` 8/8,
+- **This branch** `claude/tap-to-lock-and-glow` is off latest `main`.
+- **CI/gates:** green — `pnpm lint` clean (59 files), `pnpm typecheck` 8/8,
   `pnpm build` 5/5.
 
 ## What's blocking / not verified
-
-- **Not verifiable headless.** Need a browser to confirm: dashed ring lands
-  on the right element per step, repositions on resize, CTA only fires for
-  guests, "make account" button opens the profile panel.
+- **Not verifiable headless.** Need a browser + server to confirm: tap picks
+  the right entity from the composite ASCII output, camera follows smoothly
+  across the seam, halo + emissive pulse read at glyph resolution, all four
+  release conditions fire (test by having a 2nd browser tab as a 2nd player,
+  or just tap an NPC dweller).
 - **Migration 0006** still pending (owner action).
 
 ## What I would do next, in priority order
-
-1. **Owner:** review Phase 4 PR — clear the tutorial in a fresh browser
-   profile (or `localStorage.clear()`) to retrigger; verify rings + CTA.
+1. **Owner:** review Phase 5 PR — eyeball lock/release/distance feel; iOS
+   Safari check that the click event reliably fires after tap.
 2. **Owner:** run migration 0006 (still pending).
-3. **Phase 5** — tap-to-lock camera + glow. Greenfield: add a raycaster,
-   tap-pick remote players + NPC dwellers, lock camera target, pulsing
-   emissive + halo torus (mobile-safe, NOT `OutlinePass`).
+3. **Phase 6** — the big one. Needs **lore Q&A on the ~100-word emoticron
+   DB** before I can build. I'll surface a starter list of categories
+   (greetings, states, objects, ideograms…) and ask you to confirm /
+   populate before any code lands.
 
 ## Do NOT do these things
 - Don't push to `main` — prod branch; deploys Pages + Fly.
 - Don't merge any PR — owner-gated.
-- Don't add per-frame allocations to `TutorialHighlight` — the
-  ResizeObserver + scoped listeners are the budget.
+- Don't migrate the tap-lock glow to `OutlinePass` — it re-introduces the
+  iOS-Safari depth-buffer risk that devlog 0008 spent days untangling.
 - Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens
   the escalation hole fixed in migration 0006.
-- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline
-  (iOS, devlog 0008).
-- Don't unilaterally write emoticron lore (Phase 6 needs Q&A).
+- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline.
+- Don't unilaterally write emoticron lore.
 
 ## Open questions for the owner
-- Tutorial highlight ring reads well? Colour/intensity right, or tune?
-- CTA copy ("save your progress …") OK, or rephrase?
+- Tap-lock feel right? Distance threshold (14) right, or tune?
+- Halo colour — gold reads neutral; could go faction-coded (orange for
+  Company, purple for Admin) if you'd rather.
 - Migration 0006?

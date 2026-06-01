@@ -46,6 +46,14 @@ import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
+import {
+  type LockedTarget,
+  applyLock,
+  createTargetRaycaster,
+  pickAvatar,
+  releaseLock,
+  tickLock,
+} from './target-lock.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -63,6 +71,11 @@ function readRunEnabled(): boolean {
 // Player collision radius (tuned to the bit_spekter torso footprint; reads as
 // "your body" without being so fat that doorways feel pinched).
 const PLAYER_RADIUS = 0.35;
+
+// Tap-to-lock auto-release distance. Wrapped distance; 14 is just over a third
+// of the doubled world's width — far enough that you can follow someone across
+// the platform but tight enough that they don't drag the camera over the seam.
+const LOCK_RELEASE_DISTANCE = 14;
 
 // Solid colliders the local player slides against. AABBs in canonical world
 // coords; collision is wrap-aware (colliders.ts uses wrapDelta). The four
@@ -835,6 +848,28 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     trotY: number;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  // Tap-to-lock state. Click on a remote avatar or NPC dweller to lock the
+  // camera onto them + apply a pulsing emissive halo. Click them again, they
+  // disconnect, or they walk past LOCK_RELEASE_DISTANCE to release.
+  const tapRaycaster = createTargetRaycaster();
+  let lockedTarget: LockedTarget | null = null;
+  const onCanvasClick = (ev: MouseEvent): void => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const ndcX = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+    const hit = pickAvatar(tapRaycaster, camera, ndcX, ndcY, remoteAvatars);
+    if (!hit) return; // tap on background — keep current lock as-is
+    if (lockedTarget?.id === hit.id) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+      return;
+    }
+    if (lockedTarget) releaseLock(lockedTarget);
+    lockedTarget = applyLock(hit.id, hit.group);
+  };
+  renderer.domElement.addEventListener('click', onCanvasClick);
   interface TrackedEmote {
     anchor: HTMLDivElement;
     group: Group;
@@ -918,6 +953,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             onLeave(id) {
               const ra = remoteAvatars.get(id);
               if (!ra) return;
+              // Release tap-lock if the locked target just disconnected.
+              if (lockedTarget?.id === id) {
+                releaseLock(lockedTarget);
+                lockedTarget = null;
+              }
               scene.remove(ra.group);
               remoteAvatars.delete(id);
               for (let i = trackedEmotes.length - 1; i >= 0; i--) {
@@ -1084,8 +1124,38 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
     (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
 
-    camera.position.copy(rig.root.position).add(cameraOffset);
-    camera.lookAt(rig.root.position.x, rig.root.position.y + 0.9, rig.root.position.z);
+    // Camera follow target: locked avatar if any (auto-release on distance),
+    // otherwise the local rig. The remote avatar's group.position is already
+    // wrapped near the local player in the remote-interpolation block below,
+    // so following it is seamless across the seam.
+    let followX = rig.root.position.x;
+    let followY = rig.root.position.y;
+    let followZ = rig.root.position.z;
+    if (lockedTarget) {
+      const ra = remoteAvatars.get(lockedTarget.id);
+      if (!ra) {
+        releaseLock(lockedTarget);
+        lockedTarget = null;
+      } else {
+        const ldx = wrapDelta(ra.tx - rig.root.position.x);
+        const ldz = wrapDelta(ra.tz - rig.root.position.z);
+        if (Math.hypot(ldx, ldz) > LOCK_RELEASE_DISTANCE) {
+          releaseLock(lockedTarget);
+          lockedTarget = null;
+        } else {
+          tickLock(lockedTarget, elapsed);
+          followX = ra.group.position.x;
+          followY = 0;
+          followZ = ra.group.position.z;
+        }
+      }
+    }
+    camera.position.set(
+      followX + cameraOffset.x,
+      followY + cameraOffset.y,
+      followZ + cameraOffset.z,
+    );
+    camera.lookAt(followX, followY + 0.9, followZ);
 
     // Remote avatars: draw at the periodic image nearest the local player,
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
@@ -1219,6 +1289,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     petGeom?.dispose();
     petMat?.dispose();
     input.dispose();
+    renderer.domElement.removeEventListener('click', onCanvasClick);
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
     if (netSession) {
       void netSession.dispose();
     }
