@@ -40,12 +40,14 @@ import {
   getEquippedAppearance,
   subscribeAppearance,
 } from './appearance.js';
+import { BADGES } from './badges.js';
 import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
+import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
 import {
   type LockedTarget,
   applyLock,
@@ -798,24 +800,101 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   fpsEl.textContent = '-- fps';
   host.appendChild(fpsEl);
 
-  // Random 6-char [A-Z0-9] session code shown above the player when no account is wired.
-  const playerCode = (() => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let out = '';
-    for (let i = 0; i < 6; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
-    return out;
-  })();
-  const playerTagEl = document.createElement('div');
-  playerTagEl.className = 'player-tag';
+  // Local player's floating name tag. Reads the resolved displayName from
+  // profile.ts (signed-in users see their approved handle; guests get a
+  // deterministic `runner_xxxxxx` placeholder). Tapping the tag opens the
+  // username editor. Badge glyph + '!' dot react to identity changes.
+  const playerTagEl = document.createElement('button');
+  playerTagEl.type = 'button';
+  playerTagEl.className = 'player-tag player-tag--self';
+  playerTagEl.setAttribute('aria-label', 'edit runner identity');
   const playerTagName = document.createElement('span');
   playerTagName.className = 'player-tag-name';
-  playerTagName.textContent = playerCode;
+  const playerTagBadge = document.createElement('span');
+  playerTagBadge.className = 'player-tag-badge';
+  const playerTagAlert = document.createElement('span');
+  playerTagAlert.className = 'player-tag-alert';
+  playerTagAlert.textContent = '!';
   const playerTagSub = document.createElement('span');
   playerTagSub.className = 'player-tag-sub';
-  playerTagSub.textContent = '// session';
+  playerTagSub.textContent = '// tap to edit';
+  playerTagEl.appendChild(playerTagBadge);
   playerTagEl.appendChild(playerTagName);
+  playerTagEl.appendChild(playerTagAlert);
   playerTagEl.appendChild(playerTagSub);
   host.appendChild(playerTagEl);
+  playerTagEl.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try {
+      window.dispatchEvent(new CustomEvent('bitrunners:edit-identity'));
+    } catch {
+      // non-DOM env — ignore
+    }
+  });
+
+  function applyTag(
+    el: HTMLElement,
+    nameSpan: HTMLElement,
+    badgeSpan: HTMLElement,
+    alertSpan: HTMLElement | null,
+    displayName: string,
+    badgeKey: string,
+    unacknowledged: number,
+  ): void {
+    nameSpan.textContent = displayName || 'runner';
+    const meta = badgeKey ? BADGES[badgeKey] : null;
+    if (meta) {
+      badgeSpan.textContent = meta.glyph;
+      badgeSpan.style.color = meta.tint;
+      badgeSpan.style.display = '';
+    } else {
+      badgeSpan.textContent = '';
+      badgeSpan.style.display = 'none';
+    }
+    if (alertSpan) {
+      alertSpan.style.display = unacknowledged > 0 ? '' : 'none';
+    }
+  }
+
+  // Initial render + identity subscription.
+  let localIdentity: LocalIdentity = getIdentity();
+  applyTag(
+    playerTagEl,
+    playerTagName,
+    playerTagBadge,
+    playerTagAlert,
+    localIdentity.displayName,
+    localIdentity.equippedBadge,
+    localIdentity.unacknowledged,
+  );
+  const unsubscribeIdentity = subscribeIdentity((next) => {
+    const wasName = localIdentity.displayName;
+    const wasBadge = localIdentity.equippedBadge;
+    const wasTheme = localIdentity.equippedTheme;
+    localIdentity = next;
+    applyTag(
+      playerTagEl,
+      playerTagName,
+      playerTagBadge,
+      playerTagAlert,
+      next.displayName,
+      next.equippedBadge,
+      next.unacknowledged,
+    );
+    // Sync any changed identity field to the room so other clients see it.
+    if (
+      netSession &&
+      (wasName !== next.displayName ||
+        wasBadge !== next.equippedBadge ||
+        wasTheme !== next.equippedTheme)
+    ) {
+      netSession.sendIdentity({
+        displayName: next.displayName,
+        equippedBadge: next.equippedBadge,
+        equippedTheme: next.equippedTheme,
+      });
+    }
+  });
 
   function resize(): void {
     const w = host.clientWidth || 1;
@@ -846,8 +925,29 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     tx: number;
     tz: number;
     trotY: number;
+    tagEl: HTMLDivElement;
+    tagName: HTMLSpanElement;
+    tagBadge: HTMLSpanElement;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  function buildRemoteTag(): {
+    el: HTMLDivElement;
+    nameSpan: HTMLSpanElement;
+    badgeSpan: HTMLSpanElement;
+  } {
+    const el = document.createElement('div');
+    el.className = 'player-tag player-tag--remote';
+    const badgeSpan = document.createElement('span');
+    badgeSpan.className = 'player-tag-badge';
+    badgeSpan.style.display = 'none';
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'player-tag-name';
+    el.appendChild(badgeSpan);
+    el.appendChild(nameSpan);
+    host.appendChild(el);
+    return { el, nameSpan, badgeSpan };
+  }
 
   // Tap-to-lock state. Click on a remote avatar or NPC dweller to lock the
   // camera onto them + apply a pulsing emissive halo. Click them again, they
@@ -878,7 +978,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const trackedEmotes: TrackedEmote[] = [];
 
   const clearRemoteAvatars = (): void => {
-    for (const ra of remoteAvatars.values()) scene.remove(ra.group);
+    for (const ra of remoteAvatars.values()) {
+      scene.remove(ra.group);
+      if (ra.tagEl.parentNode === host) host.removeChild(ra.tagEl);
+    }
     remoteAvatars.clear();
     for (const te of trackedEmotes) {
       if (te.anchor.parentNode === host) host.removeChild(te.anchor);
@@ -932,7 +1035,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       try {
         const session = await joinSphere(
           serverUrl,
-          'bit_spekter',
+          {
+            className: 'bit_spekter',
+            displayName: localIdentity.displayName,
+            equippedBadge: localIdentity.equippedBadge,
+            equippedTheme: localIdentity.equippedTheme,
+          },
           {
             onJoin(p) {
               if (remoteAvatars.has(p.id)) return;
@@ -947,7 +1055,31 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
               group.rotation.y = p.rotY;
               scene.add(group);
-              remoteAvatars.set(p.id, { group, tx: p.x, tz: p.z, trotY: p.rotY });
+              const tag = buildRemoteTag();
+              const ra: RemoteAvatar = {
+                group,
+                tx: p.x,
+                tz: p.z,
+                trotY: p.rotY,
+                tagEl: tag.el,
+                tagName: tag.nameSpan,
+                tagBadge: tag.badgeSpan,
+              };
+              applyTag(
+                ra.tagEl,
+                ra.tagName,
+                ra.tagBadge,
+                null,
+                p.displayName || (p.id.startsWith('npc:') ? '' : 'runner'),
+                p.equippedBadge,
+                0,
+              );
+              // NPCs don't need a name tag — keep it but show the className.
+              if (p.id.startsWith('npc:')) {
+                ra.tagName.textContent = `${p.className.replace('dweller.', '')}`;
+                ra.tagEl.classList.add('player-tag--npc');
+              }
+              remoteAvatars.set(p.id, ra);
               setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
             },
             onLeave(id) {
@@ -959,6 +1091,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 lockedTarget = null;
               }
               scene.remove(ra.group);
+              if (ra.tagEl.parentNode === host) host.removeChild(ra.tagEl);
               remoteAvatars.delete(id);
               for (let i = trackedEmotes.length - 1; i >= 0; i--) {
                 const te = trackedEmotes[i];
@@ -974,6 +1107,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               ra.tx = p.x;
               ra.tz = p.z;
               ra.trotY = p.rotY;
+            },
+            onIdentity(id, p) {
+              const ra = remoteAvatars.get(id);
+              if (!ra || id.startsWith('npc:')) return;
+              applyTag(
+                ra.tagEl,
+                ra.tagName,
+                ra.tagBadge,
+                null,
+                p.displayName || 'runner',
+                p.equippedBadge,
+                0,
+              );
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);
@@ -1236,6 +1382,22 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     playerTagEl.style.opacity = visible ? '1' : '0';
     playerTagEl.style.transform = `translate(${tagX}px, ${tagY}px) translate(-50%, -100%)`;
 
+    // Project each remote avatar's name tag above its head. NPCs included
+    // (their tag was set to the className earlier and reads as a faint label).
+    if (remoteAvatars.size > 0) {
+      const hw = host.clientWidth || 1;
+      const hh = host.clientHeight || 1;
+      for (const ra of remoteAvatars.values()) {
+        tempTag.set(ra.group.position.x, 2.55, ra.group.position.z);
+        tempTag.project(camera);
+        const rx = (tempTag.x * 0.5 + 0.5) * hw;
+        const ry = (-tempTag.y * 0.5 + 0.5) * hh;
+        const onScreen = tempTag.z > -1 && tempTag.z < 1;
+        ra.tagEl.style.opacity = onScreen ? '1' : '0';
+        ra.tagEl.style.transform = `translate(${rx}px, ${ry}px) translate(-50%, -100%)`;
+      }
+    }
+
     // Anchor remote emote bubbles above their avatar's projected screen point.
     for (let i = trackedEmotes.length - 1; i >= 0; i--) {
       const te = trackedEmotes[i];
@@ -1299,8 +1461,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
     for (const ra of remoteAvatars.values()) {
       scene.remove(ra.group);
+      if (ra.tagEl.parentNode === host) host.removeChild(ra.tagEl);
     }
     remoteAvatars.clear();
+    unsubscribeIdentity();
     for (const te of trackedEmotes) {
       if (te.anchor.parentNode === host) host.removeChild(te.anchor);
     }

@@ -3,10 +3,14 @@ import { listDialogue, saveDialogue } from './dialogue.js';
 import {
   type AdminUser,
   type DailySignin,
+  type PendingName,
   type Role,
   type Tier,
+  adminApproveName,
   adminGrantEconomy,
+  adminListPendingNames,
   adminListUsers,
+  adminRejectName,
   adminSetRole,
   adminSetTier,
   fetchActivityStats,
@@ -131,6 +135,8 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
       </section>
 
       <DialogueEditor />
+
+      <UsernameQueue />
 
       <ActivityStats />
 
@@ -522,5 +528,101 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
       />
       {msg && <div className="panel-stub">─── {msg}</div>}
     </div>
+  );
+}
+
+// ── Username approval queue (Sub-Phase B, migration 0007) ──────────────────
+
+function UsernameQueue(): JSX.Element {
+  const [rows, setRows] = useState<PendingName[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setErr(null);
+    const data = await adminListPendingNames();
+    if (data === null) {
+      setErr('could not load (run migration 0007?)');
+      setRows([]);
+    } else {
+      setRows(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const approve = async (id: string): Promise<void> => {
+    if (busy) return;
+    setBusy(id);
+    setMsg(null);
+    const res = await adminApproveName(id);
+    if (res.error) setMsg(`! ${res.error}`);
+    else {
+      setMsg('approved ✓');
+      await load();
+    }
+    setBusy(null);
+  };
+
+  const reject = async (id: string): Promise<void> => {
+    if (busy) return;
+    const note = window.prompt('rejection note (shown to the user):', 'inappropriate');
+    if (note === null) return;
+    setBusy(id);
+    setMsg(null);
+    const res = await adminRejectName(id, note);
+    if (res.error) setMsg(`! ${res.error}`);
+    else {
+      setMsg('rejected ✓');
+      await load();
+    }
+    setBusy(null);
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ username queue</div>
+      {err && <div className="panel-stub">─── {err}</div>}
+      {!err && rows === null && <div className="panel-stub">─── loading…</div>}
+      {!err && rows !== null && rows.length === 0 && (
+        <div className="panel-stub">─── no pending names.</div>
+      )}
+      {rows !== null && rows.length > 0 && (
+        <div className="admin-userlist">
+          {rows.map((r) => (
+            <div key={r.id} className="admin-userrow">
+              <span className="admin-user-email">{r.requested ?? '—'}</span>
+              <span className="admin-user-meta">was: {r.currentName ?? '(unset)'}</span>
+              <span className="admin-user-bal">
+                <button
+                  type="button"
+                  className="panel-toggle is-on"
+                  disabled={busy === r.id}
+                  onClick={() => {
+                    void approve(r.id);
+                  }}
+                >
+                  [ ok ]
+                </button>{' '}
+                <button
+                  type="button"
+                  className="panel-toggle"
+                  disabled={busy === r.id}
+                  onClick={() => {
+                    void reject(r.id);
+                  }}
+                >
+                  [ no ]
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <div className="panel-stub">─── {msg}</div>}
+    </section>
   );
 }

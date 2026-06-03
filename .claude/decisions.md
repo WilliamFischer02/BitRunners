@@ -5,6 +5,54 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-06-03 — Free-text proximity DM permitted (canon reversal)
+
+**Decision:** The original `CLAUDE.md` rule *"No free-text input anywhere in the
+game"* is reversed for the proximity DM surface only. Owner chose option (c) of
+three (emote-only DM / cut DM / free-text with moderation). Moderation stack:
+verified-account gate + age gate + server-side profanity filter + 30 msg/min
+rate limit + per-pair block list + audit log.
+
+**Implementation pointer:** `docs/lore/015-chat-policy.md`. `CLAUDE.md`
+moderation paragraph amended in the same commit that records the decision.
+Free text remains forbidden on every other surface (usernames, emoticrons,
+mission dialogue, admin dialogue).
+
+**Why it matters:** This is the largest moderation lift in the Phase 3.5
+roadmap. It's deferred to Sub-Phase I so the identity, badge, theme, and HUD
+layers settle first.
+
+---
+
+## 2026-06-03 — Single PROTOCOL_VERSION bump for the entire Phase 3.5 roadmap
+
+**Decision:** `PROTOCOL_VERSION = 2` lands in Sub-Phase B (username + badge +
+theme on `PlayerState`). Migration `0007` reserves every column the rest of
+the roadmap (badges, themes, missions, hack-QTE, DMs) will need, so no further
+schema or protocol bumps are planned through Sub-Phase J.
+
+**Why it matters:** Multiple bumps in a short window thrash the "old client
+soft-warn" path and make rollback windows ambiguous. One coordinated server +
+client deploy covers everything that touches state shape; subsequent sub-phases
+only add UI / RPCs that don't change the wire.
+
+---
+
+## 2026-06-03 — Identity changes fan out via Colyseus identity message, NOT broadcast
+
+**Decision:** `apps/server/src/sphere-room.ts` `'identity'` handler trusts the
+authenticated client's `displayName / equippedBadge / equippedTheme` payload
+after shape validation, because the SECURITY DEFINER RPCs the client must call
+*before* sending it (`submit_display_name`, `equip_badge`, `purchase_theme`)
+already re-check ownership against `earned_badges` / `owned_themes`. The room
+shape-validates length / charset / key pattern only.
+
+**Why it matters:** Keeps the room hot path tiny (no Supabase round-trip on the
+'identity' message) without giving up server-authoritative ownership. The
+control plane is in Supabase; the room is the data plane.
+
+---
+
 ## 2026-05-16 — Clothing/pets/inventory framework: appearance.ts is the render isolation boundary
 
 **Decision:** Built the clothing/pet/upgrade/inventory framework with the

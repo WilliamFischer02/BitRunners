@@ -9,7 +9,12 @@ import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
+import { UsernameEditor } from './UsernameEditor.js';
+import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
+
+// Boot the identity subsystem once. Idempotent.
+startIdentity();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
@@ -156,6 +161,7 @@ function Game({ className }: GameProps): JSX.Element {
       <Samm inRange={sammInRange} />
       <Tutorial />
       <AdminConsole />
+      <UsernameEditor />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
       {grantToast && (
         <output className="grant-toast">

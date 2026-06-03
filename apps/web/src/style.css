@@ -1152,10 +1152,11 @@ dialog.panel::backdrop {
   left: 0;
   pointer-events: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-  display: flex;
-  flex-direction: column;
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 1px;
+  gap: 1px 6px;
   background: rgba(8, 12, 14, 0.55);
   border: 1px solid #4a6850;
   padding: 3px 8px;
@@ -1163,6 +1164,24 @@ dialog.panel::backdrop {
   z-index: 8;
   transition: opacity 200ms ease-out;
   white-space: nowrap;
+  color: inherit;
+  appearance: none;
+  font-size: 11px;
+}
+.player-tag--self {
+  pointer-events: auto;
+  cursor: pointer;
+}
+.player-tag--self:hover {
+  border-color: #84d8a4;
+}
+.player-tag--remote {
+  border-color: #355042;
+  background: rgba(8, 12, 14, 0.45);
+}
+.player-tag--npc {
+  opacity: 0.6;
+  border-color: #2a3a32;
 }
 .player-tag-name {
   font-size: 11px;
@@ -1171,11 +1190,125 @@ dialog.panel::backdrop {
   text-shadow: 0 0 6px rgba(147, 224, 177, 0.6), 0 0 14px rgba(147, 224, 177, 0.3);
   font-weight: 600;
 }
+.player-tag-badge {
+  font-size: 12px;
+  line-height: 1;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.player-tag-alert {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ffd860;
+  text-shadow: 0 0 8px rgba(255, 216, 96, 0.8);
+  animation: tag-alert-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-tag-alert {
+    animation: none;
+  }
+}
+@keyframes tag-alert-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
 .player-tag-sub {
   font-size: 8px;
   letter-spacing: 0.05em;
   color: var(--tint-dim);
   text-transform: uppercase;
+  flex-basis: 100%;
+  text-align: center;
+}
+
+/* ──────────── username editor ──────────── */
+.username-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.badge-ladders {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+.badge-ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(8, 12, 14, 0.4);
+  border: 1px solid #2a3a32;
+  border-radius: 3px;
+  padding: 6px;
+}
+.badge-ladder-label {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tint-dim);
+}
+.badge-ladder-list {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 3px;
+}
+.badge-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid #2a3a32;
+  padding: 2px 4px;
+  font: inherit;
+  color: var(--tint-dim);
+  cursor: pointer;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-align: left;
+}
+.badge-cell:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+.badge-cell.is-owned {
+  border-color: #4a6850;
+}
+.badge-cell.is-equipped {
+  border-color: #84d8a4;
+  box-shadow: inset 0 0 4px rgba(132, 216, 164, 0.4);
+}
+.badge-cell-glyph {
+  font-size: 11px;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+.badge-cell-name {
+  text-transform: lowercase;
+}
+.badge-cell-new {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: #ffd860;
+  color: #000;
+  font-weight: 700;
+  font-size: 9px;
+  line-height: 1;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+.is-busy {
+  opacity: 0.55;
+}
+.panel-value {
+  font-size: 11px;
+  color: #c0ffd6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
 /* ──────────── auth UI in profile panel ──────────── */
