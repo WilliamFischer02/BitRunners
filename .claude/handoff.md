@@ -1,76 +1,74 @@
-# Handoff — 2026-05-31, Phase 5 (tap-to-lock + glow) DONE
+# Handoff — 2026-06-03, Phase 3.5 sub-phases A + B (identity + reservations) IN DRAFT
 
-## The plan (7 phases)
+## What just shipped (this branch)
 
-| # | Phase | Status |
-|---|---|---|
-| 1 | Render polish (fog, ordered dither, CRT) | **MERGED — PR #54** |
-| 2 | Class identity + pet behaviours + clothing | **MERGED — PR #57** |
-| 3 | 2× world + obstacle collision + AI dwellers (`npc:*`) | **MERGED — PR #58** |
-| 4 | Tutorial highlighting + account CTA | **MERGED — PR #59** |
-| 5 | **Tap-to-lock camera + glow** | **DONE — this PR** |
-| 6 | Emoticron compose → review → library + wheel editor | queued (next; needs lore Q&A) |
-| 7 | Optimisation sweep | queued |
+`claude/bitrunners-collaboration-EcqBv`, draft PR pending. Devlog: `docs/devlog/0060-phase3.5-identity-and-reservations.md`.
 
-## Phase 5 — what I did (devlog 0059)
+### Sub-Phase A — lore + schema
+- **7 new lore docs (010–016)**: badges, missions, hack-QTE, themes, dictionary, chat policy reversal, Company NPC.
+- **Migration `0007_phase3_5_reservations.sql`**: reserves every column needed through Sub-Phase I (badges, themes, mission progress, DMs, hack-QTE) + 8 new SECURITY DEFINER RPCs. **Owner must apply before any deploy.**
+- **CLAUDE.md** moderation paragraph amended — free-text DM is now permitted, cross-linked to `docs/lore/015`.
 
-- **`apps/web/src/target-lock.ts`** (new) — `createTargetRaycaster()`,
-  `pickAvatar()` (closest-hit raycast against a map of lockable groups),
-  `applyLock()` (snapshot per-material emissiveIntensity + add halo torus),
-  `releaseLock()` (restore + dispose halo), `tickLock()` (per-frame pulse +
-  spin).
-- **`apps/web/src/scene.ts`** — `LOCK_RELEASE_DISTANCE = 14`; canvas-only
-  `click` listener (not on host, so HUD clicks don't bubble in); tap-lock
-  state declared **after** `remoteAvatars` so the closure references the
-  initialised map; `onLeave` releases on disconnect; camera follow picks the
-  locked avatar's `group.position` (already wrap-anchored near local, so
-  seam-crossing is seamless); per-frame distance check + glow tick; dispose
-  cleanup.
-- **No `OutlinePass`** — depth-fragile on iOS (devlog 0008). Glow = emissive
-  pulse + halo torus, all in the plain-RGBA pipeline. No new render pass.
+### Sub-Phase B — username + protocol bump
+- **`PROTOCOL_VERSION → 2`** (single bump for the whole roadmap).
+- **`PlayerState`** gains `displayName`, `equippedBadge`, `equippedTheme`.
+- **Identity message** + `sendIdentity()` plumbed end-to-end.
+- **Local floating tag** reads from `profile.ts`. Tap → opens `UsernameEditor`. Badge glyph + `!` dot on label.
+- **Remote tags**: every other runner's name + badge floats above their head. NPCs labelled by archetype.
+- **UsernameEditor**: curated 1–2 word composer (from `emoticron_dictionary`, `category='name'`), badge ladders (Corp / BR), equip/unequip, guest gate.
+- **AdminConsole.UsernameQueue**: pending-name approval UI.
 
-### Release conditions
-1. Tap the locked target again.
-2. Tap a different lockable target (auto-switches).
-3. Target disconnects (`onLeave`).
-4. Target walks `> 14` units (wrapped distance) from local player.
+## Roadmap reference
 
-## State of the build
-- **prod `main`** at `68c178d` (PR #59 merged). Migration **0006 still
-  pending**.
-- **This branch** `claude/tap-to-lock-and-glow` is off latest `main`.
-- **CI/gates:** green — `pnpm lint` clean (59 files), `pnpm typecheck` 8/8,
-  `pnpm build` 5/5.
+Full plan: `/root/.claude/plans/nested-tickling-reddy.md`. Sequence:
 
-## What's blocking / not verified
-- **Not verifiable headless.** Need a browser + server to confirm: tap picks
-  the right entity from the composite ASCII output, camera follows smoothly
-  across the seam, halo + emissive pulse read at glyph resolution, all four
-  release conditions fire (test by having a 2nd browser tab as a 2nd player,
-  or just tap an NPC dweller).
-- **Migration 0006** still pending (owner action).
+```
+A (DONE) → B (DONE) → (C ∥ D ∥ E ∥ F) → G → H → I → J
+```
 
-## What I would do next, in priority order
-1. **Owner:** review Phase 5 PR — eyeball lock/release/distance feel; iOS
-   Safari check that the click event reliably fires after tap.
-2. **Owner:** run migration 0006 (still pending).
-3. **Phase 6** — the big one. Needs **lore Q&A on the ~100-word emoticron
-   DB** before I can build. I'll surface a starter list of categories
-   (greetings, states, objects, ideograms…) and ask you to confirm /
-   populate before any code lands.
+| Sub-phase | Topic | Status |
+|-----------|-------|--------|
+| A | Lore + schema reservations | **DONE** |
+| B | Username overhead label + protocol bump | **DONE** |
+| C | Badge earn loop (Samaritan-threshold trigger + UI integration) | next |
+| D | 8-slot emote wheel + emoticron submission + admin queue | next |
+| E | Theme color shop + ASCII tint hot-swap | next |
+| F | Starmap HUD minimap (SAMM + Admin + Company NPC + active checkpoint) | next |
+| G | Physical missions ("Recover an aether's last data" first) | queued |
+| H | Hack QTE + 30s minigame lockout | queued |
+| I | Free-text proximity DM with moderation stack | queued |
+| J | Second minigame + Scrape skill-tree expansion | queued |
 
-## Do NOT do these things
-- Don't push to `main` — prod branch; deploys Pages + Fly.
-- Don't merge any PR — owner-gated.
-- Don't migrate the tap-lock glow to `OutlinePass` — it re-introduces the
-  iOS-Safari depth-buffer risk that devlog 0008 spent days untangling.
-- Don't add a client-side `profiles` UPDATE of `role`/`tier` — re-opens
-  the escalation hole fixed in migration 0006.
-- Don't reach for `DepthTexture`/MRT/float targets in the ASCII pipeline.
-- Don't unilaterally write emoticron lore.
+## Before merging this PR — required owner actions
 
-## Open questions for the owner
-- Tap-lock feel right? Distance threshold (14) right, or tune?
-- Halo colour — gold reads neutral; could go faction-coded (orange for
-  Company, purple for Admin) if you'd rather.
-- Migration 0006?
+1. **Review lore drafts 010–016.** Anything marked "owner: review" is best-guess; rewrite freely.
+2. **Apply migration `0007` in Supabase SQL editor.** Without it the client RPCs error out and the UI lands in a permanent "loading…" / "could not load" state for the new surfaces.
+3. **Decide on a deploy window** for the `PROTOCOL_VERSION` bump. Server + client should ship together; old clients soft-warn but still connect.
+
+## Verification done
+
+- `pnpm lint` ✓
+- `pnpm typecheck` ✓
+- `pnpm --filter @bitrunners/web build` ✓ (gzip 248 kB main bundle)
+- `pnpm --filter @bitrunners/server build` ✓
+- Two-browser test + iOS Safari pass — **not yet done**; needs the live preview deploy (gated on owner action above).
+
+## Constraints honored
+
+- No `DepthTexture`, no `OutlinePass`, no MRT — mobile-safe rendering preserved (badge glyphs and `!` dot are pure DOM, no shader work).
+- All sensitive writes via SECURITY DEFINER RPCs; column-grant lockdown extends 0006.
+- No new dependencies introduced.
+- No `main` push.
+- Schema reservations cover Sub-Phases C–I so no further `PROTOCOL_VERSION` bumps are planned in this roadmap.
+
+## What WAS NOT done (deliberate scope cut)
+
+- Badge auto-award on Samaritan threshold — moved to Sub-Phase C. Today badges only appear in `earned_badges` via direct DB insert; the equip path works as soon as a row exists.
+- The dictionary table is owner-editable from the admin console — Sub-Phase D scope.
+- The username `!` micro-dot reads `unacknowledged > 0` globally, not per-badge — refinement deferred.
+- Theme application — Sub-Phase E.
+- No HUD minimap, no missions, no QTE, no DM yet — sub-phases F→I.
+
+## Prior context (Phase 5, tap-to-lock + glow)
+
+PR #60 merged to `main` (commit `ff529cf`). The lock/glow surfaces are live; we tap-locked in Sub-Phase B to derive the per-remote-avatar tag positions (no `pickSelf` was needed yet — the local tag has its own DOM click handler because it's a `<button>`).

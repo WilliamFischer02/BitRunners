@@ -4,7 +4,10 @@ import {
   EMOTE_GLYPHS,
   PLATFORM_HALF,
   PLATFORM_SIZE,
+  isValidBadgeKey,
+  isValidDisplayName,
   isValidEmote,
+  isValidThemeKey,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { PlayerState, SphereState } from './state.js';
@@ -87,13 +90,65 @@ export class SphereRoom extends Room<SphereState> {
         p.className = msg.name;
       }
     });
+
+    // Identity update (Sub-Phase B). Client sends on join + whenever the local
+    // user changes their displayName / badge / theme. Ownership of
+    // equippedBadge / equippedTheme is enforced server-side by the SECURITY
+    // DEFINER RPCs (equip_badge, purchase_theme) that the client called BEFORE
+    // sending this message — so we only shape-validate here, then store.
+    // Empty string = clear (NULL on the DB side).
+    this.onMessage(
+      'identity',
+      (
+        client: Client,
+        msg: { displayName?: unknown; equippedBadge?: unknown; equippedTheme?: unknown },
+      ) => {
+        this.lastSeen.set(client.sessionId, Date.now());
+        const p = this.state.players.get(client.sessionId);
+        if (!p) return;
+        if (msg?.displayName !== undefined) {
+          if (msg.displayName === '' || isValidDisplayName(msg.displayName)) {
+            p.displayName = msg.displayName as string;
+          }
+        }
+        if (msg?.equippedBadge !== undefined) {
+          if (msg.equippedBadge === '' || isValidBadgeKey(msg.equippedBadge)) {
+            p.equippedBadge = msg.equippedBadge as string;
+          }
+        }
+        if (msg?.equippedTheme !== undefined) {
+          if (msg.equippedTheme === '' || isValidThemeKey(msg.equippedTheme)) {
+            p.equippedTheme = msg.equippedTheme as string;
+          }
+        }
+      },
+    );
   }
 
-  override onJoin(client: Client, options: { className?: string } | undefined): void {
+  override onJoin(
+    client: Client,
+    options:
+      | {
+          className?: string;
+          displayName?: string;
+          equippedBadge?: string;
+          equippedTheme?: string;
+        }
+      | undefined,
+  ): void {
     const p = new PlayerState();
     p.id = client.sessionId;
     if (options?.className && options.className.length <= 32) {
       p.className = options.className;
+    }
+    if (options?.displayName && isValidDisplayName(options.displayName)) {
+      p.displayName = options.displayName;
+    }
+    if (options?.equippedBadge && isValidBadgeKey(options.equippedBadge)) {
+      p.equippedBadge = options.equippedBadge;
+    }
+    if (options?.equippedTheme && isValidThemeKey(options.equippedTheme)) {
+      p.equippedTheme = options.equippedTheme;
     }
     this.state.players.set(client.sessionId, p);
     this.lastSeen.set(client.sessionId, Date.now());

@@ -90,7 +90,8 @@ The Admin makes a first-encounter appearance when the player approaches the obel
 
 ## Moderation
 
-- Custom 2-word emoticrons draw from a fixed ~100-word DB. Combinations are reviewed manually before unlock. No free-text input anywhere in the game.
+- Custom 2-word emoticrons draw from a fixed ~100-word DB. Combinations are reviewed manually before unlock.
+- No free-text input anywhere in the game **except proximity DM**, which runs through the moderation stack documented in `docs/lore/015-chat-policy.md` (verified-account + age gate + server-side profanity filter + 30-msg/min rate limit + per-pair block list + audit log). Free text is **only** permitted on the DM surface; every other surface (usernames, emoticrons, mission dialogue, admin dialogue) remains curated.
 - Profile images are gated behind an age/consent gate. Default-hidden until consent given. NSFW classifier runs as defense-in-depth.
 
 ## Cost posture

@@ -9,6 +9,15 @@ export interface RemotePlayer {
   rotY: number;
   emote: string;
   emoteSeq: number;
+  displayName: string;
+  equippedBadge: string;
+  equippedTheme: string;
+}
+
+export interface IdentityUpdate {
+  displayName?: string;
+  equippedBadge?: string;
+  equippedTheme?: string;
 }
 
 export interface NetworkCallbacks {
@@ -16,8 +25,16 @@ export interface NetworkCallbacks {
   onLeave?(id: string): void;
   onUpdate?(p: RemotePlayer): void;
   onEmote?(id: string, text: string): void;
+  onIdentity?(id: string, p: RemotePlayer): void;
   /** Fired when the server closes the connection unexpectedly (e.g. idle kick). */
   onDisconnect?(code: number): void;
+}
+
+export interface JoinOptions {
+  className: string;
+  displayName?: string;
+  equippedBadge?: string;
+  equippedTheme?: string;
 }
 
 export interface NetworkSession {
@@ -26,6 +43,7 @@ export interface NetworkSession {
   sendMove(x: number, z: number, rotY: number): void;
   sendEmote(text: string): void;
   setClass(name: string): void;
+  sendIdentity(update: IdentityUpdate): void;
   dispose(): Promise<void>;
 }
 
@@ -44,6 +62,9 @@ interface PlayerSchema {
   rotY: number;
   emote: string;
   emoteSeq: number;
+  displayName?: string;
+  equippedBadge?: string;
+  equippedTheme?: string;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -56,6 +77,9 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     rotY: p.rotY,
     emote: p.emote,
     emoteSeq: p.emoteSeq,
+    displayName: p.displayName ?? '',
+    equippedBadge: p.equippedBadge ?? '',
+    equippedTheme: p.equippedTheme ?? '',
   };
 }
 
@@ -66,22 +90,28 @@ function snapshot(p: PlayerSchema): RemotePlayer {
  */
 export async function joinSphere(
   serverUrl: string,
-  className: string,
+  joinOpts: JoinOptions,
   callbacks: NetworkCallbacks = {},
   roomId?: string,
 ): Promise<NetworkSession> {
   const client = new Client(serverUrl);
+  // Build the join payload — strip undefined keys so legacy servers see the
+  // same shape they used to (className only) when identity fields are absent.
+  const opts: Record<string, string> = { className: joinOpts.className };
+  if (joinOpts.displayName) opts.displayName = joinOpts.displayName;
+  if (joinOpts.equippedBadge) opts.equippedBadge = joinOpts.equippedBadge;
+  if (joinOpts.equippedTheme) opts.equippedTheme = joinOpts.equippedTheme;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
   let room: Room;
   if (roomId) {
     try {
-      room = await client.joinById(roomId, { className });
+      room = await client.joinById(roomId, opts);
     } catch {
-      room = await client.joinOrCreate('sphere', { className });
+      room = await client.joinOrCreate('sphere', opts);
     }
   } else {
-    room = await client.joinOrCreate('sphere', { className });
+    room = await client.joinOrCreate('sphere', opts);
   }
   joinedRoomId = room.roomId;
 
@@ -121,15 +151,20 @@ export async function joinSphere(
       // been flaky for nested entries across 0.16 builds — the most likely
       // reason remote emotes never reached other clients. Keep onChange as a
       // fallback for any build where listen() is unavailable.
+      const fireIdentity = (): void => callbacks.onIdentity?.(sessionId, snapshot(player));
       if (playerCb && typeof playerCb.listen === 'function') {
         playerCb.listen('emoteSeq', (seq: number) => fireEmote(seq ?? 0));
         playerCb.listen('x', fireUpdate);
         playerCb.listen('z', fireUpdate);
         playerCb.listen('rotY', fireUpdate);
+        playerCb.listen('displayName', fireIdentity);
+        playerCb.listen('equippedBadge', fireIdentity);
+        playerCb.listen('equippedTheme', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
           fireUpdate();
+          fireIdentity();
         });
       }
     });
@@ -156,6 +191,17 @@ export async function joinSphere(
     },
     setClass(name) {
       room.send('class', { name });
+    },
+    sendIdentity(update) {
+      // Empty object would still fan out a wire frame — skip if nothing set.
+      if (
+        update.displayName === undefined &&
+        update.equippedBadge === undefined &&
+        update.equippedTheme === undefined
+      ) {
+        return;
+      }
+      room.send('identity', update);
     },
     async dispose() {
       intentionalLeave = true;

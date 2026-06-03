@@ -27,6 +27,13 @@ Plot beats that **must not surface in player-facing text** until released by the
 | `007-data-economy.md` | Data ladder (bits→strings→serials→passcodes), Credits vs Tokens |
 | `008-samm.md` | SAMM, the State Authored Money Machine (gambling NPC) |
 | `009-proxy-wallet.md` | The proxy wallet — Tokens unlocked for bit_spekter |
+| `010-badges-and-tiers.md` | Two Samaritan badge ladders, 10 tiers each (wood → aether) |
+| `011-physical-missions.md` | In-world checkpoint missions; first mission: aether recovery |
+| `012-hack-qte.md` | Rogue-runner hack interruption events + minigame lockout |
+| `013-themes-catalog.md` | Unlockable ASCII palette themes (8 v1 themes) |
+| `014-emoticron-dictionary.md` | ~100-word dictionary for emoticron + username composition |
+| `015-chat-policy.md` | Proximity DM with moderation (canon reversal of no-free-text rule) |
+| `016-company-npc.md` | The Company NPC: suited patrolling humanoid + kiosk |
 | `_sealed/web-pullers.md` | ⚠️ SEALED future-event plot beat |
 
 ## Glossary (canonical names)
@@ -46,3 +53,6 @@ Plot beats that **must not surface in player-facing text** until released by the
 | **Samaritan Status** | Reputation. Two tracks: *Corporate* (The Company) and *BitRunner* (The Admin). |
 | **Port / depot** | Physical interactable in the Cloud that exposes Server Space behind it. |
 | **SAMM** | *State Authored Money Machine.* Government-profit gambling vending machine. Formal, jolly, impersonal. Bets Credits for a chance at rewards; Tokens stay locked (no wallet). See `008`. |
+| **Badge** | Earned per +10 Samaritan in a faction. Two parallel ladders (Corporate / BitRunner), 10 tiers each: wood, stone, bronze, steel, silver, gold, platinum, diamond, obsidian, aether. See `010`. |
+| **Theme** | Unlockable ASCII palette swap. Personal (not visible to remotes). Some are dual-gated by Samaritan faction. See `013`. |
+| **Hack QTE** | Random interruption: rogue runner tries to breach the player's terminal. Tap glyphs in order; fail → 30s minigame lockout. See `012`. |

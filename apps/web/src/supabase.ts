@@ -264,3 +264,149 @@ export async function claimEconomyGrants(): Promise<GrantClaim | null> {
   const r = row as { credits?: unknown; tokens?: unknown };
   return { credits: Number(r.credits ?? 0), tokens: Number(r.tokens ?? 0) };
 }
+
+// ────────── identity (Sub-Phase B, migration 0007) ──────────
+
+export type DisplayNameStatus = 'unset' | 'pending' | 'approved' | 'rejected';
+
+export interface IdentitySnapshot {
+  displayName: string | null;
+  displayNameStatus: DisplayNameStatus;
+  displayNameNote: string | null;
+  equippedBadge: string | null;
+  equippedTheme: string | null;
+  samaritanCorporate: number;
+  samaritanBitrunner: number;
+  unacknowledged: number;
+}
+
+/** Fetches the signed-in user's identity snapshot via SECURITY DEFINER RPC.
+ *  Returns null if Supabase is unconfigured or the user is not signed in. */
+export async function fetchMyIdentity(): Promise<IdentitySnapshot | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_my_identity');
+  if (error || !data) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const r = row as Record<string, unknown>;
+  const status = String(r.display_name_status ?? 'unset') as DisplayNameStatus;
+  return {
+    displayName: typeof r.display_name === 'string' ? r.display_name : null,
+    displayNameStatus: status,
+    displayNameNote: typeof r.display_name_note === 'string' ? r.display_name_note : null,
+    equippedBadge: typeof r.equipped_badge === 'string' ? r.equipped_badge : null,
+    equippedTheme: typeof r.equipped_theme === 'string' ? r.equipped_theme : null,
+    samaritanCorporate: Number(r.samaritan_corporate ?? 0),
+    samaritanBitrunner: Number(r.samaritan_bitrunner ?? 0),
+    unacknowledged: Number(r.unacknowledged ?? 0),
+  };
+}
+
+/** Submits a requested display name for owner review. Server-side checks:
+ *  3..24 chars, [a-z0-9_]. Marks display_name_status='pending'. The public
+ *  label keeps showing the previously-approved name until approval. */
+export async function submitDisplayName(name: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('submit_display_name', { p_name: name });
+  return { error: error?.message ?? null };
+}
+
+/** Equips a badge the user owns. Server verifies ownership in earned_badges. */
+export async function equipBadge(key: string | null): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('equip_badge', { p_key: key ?? '' });
+  return { error: error?.message ?? null };
+}
+
+/** Flips a badge's acknowledged flag (kills the '!' dot on the head label). */
+export async function acknowledgeBadge(key: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('acknowledge_badge', { p_key: key });
+  return { error: error?.message ?? null };
+}
+
+export interface MyBadge {
+  badgeKey: string;
+  earnedAt: string;
+  acknowledged: boolean;
+}
+
+/** Lists every badge the user has earned (acknowledged or not). */
+export async function fetchMyBadges(): Promise<MyBadge[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_my_badges');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((row) => ({
+    badgeKey: String(row.badge_key ?? ''),
+    earnedAt: String(row.earned_at ?? ''),
+    acknowledged: row.acknowledged === true,
+  }));
+}
+
+export interface DictionaryWord {
+  word: string;
+  category: 'emote' | 'object' | 'action' | 'name';
+}
+
+/** Loads the full emoticron_dictionary table. Cached for the session. */
+let dictionaryCache: DictionaryWord[] | null = null;
+export async function fetchDictionary(): Promise<DictionaryWord[] | null> {
+  if (dictionaryCache) return dictionaryCache;
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb
+    .from('emoticron_dictionary')
+    .select('word, category')
+    .order('word', { ascending: true });
+  if (error || !data) return null;
+  dictionaryCache = (data as Array<Record<string, unknown>>).map((row) => ({
+    word: String(row.word ?? ''),
+    category: (row.category as DictionaryWord['category']) ?? 'name',
+  }));
+  return dictionaryCache;
+}
+
+export interface PendingName {
+  id: string;
+  currentName: string | null;
+  requested: string | null;
+  submittedAt: string;
+}
+
+/** Admin-only: lists pending display-name submissions. */
+export async function adminListPendingNames(): Promise<PendingName[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('admin_list_pending_names');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ''),
+    currentName: typeof r.current_name === 'string' ? r.current_name : null,
+    requested: typeof r.requested === 'string' ? r.requested : null,
+    submittedAt: String(r.submitted_at ?? ''),
+  }));
+}
+
+/** Admin-only: approves a pending name. The requested name becomes display_name. */
+export async function adminApproveName(target: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_approve_name', { target });
+  return { error: error?.message ?? null };
+}
+
+/** Admin-only: rejects a pending name. Optional reviewer note. */
+export async function adminRejectName(
+  target: string,
+  note: string,
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_reject_name', { target, p_note: note });
+  return { error: error?.message ?? null };
+}

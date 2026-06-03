@@ -11,6 +11,13 @@ export class PlayerState extends Schema {
   // increasing (so the same glyph twice still re-triggers the bubble).
   @type('string') emote = '';
   @type('number') emoteSeq = 0;
+  // Player-supplied identity (Sub-Phase B, docs/lore/010+016). Server validates
+  // shape (length, charset) on the 'identity' message and stores; equipped_*
+  // ownership is verified by SECURITY DEFINER RPCs server-side, so the room
+  // trusts whatever the authenticated client sends here.
+  @type('string') displayName = '';
+  @type('string') equippedBadge = '';
+  @type('string') equippedTheme = '';
   // Reserved fields for Phase 3 (per docs/devlog/0004 schema-reservation principle).
   // Pre-allocating now avoids breaking schema migrations later.
   @type('number') samaritanCorporate = 0;
