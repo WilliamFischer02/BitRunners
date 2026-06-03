@@ -800,6 +800,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   fpsEl.textContent = '-- fps';
   host.appendChild(fpsEl);
 
+  // Declared up-front so subscribeIdentity()'s synchronous initial callback can
+  // safely reference it (otherwise the `let` would be in the TDZ at first
+  // invocation and the scene init would throw a black-screen ReferenceError).
+  let netSession: NetworkSession | null = null;
+
   // Local player's floating name tag. Reads the resolved displayName from
   // profile.ts (signed-in users see their approved handle; guests get a
   // deterministic `runner_xxxxxx` placeholder). Tapping the tag opens the
@@ -1003,7 +1008,6 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     trackedEmotes.push({ anchor, group, until: performance.now() + EMOTE_MS });
   }
 
-  let netSession: NetworkSession | null = null;
   let lastNetSend = 0;
   const serverUrl = getServerUrl();
   let sceneDisposed = false;
