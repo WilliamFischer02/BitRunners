@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ThemeView } from './ThemeShop.js';
 import {
   CREDITS_PER_TOKEN,
   EQUIP_SLOTS,
@@ -49,7 +50,7 @@ import {
 } from './skilltree.js';
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
-export type View = 'scrape' | 'tree' | 'shop' | 'inventory';
+export type View = 'scrape' | 'tree' | 'shop' | 'inventory' | 'themes';
 
 const SCRAPE_OPEN_EVENT = 'bitrunners:open-scrape';
 
@@ -530,6 +531,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     scrape: 'scrape',
     tree: 'skill tree',
     shop: 'shop',
+    themes: 'themes',
     inventory: 'inventory',
   };
 
@@ -550,6 +552,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     tree: '// skill tree',
     shop: '// shop',
     inventory: '// inventory',
+    themes: '// themes',
   };
 
   return (
@@ -570,6 +573,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
             {nav('tree', 'tree')}
             {nav('shop', 'shop')}
             {nav('inventory', 'inv')}
+            {nav('themes', 'theme')}
             <button type="button" className="panel-close" onClick={requestClose}>
               ✕
             </button>
@@ -681,6 +685,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         {view === 'tree' && <TreeView eco={eco} />}
         {view === 'shop' && <ShopView eco={eco} />}
         {view === 'inventory' && <InventoryView />}
+        {view === 'themes' && <ThemeView />}
 
         <footer className="panel-footer">
           press [esc] or click outside to close · progress saved on this device

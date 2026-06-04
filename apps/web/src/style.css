@@ -2599,6 +2599,66 @@ dialog.panel::backdrop {
   padding-bottom: 3px;
 }
 
+/* ════════ Sub-Phase E — theme shop (devlog 0061) ════════ */
+
+.theme-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #2a3a30;
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+.theme-row.is-owned {
+  border-color: #3a5040;
+}
+.theme-row.is-equipped {
+  border-color: #5a8860;
+  background: rgba(90, 136, 96, 0.12);
+}
+.theme-row.is-locked {
+  opacity: 0.5;
+}
+.theme-row-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.theme-row-name {
+  font-size: 12px;
+  color: var(--tint);
+}
+.theme-row-blurb {
+  font-size: 10px;
+  color: #7a9e88;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.theme-row-price {
+  font-size: 10px;
+  color: #8aa597;
+  white-space: nowrap;
+}
+.theme-err {
+  color: #e07070;
+}
+
 /* ════════ Chunk C — SAMM gambling terminal (devlog 0041) ════════ */
 
 /* Walk-up prompt shown when the player is near the SAMM vending machine. */

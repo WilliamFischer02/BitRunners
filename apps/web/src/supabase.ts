@@ -410,3 +410,41 @@ export async function adminRejectName(
   const { error } = await sb.rpc('admin_reject_name', { target, p_note: note });
   return { error: error?.message ?? null };
 }
+
+// ────────── themes (Sub-Phase E, migration 0008) ────────────────────────────
+
+export interface OwnedTheme {
+  themeKey: string;
+  acquiredAt: string;
+}
+
+/** Lists every theme the signed-in user owns, oldest first. */
+export async function fetchMyOwnedThemes(): Promise<OwnedTheme[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_my_themes');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    themeKey: String(r.theme_key ?? ''),
+    acquiredAt: String(r.acquired_at ?? ''),
+  }));
+}
+
+/** Purchases a theme. Balance deduction is handled client-side before calling
+ *  this. The RPC verifies the faction gate (if any) and inserts into
+ *  owned_themes. Idempotent — re-buying an owned theme is a no-op. */
+export async function purchaseTheme(key: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('purchase_theme', { p_key: key });
+  return { error: error?.message ?? null };
+}
+
+/** Equips a theme the user owns (or terminal_green, which is always allowed).
+ *  Pass null / '' to unequip (scene falls back to terminal_green rendering). */
+export async function equipTheme(key: string | null): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('equip_theme', { p_key: key ?? '' });
+  return { error: error?.message ?? null };
+}
