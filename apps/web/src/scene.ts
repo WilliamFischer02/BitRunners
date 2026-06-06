@@ -56,6 +56,7 @@ import {
   releaseLock,
   tickLock,
 } from './target-lock.js';
+import { applyThemeToPass } from './themes.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -872,6 +873,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     localIdentity.equippedBadge,
     localIdentity.unacknowledged,
   );
+  // Apply the stored theme immediately (no-ops for empty string / guest).
+  applyThemeToPass(asciiPass, localIdentity.equippedTheme);
+
   const unsubscribeIdentity = subscribeIdentity((next) => {
     const wasName = localIdentity.displayName;
     const wasBadge = localIdentity.equippedBadge;
@@ -886,6 +890,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       next.equippedBadge,
       next.unacknowledged,
     );
+    // Hot-swap the ASCII tints whenever the equipped theme changes.
+    if (wasTheme !== next.equippedTheme) {
+      applyThemeToPass(asciiPass, next.equippedTheme);
+    }
     // Sync any changed identity field to the room so other clients see it.
     if (
       netSession &&
