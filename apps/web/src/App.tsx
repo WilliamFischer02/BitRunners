@@ -7,6 +7,7 @@ import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
+import { Starmap } from './Starmap.js';
 import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
@@ -160,6 +161,7 @@ function Game({ className }: GameProps): JSX.Element {
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />
+      <Starmap />
       <AdminConsole />
       <UsernameEditor />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
