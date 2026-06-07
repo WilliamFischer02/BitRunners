@@ -1,17 +1,22 @@
-# Handoff — 2026-06-04, Sub-Phase E (themes) IN DRAFT
+# Handoff — 2026-06-07, Sub-Phase D (emote wheel + emoticron submission) IN DRAFT
 
 ## What just shipped (this branch)
 
-`claude/peaceful-thompson-0RFkw`, draft PR pending. Devlog: `docs/devlog/0061-theme-shop-ascii-tint.md`.
+`claude/peaceful-thompson-01b2W`, draft PR pending. Devlog: `docs/devlog/0062-emote-wheel-8slot-and-emoticron-submission.md`.
 
-### Sub-Phase E — theme shop + ASCII tint hot-swap
-- **`apps/web/src/themes.ts`** — 8-theme catalog + `applyThemeToPass()` hot-swap helper (uniform mutation, no pass recreate, mobile-safe).
-- **`apps/web/src/ThemeShop.tsx`** — `ThemeView` component: lists all themes, buy/equip buttons, faction-gate messaging, guest CTA.
-- **`supabase/migrations/0008_theme_rpcs.sql`** — `purchase_theme`, `equip_theme`, `get_my_themes` SECURITY DEFINER RPCs (faction gate verified server-side; balance still client-side — economy not server-authoritative).
-- **`apps/web/src/scene.ts`** — identity subscription now hot-swaps `asciiPass` tints on theme change.
-- **`apps/web/src/supabase.ts`** — `fetchMyOwnedThemes`, `purchaseTheme`, `equipTheme` wrappers.
-- **`apps/web/src/ScrapeMenu.tsx`** — "theme" tab added.
-- **`apps/web/src/style.css`** — theme-row CSS.
+### Sub-Phase D — 8-slot emote wheel + emoticron submission + admin queue
+
+- **`packages/shared/src/index.ts`** — `EmoteId` expanded 4→8 (`wave`, `think`, `good`, `bad` added). `EMOTE_GLYPHS` updated. No protocol change.
+- **`apps/web/src/EmoteWheel.tsx`** — Rewritten: `SLOTS` constant array, 3×3 CSS grid layout (NW/N/NE/W/center/E/SW/S/SE), center = inventory button.
+- **`supabase/migrations/0010_emoticron_submissions.sql`** — `emoticron_submissions` table + 5 SECURITY DEFINER RPCs (`submit_emoticron`, `get_my_emoticron_submission`, `admin_list_pending_emoticrons`, `admin_approve_emoticron`, `admin_reject_emoticron`).
+- **`apps/web/src/supabase.ts`** — 6 new exports: emoticron status types + API wrappers.
+- **`apps/web/src/EmoticonSubmission.tsx`** — New component: word1+word2 selectors from dictionary, preview, submit, pending/approved/rejected status display. No free-text.
+- **`apps/web/src/ScrapeMenu.tsx`** — `'emoticons'` view added (6th tab `emote`).
+- **`apps/web/src/AdminConsole.tsx`** — `EmoticonQueue` panel added after `UsernameQueue`.
+- **`apps/web/src/style.css`** — CSS grid override for `.emote` (3×3, `1fr` tracks, same container size), flicker animation extended to 9 children, `.emotic-*` classes for submission panel.
+
+### Sub-Phase E (merged from previous branch)
+Theme color shop + ASCII tint hot-swap. Already in `main` as of PR #63.
 
 ## Roadmap reference
 
@@ -25,10 +30,10 @@ A (DONE) → B (DONE) → (C ∥ D ∥ E ∥ F) → G → H → I → J
 |-----------|-------|--------|
 | A | Lore + schema reservations | **DONE** |
 | B | Username overhead label + protocol bump | **DONE** |
-| C | Badge earn loop (Samaritan-threshold trigger + UI integration) | next |
-| D | 8-slot emote wheel + emoticron submission + admin queue | next |
+| C | Badge earn loop (Samaritan-threshold trigger + UI integration) | in PR #64 (not merged) |
+| D | 8-slot emote wheel + emoticron submission + admin queue | **DONE** (this branch) |
 | E | Theme color shop + ASCII tint hot-swap | **DONE** |
-| F | Starmap HUD minimap (SAMM + Admin + Company NPC + active checkpoint) | next |
+| F | Starmap HUD minimap (SAMM + Admin + Company NPC + active checkpoint) | **next** |
 | G | Physical missions ("Recover an aether's last data" first) | queued |
 | H | Hack QTE + 30s minigame lockout | queued |
 | I | Free-text proximity DM with moderation stack | queued |
@@ -36,31 +41,56 @@ A (DONE) → B (DONE) → (C ∥ D ∥ E ∥ F) → G → H → I → J
 
 ## Before merging this PR — required owner actions
 
-1. **Apply migration `0007`** (Sub-Phase B — adds `owned_themes`, `profiles.equipped_theme`, badge tables, etc.).
-2. **Apply migration `0008`** (`purchase_theme`, `equip_theme`, `get_my_themes` RPCs).
-3. **Review tint values** in `apps/web/src/themes.ts` and `docs/lore/013-themes-catalog.md`. All non-default values are first-pass hex conversions — eyeball against the live ASCII pipeline before committing.
-4. **Review prices** in lore 013.
-5. **PROTOCOL_VERSION = 2** (Sub-Phase B) — server + client must deploy together.
+1. **Apply migration `0007`** (Sub-Phase B prerequisite — adds `emoticron_dictionary`, `owned_themes`, `profiles.equipped_theme`, badge tables).
+2. **Apply migration `0010`** (`emoticron_submissions` table + RPCs).
+3. **Visual check:** 3×3 emote wheel layout, emote tab in ScrapeMenu, emoticron queue in AdminConsole.
+4. No server change — Pages-only deploy, no Fly redeploy.
 
-## Prior constraint: Sub-Phase B (migrations 0007 + 0008 not yet applied)
+## Prior constraint: migrations 0007–0009 not yet applied
 
-The Sub-Phase B PR (#61) was merged but migrations 0007/0008 haven't been applied yet. Until they are, the identity/badge/theme RPCs return errors. The client handles this gracefully (guest fallback names, no crash). Theme purchases will error silently until 0008 is applied.
+Sub-Phase B (PR #61) merged but migrations 0007–0009 haven't been applied yet.
+- 0007: identity/badge/theme/emoticron_dictionary tables
+- 0008: theme RPCs
+- 0009: badge RPCs (from PR #64)
+- 0010: emoticron submission RPCs (this PR)
+
+Until applied, the word-picker will show empty dropdowns and submit calls will
+error silently (Supabase returns an error → auth-not-configured path). Client
+handles gracefully.
+
+## Custom emote equipping — deferred
+
+Approved combinations are stored (`status='approved'`) but cannot yet be sent
+over the wire, because the server validates against the static `EMOTE_GLYPHS`
+record in `@bitrunners/shared`. To equip a custom emote to the wheel, the
+server would need to validate per-user approved sets. Options when the time
+comes:
+
+1. **Server PR**: extend `isValidEmote()` to also check a Supabase RPC at runtime
+   (one extra DB call on the emote message).
+2. **Schema promotion**: when admin approves, also add the glyph to a
+   `canonical_emotes` table; server hydrates on startup.
+3. **8th static slot**: expand `EMOTE_GLYPHS` with the combo text, but this
+   violates the "no free-text emotes" rule globally.
+
+Option 1 is cleanest and a small server-only change. Flag for a future session.
 
 ## Verification done
 
 - `pnpm lint` ✓
-- `pnpm typecheck` ✓
-- `pnpm build` ✓ (gzip 250 kB main bundle)
-- Browser / iOS Safari — **NOT YET DONE**; gated on owner applying migrations 0007 + 0008.
+- `pnpm typecheck` ✓ (8/8 packages)
+- `pnpm build` ✓ (gzip 250 kB main bundle — +0 kB vs baseline)
+- Browser / 3×3 layout + interactivity — NOT YET DONE (headless only).
 
 ## Next suggested sub-phase
 
-Sub-Phase C (badge earn loop) or Sub-Phase D (emote wheel). Both are buildable without additional infra. Sub-Phase C requires Supabase triggers/functions that auto-insert into `earned_badges` when Samaritan scores cross thresholds. Sub-Phase D requires expanding the `EmoteWheel` to 8 slots and wiring the emoticron submission flow through `emoticron_dictionary`.
+**Sub-Phase F: Starmap HUD minimap** — shows the player's position relative
+to SAMM, the Admin monolith, Company terminal, and the active checkpoint.
+Buildable without infra. Client-only change (scene.ts + new React component).
+No server change needed.
 
 ## What was NOT done (deliberate scope cut)
 
-- Badge auto-award trigger (Sub-Phase C).
-- Emote wheel expansion (Sub-Phase D).
-- Starmap HUD minimap (Sub-Phase F).
-- Theme visibility to remotes (v1 is personal-only, as per lore 013).
-- Faction-gate bypass for free `terminal_green` (always allowed — no purchase call needed).
+- Custom emote equipping to the wheel (needs server extension — see above).
+- Sub-Phase F (Starmap HUD minimap).
+- Sub-Phases G–J.
