@@ -3,13 +3,17 @@ import { listDialogue, saveDialogue } from './dialogue.js';
 import {
   type AdminUser,
   type DailySignin,
+  type PendingEmoticon,
   type PendingName,
   type Role,
   type Tier,
+  adminApproveEmoticon,
   adminApproveName,
   adminGrantEconomy,
+  adminListPendingEmoticons,
   adminListPendingNames,
   adminListUsers,
+  adminRejectEmoticon,
   adminRejectName,
   adminSetRole,
   adminSetTier,
@@ -137,6 +141,8 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
       <DialogueEditor />
 
       <UsernameQueue />
+
+      <EmoticonQueue />
 
       <ActivityStats />
 
@@ -613,6 +619,104 @@ function UsernameQueue(): JSX.Element {
                   disabled={busy === r.id}
                   onClick={() => {
                     void reject(r.id);
+                  }}
+                >
+                  [ no ]
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <div className="panel-stub">─── {msg}</div>}
+    </section>
+  );
+}
+
+// ── Emoticron approval queue (Sub-Phase D, migration 0010) ─────────────────
+
+function EmoticonQueue(): JSX.Element {
+  const [rows, setRows] = useState<PendingEmoticon[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const load = useCallback(async (): Promise<void> => {
+    setErr(null);
+    const data = await adminListPendingEmoticons();
+    if (data === null) {
+      setErr('could not load (run migration 0010?)');
+      setRows([]);
+    } else {
+      setRows(data);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const approve = async (userId: string): Promise<void> => {
+    if (busy) return;
+    setBusy(userId);
+    setMsg(null);
+    const res = await adminApproveEmoticon(userId);
+    if (res.error) setMsg(`! ${res.error}`);
+    else {
+      setMsg('approved ✓');
+      await load();
+    }
+    setBusy(null);
+  };
+
+  const reject = async (userId: string): Promise<void> => {
+    if (busy) return;
+    const note = window.prompt('rejection note (shown to the user):', 'inappropriate combination');
+    if (note === null) return;
+    setBusy(userId);
+    setMsg(null);
+    const res = await adminRejectEmoticon(userId, note);
+    if (res.error) setMsg(`! ${res.error}`);
+    else {
+      setMsg('rejected ✓');
+      await load();
+    }
+    setBusy(null);
+  };
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ emoticron queue</div>
+      {err && <div className="panel-stub">─── {err}</div>}
+      {!err && rows === null && <div className="panel-stub">─── loading…</div>}
+      {!err && rows !== null && rows.length === 0 && (
+        <div className="panel-stub">─── no pending combos.</div>
+      )}
+      {rows !== null && rows.length > 0 && (
+        <div className="admin-userlist">
+          {rows.map((r) => (
+            <div key={r.userId} className="admin-userrow">
+              <span className="admin-user-email">
+                {r.word1} {r.word2}
+              </span>
+              <span className="admin-user-meta">{r.email || r.userId.slice(0, 8)}</span>
+              <span className="admin-user-bal">
+                <button
+                  type="button"
+                  className="panel-toggle is-on"
+                  disabled={busy === r.userId}
+                  onClick={() => {
+                    void approve(r.userId);
+                  }}
+                >
+                  [ ok ]
+                </button>{' '}
+                <button
+                  type="button"
+                  className="panel-toggle"
+                  disabled={busy === r.userId}
+                  onClick={() => {
+                    void reject(r.userId);
                   }}
                 >
                   [ no ]

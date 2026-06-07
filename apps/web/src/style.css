@@ -3291,3 +3291,179 @@ dialog.panel::backdrop {
     transform: none;
   }
 }
+
+/* ── 8-slot emote grid (Sub-Phase D) ────────────────────────────────────────
+   Replaces the old 4-button absolute-position layout with a 3×3 CSS grid.
+   The .emote container keeps its screen-position (position:absolute) but
+   now lays out its children in a grid. Container size stays the same
+   (150px desktop / 126px mobile) so touch targets and screen position are
+   unchanged. Buttons fill their grid cell via width/height:100%. */
+
+.emote {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 6px;
+}
+
+/* Override the 'position:absolute' + explicit-size rules set earlier in
+   the file so grid children fill their cells correctly. */
+.emote-btn {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  top: auto;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  transform: none;
+}
+
+/* Grid-area placements — 3×3, row/col notation. */
+.emote-nw {
+  grid-area: 1 / 1;
+}
+.emote-n {
+  grid-area: 1 / 2;
+}
+.emote-ne {
+  grid-area: 1 / 3;
+}
+.emote-w {
+  grid-area: 2 / 1;
+}
+.emote-center {
+  grid-area: 2 / 2;
+}
+.emote-e {
+  grid-area: 2 / 3;
+}
+.emote-sw {
+  grid-area: 3 / 1;
+}
+.emote-s {
+  grid-area: 3 / 2;
+}
+.emote-se {
+  grid-area: 3 / 3;
+}
+
+/* Override the old absolute-position rules that targeted .emote-btn.emote-center. */
+.emote-btn.emote-center {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  top: auto;
+  left: auto;
+  transform: none;
+}
+
+/* Empty center placeholder when onInventory is not provided. */
+.emote-center-gap {
+  grid-area: 2 / 2;
+}
+
+/* Extend the flicker animation to cover all 9 child buttons (8 emotes + center).
+   The original 4-button pattern used -0.35s steps; we keep that for 1-4 and
+   add finer offsets for 5-9 so they don't all flash in sync. */
+.emote-btn:nth-child(5) {
+  animation-delay: -0.175s;
+}
+.emote-btn:nth-child(6) {
+  animation-delay: -0.525s;
+}
+.emote-btn:nth-child(7) {
+  animation-delay: -0.875s;
+}
+.emote-btn:nth-child(8) {
+  animation-delay: -1.225s;
+}
+.emote-btn:nth-child(9) {
+  animation-delay: -0.28s;
+}
+
+/* Mobile: button fills cell (override the 44px explicit size). */
+@media (max-width: 540px) {
+  .emote-btn {
+    width: 100%;
+    height: 100%;
+  }
+  .emote-btn.emote-center {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+/* ── emoticron submission panel ─────────────────────────────────────────────
+   Used in the 'emoticons' tab of ScrapeMenu and referenced by EmoticonSubmission.tsx. */
+
+.emotic-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border: 1px solid #2a4038;
+  background: rgba(10, 18, 14, 0.6);
+  font-family: inherit;
+  font-size: 11px;
+}
+.emotic-status--approved {
+  border-color: #4caf80;
+  background: rgba(10, 30, 20, 0.7);
+}
+.emotic-status--rejected {
+  border-color: #8b4040;
+  background: rgba(20, 10, 10, 0.7);
+}
+.emotic-status--pending {
+  border-color: #3a5040;
+}
+.emotic-combo {
+  color: #c0ffd6;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+}
+.emotic-badge {
+  color: #6a9a80;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.emotic-status--approved .emotic-badge {
+  color: #4caf80;
+}
+.emotic-status--rejected .emotic-badge {
+  color: #c07070;
+}
+.emotic-note {
+  color: #9ab0a0;
+  font-size: 10px;
+  font-style: italic;
+}
+.emotic-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.emotic-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.emotic-row .panel-key {
+  min-width: 64px;
+  flex-shrink: 0;
+}
+.emotic-row .admin-select {
+  flex: 1;
+}
+.emotic-preview {
+  font-size: 11px;
+  color: #8ab09a;
+  padding: 4px 0;
+}
+.emotic-preview-combo {
+  color: #c0ffd6;
+  letter-spacing: 0.08em;
+}
