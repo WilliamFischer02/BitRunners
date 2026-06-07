@@ -3565,3 +3565,82 @@ dialog.panel::backdrop {
   color: #c0ffd6;
   letter-spacing: 0.08em;
 }
+
+/* ════════ Sub-Phase G — mission dialogue + choice grid (devlog 0064) ════════ */
+
+.mission-dialogue .dialogue-name {
+  color: #6cf0ff;
+  text-shadow: 0 0 10px rgba(108, 240, 255, 0.45);
+}
+
+.mission-choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.mission-choice-btn {
+  appearance: none;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid #355042;
+  border-radius: 3px;
+  padding: 10px 12px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.mission-choice-btn:hover {
+  border-color: #93e0b1;
+  background: rgba(14, 22, 18, 0.7);
+}
+.mission-choice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.mission-choice-btn--br {
+  border-color: #5a3c80;
+}
+.mission-choice-btn--br:hover {
+  border-color: #b07cff;
+}
+.mission-choice-btn--corp {
+  border-color: #8a4c20;
+}
+.mission-choice-btn--corp:hover {
+  border-color: #ff9450;
+}
+.mission-choice-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
+}
+.mission-choice-meta {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tint-dim);
+}
+.mission-choice-btn--br .mission-choice-meta {
+  color: #b07cff;
+}
+.mission-choice-btn--corp .mission-choice-meta {
+  color: #ff9450;
+}
+.dialogue-err {
+  margin-top: 8px;
+  font-size: 10px;
+  color: #ff7060;
+  letter-spacing: 0.05em;
+}
+@media (max-width: 540px) {
+  .mission-choice-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}

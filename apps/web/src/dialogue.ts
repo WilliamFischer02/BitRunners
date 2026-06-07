@@ -78,6 +78,36 @@ export const DIALOGUE_DEFAULTS: readonly DialogueEntry[] = [
     label: 'SAMM · token win',
     lines: ['A TOKEN PRIZE! ADDED TO YOUR WALLET. THE STATE APPLAUDS YOUR FORTUNE.'],
   },
+  // Mission: Recover an aether's last data (docs/lore/011-physical-missions.md)
+  {
+    key: 'mission.aether01.opening',
+    label: 'Mission: aether01 · opening',
+    lines: [
+      'fragments. drifting cold here.',
+      'a runner ended. data still warm.',
+      'someone should carry this.',
+    ],
+  },
+  {
+    key: 'mission.aether01.choice_br',
+    label: 'Mission: aether01 · BitRunner choice label',
+    lines: ['// send the scraps to The Admin'],
+  },
+  {
+    key: 'mission.aether01.choice_corp',
+    label: 'Mission: aether01 · Corporate choice label',
+    lines: ['// sell the scraps to The Company'],
+  },
+  {
+    key: 'mission.aether01.closing_br',
+    label: 'Mission: aether01 · closing (BitRunner)',
+    lines: ['the cloud thanks you, runner.', '// route logged.'],
+  },
+  {
+    key: 'mission.aether01.closing_corp',
+    label: 'Mission: aether01 · closing (Corporate)',
+    lines: ['transaction filed.', '// company acknowledges your contribution.'],
+  },
 ];
 
 const byKey = new Map<string, DialogueEntry>(DIALOGUE_DEFAULTS.map((e) => [e.key, e]));

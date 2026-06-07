@@ -557,3 +557,88 @@ export async function adminRejectEmoticon(
   const { error } = await sb.rpc('admin_reject_emoticron', { p_user_id: userId, p_note: note });
   return { error: error?.message ?? null };
 }
+
+// ────────── physical missions (Sub-Phase G, migration 0011) ──────────
+
+export type MissionFaction = 'corporate' | 'bitrunner';
+export type MissionStateValue = 'active' | 'final' | 'complete';
+
+export interface MissionProgress {
+  state: MissionStateValue;
+  lastCheckpoint: number;
+  factionChoice: MissionFaction | null;
+  updatedAt: string;
+}
+
+/** Reads server-side mission progress for the signed-in user. Null on
+ *  guest / unconfigured / no row yet. */
+export async function fetchMissionProgress(key: string): Promise<MissionProgress | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_mission_progress', { p_key: key });
+  if (error || !data) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const r = row as Record<string, unknown>;
+  const fc = r.faction_choice;
+  return {
+    state: String(r.state ?? 'active') as MissionStateValue,
+    lastCheckpoint: Number(r.last_checkpoint ?? 0),
+    factionChoice: fc === 'corporate' || fc === 'bitrunner' ? (fc as MissionFaction) : null,
+    updatedAt: String(r.updated_at ?? ''),
+  };
+}
+
+/** Idempotent: inserts a fresh mission_progress row if none exists. */
+export async function startMission(key: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('start_mission', { p_key: key });
+  return { error: error?.message ?? null };
+}
+
+/** Pushes the server's `last_checkpoint` forward. `final = true` flips state
+ *  to 'final' so the dialogue is gated server-side. */
+export async function advanceCheckpoint(
+  key: string,
+  n: number,
+  final: boolean,
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('advance_checkpoint', { p_key: key, p_n: n, p_is_final: final });
+  return { error: error?.message ?? null };
+}
+
+export interface MissionCompletion {
+  score: number;
+  newBadges: string[];
+}
+
+/** Marks the mission complete, awards Samaritan to the chosen faction, and
+ *  returns the new score + any badge keys crossed in this completion. */
+export async function completeMissionRpc(
+  key: string,
+  choice: MissionFaction,
+  reward = 5,
+): Promise<{ data: MissionCompletion | null; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { data: null, error: 'auth not configured' };
+  const { data, error } = await sb.rpc('complete_mission', {
+    p_key: key,
+    p_choice: choice,
+    p_reward: reward,
+  });
+  if (error) return { data: null, error: error.message };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { data: { score: 0, newBadges: [] }, error: null };
+  const r = row as Record<string, unknown>;
+  const arr = Array.isArray(r.new_badges) ? (r.new_badges as unknown[]) : [];
+  return {
+    data: {
+      score: Number(r.score ?? 0),
+      newBadges: arr.map((k) => String(k)).filter((k) => k.length > 0),
+    },
+    error: null,
+  };
+}
