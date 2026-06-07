@@ -17,7 +17,7 @@ export const PLATFORM_SIZE = PLATFORM_HALF * 2;
 export const DWELLER_ARCHETYPES = ['dweller.robot', 'dweller.husk', 'dweller.spirit'] as const;
 export type DwellerArchetype = (typeof DWELLER_ARCHETYPES)[number];
 
-export type EmoteId = 'happy' | 'tired' | 'okay' | 'help';
+export type EmoteId = 'happy' | 'tired' | 'okay' | 'help' | 'wave' | 'think' | 'good' | 'bad';
 
 // Canonical emoticron glyphs. Single source of truth: the wheel UI imports
 // these for display and the server validates incoming emotes against them.
@@ -28,6 +28,10 @@ export const EMOTE_GLYPHS: Record<EmoteId, string> = {
   tired: 'z z z',
   okay: '[ok]',
   help: '!? !?',
+  wave: '\\o/',
+  think: '(?)',
+  good: '[+]',
+  bad: '[x]',
 };
 
 const EMOTE_VALUES: ReadonlySet<string> = new Set(Object.values(EMOTE_GLYPHS));

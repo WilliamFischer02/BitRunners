@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { EmoticonSubmission } from './EmoticonSubmission.js';
+import { ThemeView } from './ThemeShop.js';
 import {
   CREDITS_PER_TOKEN,
   EQUIP_SLOTS,
@@ -49,7 +51,7 @@ import {
 } from './skilltree.js';
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
-export type View = 'scrape' | 'tree' | 'shop' | 'inventory';
+export type View = 'scrape' | 'tree' | 'shop' | 'inventory' | 'themes' | 'emoticons';
 
 const SCRAPE_OPEN_EVENT = 'bitrunners:open-scrape';
 
@@ -530,7 +532,9 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     scrape: 'scrape',
     tree: 'skill tree',
     shop: 'shop',
+    themes: 'themes',
     inventory: 'inventory',
+    emoticons: 'emoticron',
   };
 
   const nav = (target: View, text: string): JSX.Element => (
@@ -550,6 +554,8 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     tree: '// skill tree',
     shop: '// shop',
     inventory: '// inventory',
+    themes: '// themes',
+    emoticons: '// emoticron',
   };
 
   return (
@@ -570,6 +576,8 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
             {nav('tree', 'tree')}
             {nav('shop', 'shop')}
             {nav('inventory', 'inv')}
+            {nav('themes', 'theme')}
+            {nav('emoticons', 'emote')}
             <button type="button" className="panel-close" onClick={requestClose}>
               ✕
             </button>
@@ -681,6 +689,8 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
         {view === 'tree' && <TreeView eco={eco} />}
         {view === 'shop' && <ShopView eco={eco} />}
         {view === 'inventory' && <InventoryView />}
+        {view === 'themes' && <ThemeView />}
+        {view === 'emoticons' && <EmoticonSubmission />}
 
         <footer className="panel-footer">
           press [esc] or click outside to close · progress saved on this device

@@ -434,3 +434,126 @@ export async function adminRejectName(
   const { error } = await sb.rpc('admin_reject_name', { target, p_note: note });
   return { error: error?.message ?? null };
 }
+
+// ────────── themes (Sub-Phase E, migration 0008) ────────────────────────────
+
+export interface OwnedTheme {
+  themeKey: string;
+  acquiredAt: string;
+}
+
+/** Lists every theme the signed-in user owns, oldest first. */
+export async function fetchMyOwnedThemes(): Promise<OwnedTheme[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_my_themes');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    themeKey: String(r.theme_key ?? ''),
+    acquiredAt: String(r.acquired_at ?? ''),
+  }));
+}
+
+/** Purchases a theme. Balance deduction is handled client-side before calling
+ *  this. The RPC verifies the faction gate (if any) and inserts into
+ *  owned_themes. Idempotent — re-buying an owned theme is a no-op. */
+export async function purchaseTheme(key: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('purchase_theme', { p_key: key });
+  return { error: error?.message ?? null };
+}
+
+/** Equips a theme the user owns (or terminal_green, which is always allowed).
+ *  Pass null / '' to unequip (scene falls back to terminal_green rendering). */
+export async function equipTheme(key: string | null): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('equip_theme', { p_key: key ?? '' });
+  return { error: error?.message ?? null };
+}
+
+// ────────── emoticron submissions (Sub-Phase D, migration 0010) ──────────────
+
+export type EmoticonStatus = 'pending' | 'approved' | 'rejected';
+
+export interface MyEmoticonSubmission {
+  word1: string;
+  word2: string;
+  status: EmoticonStatus;
+  note: string | null;
+  submittedAt: string;
+}
+
+/** Submits a 2-word emoticron combo for review. Server validates both words
+ *  exist in emoticron_dictionary. Upserts — replaces any prior submission. */
+export async function submitEmoticon(
+  word1: string,
+  word2: string,
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('submit_emoticron', { p_word1: word1, p_word2: word2 });
+  return { error: error?.message ?? null };
+}
+
+/** Fetches the signed-in user's current emoticron submission (if any).
+ *  Returns null when Supabase is unconfigured, not authenticated, or no record exists. */
+export async function fetchMyEmoticonSubmission(): Promise<MyEmoticonSubmission | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('get_my_emoticron_submission');
+  if (error || !data) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+  const r = row as Record<string, unknown>;
+  return {
+    word1: String(r.word1 ?? ''),
+    word2: String(r.word2 ?? ''),
+    status: (r.status as EmoticonStatus) ?? 'pending',
+    note: typeof r.note === 'string' ? r.note : null,
+    submittedAt: String(r.submitted_at ?? ''),
+  };
+}
+
+export interface PendingEmoticon {
+  userId: string;
+  email: string;
+  word1: string;
+  word2: string;
+  submittedAt: string;
+}
+
+/** Admin-only: lists all pending emoticron submissions. Returns zero rows to non-admins. */
+export async function adminListPendingEmoticons(): Promise<PendingEmoticon[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('admin_list_pending_emoticrons');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    userId: String(r.user_id ?? ''),
+    email: String(r.email ?? ''),
+    word1: String(r.word1 ?? ''),
+    word2: String(r.word2 ?? ''),
+    submittedAt: String(r.submitted_at ?? ''),
+  }));
+}
+
+/** Admin-only: approves a pending emoticron submission by user ID. */
+export async function adminApproveEmoticon(userId: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_approve_emoticron', { p_user_id: userId });
+  return { error: error?.message ?? null };
+}
+
+/** Admin-only: rejects a pending emoticron submission, with an optional note for the user. */
+export async function adminRejectEmoticon(
+  userId: string,
+  note: string,
+): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('admin_reject_emoticron', { p_user_id: userId, p_note: note });
+  return { error: error?.message ?? null };
+}

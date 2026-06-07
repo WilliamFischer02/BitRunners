@@ -5,6 +5,24 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-06-04 — Sub-Phase E: theme balance verification stays client-side
+
+**Decision:** `purchase_theme` RPC verifies the faction gate (from `profiles.samaritan_*`) but NOT the credit/token balance. The economy is a device-local JSONB blob (player_economy, migration 0002) — not server-authoritative. A client-deduct-then-RPC pattern is used; the client refunds on RPC error. This is consistent with all other purchases (SAMM, shop). Server-authoritative balance verification is the P2P trading epic concern.
+
+**Why it matters:** Tempting to add balance verification in the SQL function, but the blob is client-trusted — a player can just push a large balance blob and the RPC can't detect it. Adding fake server-side balance checks creates false security and extra complexity with no actual protection until the economy is server-authoritative.
+
+**Future sessions:** When the P2P trading epic lands a server-authoritative economy (see `docs/design/p2p-trading-epic.md`), upgrade `purchase_theme` to verify balance there.
+
+---
+
+## 2026-06-04 — ASCII tint hot-swap: uniform mutation, no pass recreate
+
+**Decision:** `applyThemeToPass` mutates `Uniform<Vector3>.value` in-place on the existing `ShaderPass`. No pass re-creation, no `EffectComposer` change. Pattern copied directly from `setAsciiPassResolution`.
+
+**Why it matters:** Recreating the ShaderPass would involve a new `ShaderMaterial`, texture re-binding, and composer re-wiring. Uniform mutation is the designed hot-path for three.js material parameters. Mobile-safe (no DepthTexture/MRT). Verifiable by inspection without WebGL.
+
+---
+
 ## 2026-06-03 — Free-text proximity DM permitted (canon reversal)
 
 **Decision:** The original `CLAUDE.md` rule *"No free-text input anywhere in the
