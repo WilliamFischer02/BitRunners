@@ -239,6 +239,30 @@ export async function adminSetTier(target: string, tier: Tier): Promise<{ error:
   return { error: error?.message ?? null };
 }
 
+/** Admin-only. Increments a user's Samaritan score and awards crossing-tier badges.
+ *  Returns the new score + newly-awarded badge keys, or null on error. */
+export async function adminGrantSamaritan(
+  target: string,
+  faction: 'corp' | 'br',
+  amount: number,
+): Promise<{ newScore: number; newBadges: string[] } | { error: string }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { data, error } = await sb.rpc('admin_grant_samaritan', {
+    target,
+    p_faction: faction,
+    p_amount: amount,
+  });
+  if (error) return { error: error.message };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { error: 'no data returned' };
+  const r = row as { new_score?: unknown; new_badges?: unknown };
+  return {
+    newScore: Number(r.new_score ?? 0),
+    newBadges: Array.isArray(r.new_badges) ? (r.new_badges as string[]) : [],
+  };
+}
+
 /** Admin-only. Sets a user's permissions role. Server blocks changing your own. */
 export async function adminSetRole(target: string, role: Role): Promise<{ error: string | null }> {
   const sb = getSupabase();

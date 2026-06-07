@@ -157,6 +157,12 @@ export function decrementUnacknowledged(): void {
   fanout();
 }
 
+/** Increments the unacknowledged counter when a new badge arrives via Realtime. */
+export function incrementUnacknowledged(): void {
+  cache = { ...cache, unacknowledged: cache.unacknowledged + 1 };
+  fanout();
+}
+
 /** Boots the identity subsystem. Subscribes to auth so signed-in/out state
  *  re-fetches automatically. Idempotent. */
 let started = false;

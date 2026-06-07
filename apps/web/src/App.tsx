@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
+import { BadgeToast } from './BadgeToast.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
@@ -10,11 +11,13 @@ import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
+import { startBadgeMonitor } from './badge-notifications.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
 
-// Boot the identity subsystem once. Idempotent.
+// Boot the identity + badge-notification subsystems once. Idempotent.
 startIdentity();
+startBadgeMonitor();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
@@ -162,6 +165,7 @@ function Game({ className }: GameProps): JSX.Element {
       <Tutorial />
       <AdminConsole />
       <UsernameEditor />
+      <BadgeToast />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
       {grantToast && (
         <output className="grant-toast">

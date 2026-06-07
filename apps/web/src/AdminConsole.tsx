@@ -10,6 +10,7 @@ import {
   adminApproveEmoticon,
   adminApproveName,
   adminGrantEconomy,
+  adminGrantSamaritan,
   adminListPendingEmoticons,
   adminListPendingNames,
   adminListUsers,
@@ -533,6 +534,76 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
         aria-label="grant reason"
       />
       {msg && <div className="panel-stub">─── {msg}</div>}
+
+      <SamaritanGrant userId={user.id} onChanged={onChanged} />
+    </div>
+  );
+}
+
+function SamaritanGrant({
+  userId,
+  onChanged,
+}: {
+  userId: string;
+  onChanged(): void;
+}): JSX.Element {
+  const [busy, setBusy] = useState(false);
+  const [faction, setFaction] = useState<'corp' | 'br'>('corp');
+  const [amount, setAmount] = useState('10');
+  const [msg, setMsg] = useState<string | null>(null);
+
+  const grant = (): void => {
+    const n = Math.floor(Number(amount) || 0);
+    if (n <= 0 || n > 100) {
+      setMsg('! amount must be 1–100');
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    void adminGrantSamaritan(userId, faction, n).then((res) => {
+      if ('error' in res) {
+        setMsg(`! ${res.error}`);
+      } else {
+        const badgeStr = res.newBadges.length > 0 ? ` · new: ${res.newBadges.join(', ')}` : '';
+        setMsg(`score → ${res.newScore}${badgeStr} ✓`);
+        onChanged();
+      }
+      setBusy(false);
+    });
+  };
+
+  return (
+    <div className="admin-grant-row" style={{ marginTop: 4 }}>
+      <select
+        className="admin-select admin-inline-select"
+        value={faction}
+        disabled={busy}
+        onChange={(e) => setFaction(e.target.value as 'corp' | 'br')}
+        aria-label="samaritan faction"
+      >
+        <option value="corp">corp</option>
+        <option value="br">br</option>
+      </select>
+      <input
+        className="admin-select admin-grant-num"
+        type="number"
+        min={1}
+        max={100}
+        inputMode="numeric"
+        placeholder="amt"
+        value={amount}
+        disabled={busy}
+        onChange={(e) => setAmount(e.target.value)}
+        aria-label="samaritan amount"
+      />
+      <button type="button" className="panel-toggle" disabled={busy} onClick={grant}>
+        [ samaritan ]
+      </button>
+      {msg && (
+        <div className="panel-stub" style={{ marginTop: 4 }}>
+          ─── {msg}
+        </div>
+      )}
     </div>
   );
 }
