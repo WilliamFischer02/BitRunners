@@ -4,9 +4,19 @@
 -- One pending submission per account (upsert replaces the prior one).
 -- Admins approve or reject via SECURITY DEFINER RPCs.
 --
--- Prerequisites: migration 0003 (is_admin()), migration 0007 (emoticron_dictionary).
+-- Prerequisites: migration 0003 (is_admin(uid UUID)), migration 0007
+-- (emoticron_dictionary).
+--
+-- NOTE: migration 0001 already created a public.emoticron_submissions table
+-- with columns (word_a, word_b, reviewer_note, no UNIQUE on user_id). That
+-- schema was never used in production — Sub-Phase D was the first feature to
+-- touch this table. To get to a clean state we DROP the old table here and
+-- recreate it with the canonical (word1, word2, note, UNIQUE(user_id))
+-- shape this module expects.
 
-CREATE TABLE IF NOT EXISTS public.emoticron_submissions (
+DROP TABLE IF EXISTS public.emoticron_submissions CASCADE;
+
+CREATE TABLE public.emoticron_submissions (
   id           UUID         DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id      UUID         NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   word1        TEXT         NOT NULL,
@@ -27,10 +37,10 @@ CREATE POLICY "emoticron_sub_user_read"
   USING (auth.uid() = user_id);
 
 -- Admins can read all rows (needed for the review queue).
--- is_admin() is a SECURITY DEFINER helper from migration 0003.
+-- is_admin(uid UUID) is a SECURITY DEFINER helper from migration 0003.
 CREATE POLICY "emoticron_sub_admin_read"
   ON public.emoticron_submissions FOR SELECT
-  USING (is_admin());
+  USING (public.is_admin(auth.uid()));
 
 -- No direct INSERT/UPDATE/DELETE from clients; all writes go through RPCs below.
 
@@ -117,7 +127,7 @@ CREATE OR REPLACE FUNCTION public.admin_list_pending_emoticrons()
   SET search_path = public
 AS $$
 BEGIN
-  IF NOT is_admin() THEN
+  IF NOT public.is_admin(auth.uid()) THEN
     RETURN;
   END IF;
 
@@ -145,7 +155,7 @@ CREATE OR REPLACE FUNCTION public.admin_approve_emoticron(p_user_id UUID)
   SET search_path = public
 AS $$
 BEGIN
-  IF NOT is_admin() THEN
+  IF NOT public.is_admin(auth.uid()) THEN
     RAISE EXCEPTION 'not admin';
   END IF;
 
@@ -174,7 +184,7 @@ CREATE OR REPLACE FUNCTION public.admin_reject_emoticron(p_user_id UUID, p_note 
   SET search_path = public
 AS $$
 BEGIN
-  IF NOT is_admin() THEN
+  IF NOT public.is_admin(auth.uid()) THEN
     RAISE EXCEPTION 'not admin';
   END IF;
 
