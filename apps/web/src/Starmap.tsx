@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { MINIMAP_ANCHORS, getMinimapTick, onMinimapTick } from './minimap-state.js';
+import { getActiveCheckpointAnchor, subscribeMissionChanges } from './missions.js';
 
 // Floating top-right HUD minimap — starmap-projection style.
 // Renders a 2D canvas at `pxSize` square with:
@@ -39,6 +40,15 @@ export function Starmap(): JSX.Element {
   useEffect(
     () =>
       onMinimapTick(() => {
+        dirtyRef.current = true;
+      }),
+    [],
+  );
+
+  // Mission state changes redraw the active-checkpoint pin.
+  useEffect(
+    () =>
+      subscribeMissionChanges(() => {
         dirtyRef.current = true;
       }),
     [],
@@ -118,6 +128,37 @@ export function Starmap(): JSX.Element {
         ctx.fillRect(mx - 2, my - 2, 4, 4);
         ctx.globalAlpha = onScreen ? 0.85 : 0.5;
         ctx.fillText(a.label, mx, my + 4);
+        ctx.globalAlpha = 1;
+      }
+
+      // Active mission checkpoint pin (cyan diamond, slightly larger than
+      // the static anchors). Drawn after SAMM/Admin so it's never occluded.
+      const checkpoint = getActiveCheckpointAnchor();
+      if (checkpoint) {
+        const dx = wrapDelta(checkpoint.x - tick.playerX);
+        const dz = wrapDelta(checkpoint.z - tick.playerZ);
+        let mx = cx + dx * px;
+        let my = cy + dz * px;
+        let onScreen = true;
+        const pad = 8;
+        if (mx < pad || mx > pxSize - pad || my < pad || my > pxSize - pad) {
+          onScreen = false;
+          const ang = Math.atan2(dz, dx);
+          const r = pxSize / 2 - pad;
+          mx = cx + Math.cos(ang) * r;
+          my = cy + Math.sin(ang) * r;
+        }
+        ctx.fillStyle = '#6cf0ff';
+        ctx.globalAlpha = onScreen ? 1 : 0.6;
+        ctx.beginPath();
+        ctx.moveTo(mx, my - 4);
+        ctx.lineTo(mx + 4, my);
+        ctx.lineTo(mx, my + 4);
+        ctx.lineTo(mx - 4, my);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = onScreen ? 0.85 : 0.5;
+        ctx.fillText('OBJ', mx, my + 5);
         ctx.globalAlpha = 1;
       }
 

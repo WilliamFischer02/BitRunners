@@ -8,13 +8,16 @@ import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
 import {
   BackSide,
   BoxGeometry,
-  type BufferGeometry,
+  BufferAttribute,
+  BufferGeometry,
   Color,
   CylinderGeometry,
   DirectionalLight,
   Fog,
   Group,
   HemisphereLight,
+  Line,
+  LineBasicMaterial,
   type Mesh,
   Mesh as MeshClass,
   MeshNormalMaterial,
@@ -46,6 +49,14 @@ import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { publishMinimapTick } from './minimap-state.js';
+import {
+  MISSIONS,
+  advanceActiveCheckpoint,
+  getActiveCheckpointAnchor,
+  getActiveMission,
+  setActiveMission,
+  subscribeMissionChanges,
+} from './missions.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
@@ -477,6 +488,130 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // ─── Mission checkpoint markers + route line (Sub-Phase G) ──────────────
+  // Added AFTER the 3x3 wrap clones so they're not duplicated. Markers
+  // re-spawn whenever the active mission changes; positions read from
+  // missions.ts. Render is mobile-safe: plain emissive cylinders + a glow
+  // Mesh halo, no DepthTexture / OutlinePass.
+  const missionGroup = new Group();
+  scene.add(missionGroup);
+
+  interface CheckpointMarker {
+    group: Group;
+    coreMat: MeshStandardMaterialType;
+    glowMat: MeshStandardMaterialType;
+    /** Index of this checkpoint inside the active mission. */
+    idx: number;
+  }
+  let checkpointMarkers: CheckpointMarker[] = [];
+  let routeLine: Line | null = null;
+
+  function clearMissionMarkers(): void {
+    for (const m of checkpointMarkers) {
+      missionGroup.remove(m.group);
+      m.coreMat.dispose();
+      m.glowMat.dispose();
+      m.group.traverse((obj) => {
+        if (obj instanceof MeshClass) obj.geometry.dispose();
+      });
+    }
+    checkpointMarkers = [];
+    if (routeLine) {
+      missionGroup.remove(routeLine);
+      routeLine.geometry.dispose();
+      (routeLine.material as LineBasicMaterial).dispose();
+      routeLine = null;
+    }
+  }
+
+  function buildMissionMarkers(): void {
+    clearMissionMarkers();
+    const snap = getActiveMission();
+    if (!snap || snap.state === 'complete') return;
+    const cps = snap.mission.checkpoints;
+    for (let i = 0; i < cps.length; i++) {
+      const cp = cps[i];
+      if (!cp) continue;
+      const isNext = i === snap.nextIdx;
+      const tint = isNext ? 0x6cf0ff : 0x355c66;
+      const core = new MeshClass(
+        new CylinderGeometry(0.3, 0.36, 1.6, 12),
+        new MeshStandardMaterial({
+          color: 0x0a1418,
+          emissive: tint,
+          emissiveIntensity: isNext ? 1.4 : 0.5,
+          roughness: 0.8,
+          metalness: 0.1,
+        }),
+      );
+      core.position.set(cp.x, 0.8, cp.z);
+      const halo = new MeshClass(
+        new CylinderGeometry(0.7, 0.7, 0.08, 24),
+        new MeshStandardMaterial({
+          color: 0x000000,
+          emissive: tint,
+          emissiveIntensity: isNext ? 1.1 : 0.35,
+          transparent: true,
+          opacity: 0.45,
+          roughness: 1,
+        }),
+      );
+      halo.position.set(cp.x, 0.05, cp.z);
+      const g = new Group();
+      g.add(core);
+      g.add(halo);
+      missionGroup.add(g);
+      checkpointMarkers.push({
+        group: g,
+        coreMat: core.material as MeshStandardMaterialType,
+        glowMat: halo.material as MeshStandardMaterialType,
+        idx: i,
+      });
+    }
+    // Glowing route line connecting consecutive checkpoints. Vertex colors
+    // taper from full bright at the NEXT checkpoint back to faint at the
+    // previous one so the runner reads which direction to walk.
+    if (cps.length >= 2) {
+      const verts: number[] = [];
+      const colors: number[] = [];
+      for (let i = 0; i < cps.length - 1; i++) {
+        const a = cps[i];
+        const b = cps[i + 1];
+        if (!a || !b) continue;
+        verts.push(a.x, 0.06, a.z, b.x, 0.06, b.z);
+        // segment closer to a yet-to-reach checkpoint glows brighter.
+        const futureA = i >= snap.nextIdx ? 1 : 0.3;
+        const futureB = i + 1 >= snap.nextIdx ? 1 : 0.3;
+        colors.push(0.42 * futureA, 0.94 * futureA, 1.0 * futureA);
+        colors.push(0.42 * futureB, 0.94 * futureB, 1.0 * futureB);
+      }
+      const geom = new BufferGeometry();
+      geom.setAttribute('position', new BufferAttribute(new Float32Array(verts), 3));
+      geom.setAttribute('color', new BufferAttribute(new Float32Array(colors), 3));
+      routeLine = new Line(
+        geom,
+        new LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.85 }),
+      );
+      missionGroup.add(routeLine);
+    }
+  }
+  buildMissionMarkers();
+  const unsubscribeMission = subscribeMissionChanges(() => buildMissionMarkers());
+
+  // Bootstrap the first mission as the active one for new runners. This stays
+  // client-only — the server's `start_mission` RPC is fired by the React
+  // layer once auth resolves. Guests see the markers without a server-side
+  // row (the RPC just no-ops without auth).
+  const firstMission = MISSIONS[0];
+  if (firstMission && !getActiveMission()) {
+    setActiveMission({
+      mission: firstMission,
+      nextIdx: 0,
+      state: 'active',
+      factionChoice: null,
+    });
+  }
+
   const skyboxMaterial = new ShaderMaterial({
     uniforms: { uTime: new Uniform(0) },
     vertexShader: /* glsl */ `
@@ -743,6 +878,24 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       adminShadow.lookAt(rig.root.position.x, 0, rig.root.position.z);
       adminShadow.visible = true;
       window.dispatchEvent(new CustomEvent('bitrunners:admin-encounter'));
+    }
+  }
+
+  // ─── Mission checkpoint proximity (Sub-Phase G) ─────────────────────
+  // Wraps the player → next-checkpoint delta and advances the active mission
+  // when the player crosses the trigger radius. The final checkpoint flips
+  // the mission to 'final' and dispatches 'bitrunners:mission-final' which
+  // the MissionDialogue listens for.
+  function checkMissionApproach(): void {
+    const snap = getActiveMission();
+    if (!snap || snap.state === 'complete' || snap.state === 'final') return;
+    const cp = snap.mission.checkpoints[snap.nextIdx];
+    if (!cp) return;
+    const dx = wrapDelta(rig.root.position.x - cp.x);
+    const dz = wrapDelta(rig.root.position.z - cp.z);
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < snap.mission.triggerDist) {
+      advanceActiveCheckpoint();
     }
   }
 
@@ -1334,6 +1487,21 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     updateTendrils(dt, moving || hoverY > 0.05);
     checkObeliskApproach();
     checkSammApproach();
+    checkMissionApproach();
+    // Pulse the active checkpoint's emissive intensity so the runner reads
+    // the "next" target without staring. Cheap — one material mutation per
+    // active checkpoint per frame.
+    if (checkpointMarkers.length > 0) {
+      const activeIdx = getActiveMission()?.nextIdx ?? -1;
+      const t = elapsed;
+      for (const m of checkpointMarkers) {
+        if (m.idx === activeIdx) {
+          const pulse = 1.1 + Math.sin(t * 3.6) * 0.35;
+          m.coreMat.emissiveIntensity = pulse;
+          m.glowMat.emissiveIntensity = pulse * 0.7;
+        }
+      }
+    }
 
     // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
     const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
@@ -1565,6 +1733,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
     remoteAvatars.clear();
     unsubscribeIdentity();
+    unsubscribeMission();
+    clearMissionMarkers();
     for (const te of trackedEmotes) {
       if (te.anchor.parentNode === host) host.removeChild(te.anchor);
     }

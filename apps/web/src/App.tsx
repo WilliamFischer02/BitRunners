@@ -5,6 +5,7 @@ import { BadgeToast } from './BadgeToast.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
+import { MissionDialogue } from './MissionDialogue.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
@@ -168,6 +169,7 @@ function Game({ className }: GameProps): JSX.Element {
       <AdminConsole />
       <UsernameEditor />
       <BadgeToast />
+      <MissionDialogue />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
       {grantToast && (
         <output className="grant-toast">
