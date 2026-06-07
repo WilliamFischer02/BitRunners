@@ -45,6 +45,7 @@ import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
+import { publishMinimapTick } from './minimap-state.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
@@ -213,6 +214,36 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const camera = new PerspectiveCamera(38, 1, 0.1, 200);
   const cameraOffset = new Vector3(4.5, 9.5, 4.5);
   camera.layers.enableAll();
+
+  // Camera zoom — multiplies cameraOffset so direction (¾ iso angle) is
+  // preserved while distance changes. Mouse wheel + pinch gesture drive it;
+  // clamp to a sane range so the runner never disappears off-screen or
+  // shrinks to a single ASCII cell.
+  const ZOOM_MIN = 0.55;
+  const ZOOM_MAX = 2.2;
+  const ZOOM_KEY = 'bitrunners.settings.cameraZoom';
+  let cameraZoom = (() => {
+    try {
+      const v = Number(localStorage.getItem(ZOOM_KEY));
+      if (Number.isFinite(v) && v >= ZOOM_MIN && v <= ZOOM_MAX) return v;
+    } catch {
+      // storage unavailable — use default
+    }
+    return 1.0;
+  })();
+  function clampZoom(v: number): number {
+    return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
+  }
+  function setZoom(v: number): void {
+    const next = clampZoom(v);
+    if (Math.abs(next - cameraZoom) < 1e-3) return;
+    cameraZoom = next;
+    try {
+      localStorage.setItem(ZOOM_KEY, String(cameraZoom));
+    } catch {
+      // ignore
+    }
+  }
 
   const hemi = new HemisphereLight(0xffffff, 0x303338, 1.05);
   hemi.layers.enableAll();
@@ -736,18 +767,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   const worldAtlas = buildGlyphAtlas({
     ramp: ' .·-:;=+*░#▒▓█',
-    cellSize: 5,
-    fontSize: 7,
+    cellSize: 4,
+    fontSize: 6,
   });
   const characterAtlas = buildGlyphAtlas({
     ramp: " '.,:;-+=*#%&@",
-    cellSize: 5,
-    fontSize: 7,
+    cellSize: 4,
+    fontSize: 6,
   });
   const edgeAtlas = buildGlyphAtlas({
     ramp: ' ▀▄▌▐█',
-    cellSize: 5,
-    fontSize: 7,
+    cellSize: 4,
+    fontSize: 6,
   });
 
   const useNormals =
@@ -790,7 +821,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     typeof window === 'undefined' ||
     new URLSearchParams(window.location.search).get('crt') !== 'off';
   const crtPass = crtEnabled
-    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.13 })
+    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.05 })
     : null;
   if (crtPass) composer.addPass(crtPass);
 
@@ -983,6 +1014,50 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     lockedTarget = applyLock(hit.id, hit.group);
   };
   renderer.domElement.addEventListener('click', onCanvasClick);
+
+  // Mouse wheel → zoom. Multiplicative steps feel natural across zoom
+  // levels. preventDefault stops the page from scrolling on desktop
+  // browsers; passive=false is required for that to work.
+  const onWheel = (ev: WheelEvent): void => {
+    ev.preventDefault();
+    const dir = ev.deltaY > 0 ? 1 : -1;
+    const factor = dir > 0 ? 1.1 : 1 / 1.1;
+    setZoom(cameraZoom * factor);
+  };
+  renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+
+  // Pinch gesture → zoom. Tracks the initial two-finger distance and rescales
+  // cameraZoom proportionally. Single-finger touches fall through to the
+  // joystick / input layer; only multi-touch enters this branch.
+  let pinchStartDist = 0;
+  let pinchStartZoom = cameraZoom;
+  const touchDistance = (t: TouchList): number => {
+    const a = t[0];
+    const b = t[1];
+    if (!a || !b) return 0;
+    return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  };
+  const onTouchStart = (ev: TouchEvent): void => {
+    if (ev.touches.length < 2) return;
+    pinchStartDist = touchDistance(ev.touches);
+    pinchStartZoom = cameraZoom;
+  };
+  const onTouchMove = (ev: TouchEvent): void => {
+    if (ev.touches.length < 2 || pinchStartDist <= 0) return;
+    ev.preventDefault();
+    const d = touchDistance(ev.touches);
+    if (d <= 0) return;
+    // Pinch CLOSER (fingers spread) zooms IN — i.e. smaller cameraZoom.
+    setZoom(pinchStartZoom * (pinchStartDist / d));
+  };
+  const onTouchEnd = (ev: TouchEvent): void => {
+    if (ev.touches.length < 2) pinchStartDist = 0;
+  };
+  renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: true });
+  renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+  renderer.domElement.addEventListener('touchend', onTouchEnd, { passive: true });
+  renderer.domElement.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
   interface TrackedEmote {
     anchor: HTMLDivElement;
     group: Group;
@@ -1017,6 +1092,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
 
   let lastNetSend = 0;
+  let lastMinimapEmit = 0;
   const serverUrl = getServerUrl();
   let sceneDisposed = false;
   let reconnectAttempt = 0;
@@ -1309,9 +1385,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
     }
     camera.position.set(
-      followX + cameraOffset.x,
-      followY + cameraOffset.y,
-      followZ + cameraOffset.z,
+      followX + cameraOffset.x * cameraZoom,
+      followY + cameraOffset.y * cameraZoom,
+      followZ + cameraOffset.z * cameraZoom,
     );
     camera.lookAt(followX, followY + 0.9, followZ);
 
@@ -1341,6 +1417,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (netSession && now - lastNetSend >= NET_SEND_MS) {
       netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
       lastNetSend = now;
+    }
+
+    // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the
+    // HUD updates at the same cadence as outbound moves — once per ~67 ms.
+    if (now - lastMinimapEmit >= NET_SEND_MS) {
+      publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
+      lastMinimapEmit = now;
     }
 
     skybox.position.x = rig.root.position.x;
@@ -1464,6 +1547,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     petMat?.dispose();
     input.dispose();
     renderer.domElement.removeEventListener('click', onCanvasClick);
+    renderer.domElement.removeEventListener('wheel', onWheel);
+    renderer.domElement.removeEventListener('touchstart', onTouchStart);
+    renderer.domElement.removeEventListener('touchmove', onTouchMove);
+    renderer.domElement.removeEventListener('touchend', onTouchEnd);
+    renderer.domElement.removeEventListener('touchcancel', onTouchEnd);
     if (lockedTarget) {
       releaseLock(lockedTarget);
       lockedTarget = null;
