@@ -6,7 +6,9 @@ import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { MissionDialogue } from './MissionDialogue.js';
+import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
+import { Protocols } from './Protocols.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { Starmap } from './Starmap.js';
@@ -161,7 +163,9 @@ function Game({ className }: GameProps): JSX.Element {
     <div ref={hostRef} className="canvas-host">
       <div className="hint">{className} · arrows / wasd / stick</div>
       <ProfileIcon className={className} />
+      <Protocols />
       <ScrapeMenu />
+      <Objectives />
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />
