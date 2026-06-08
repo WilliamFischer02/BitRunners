@@ -24,6 +24,7 @@ import {
   setUnderConstruction,
   subscribeAuth,
 } from './supabase.js';
+import { openWithDissolve } from './transitions/dialog-dissolve.js';
 
 // Owner-only console. The launcher renders only for admins; every action it
 // exposes is also server-enforced (RLS), so the client gate is convenience,
@@ -67,11 +68,14 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
   onCloseRef.current = onClose;
 
   // Open as a true modal: native focus trap + Escape via cancel event.
+  // Phase 5: openWithDissolve plays a brief ASCII pixel-crush dissolve
+  // over the dialog on mount so the open animation matches the boot→game
+  // transition vocabulary.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
-    dialog.showModal();
+    openWithDissolve(dialog);
     const onCancel = (e: Event): void => {
       e.preventDefault();
       onCloseRef.current();

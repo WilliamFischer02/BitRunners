@@ -17,6 +17,7 @@ import {
   isAuthConfigured,
   submitDisplayName,
 } from './supabase.js';
+import { openWithDissolve } from './transitions/dialog-dissolve.js';
 
 // Opens when the user taps the floating name above their character.
 // Mounted inside App next to the Tutorial/AdminConsole overlays. Driven by
@@ -63,7 +64,7 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
-    dialog.showModal();
+    openWithDissolve(dialog);
     const onCancel = (e: Event): void => {
       e.preventDefault();
       onCloseRef.current();

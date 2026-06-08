@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getLine, getLines } from './dialogue.js';
 import {
   type ActiveMissionSnap,
@@ -7,6 +7,7 @@ import {
   subscribeMissionChanges,
 } from './missions.js';
 import { type MissionFaction, completeMissionRpc } from './supabase.js';
+import { playDissolve } from './transitions/dissolve.js';
 
 // Final-checkpoint dialogue. Listens for 'bitrunners:mission-final' and opens.
 // Two-choice gameplay surface: pick BitRunner → Admin or Corporate → Company.
@@ -57,6 +58,18 @@ function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }):
   const [chosen, setChosen] = useState<MissionFaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Phase 5: ASCII pixel-crush dissolve on mount.
+  useEffect(() => {
+    if (rootRef.current) {
+      requestAnimationFrame(() => {
+        if (rootRef.current) {
+          playDissolve(rootRef.current, 'in', { durationMs: 260, cell: 12 });
+        }
+      });
+    }
+  }, []);
 
   const targetLine = (() => {
     if (phase === 'opening') return getLines(mission.dialogue.opening)[lineIdx] ?? '';
@@ -164,7 +177,7 @@ function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }):
   };
 
   return (
-    <div className="dialogue-root mission-dialogue">
+    <div className="dialogue-root mission-dialogue" ref={rootRef}>
       <div className="dialogue-veil" aria-hidden="true" />
       <button type="button" className="dialogue-frame" onClick={onPanelClick}>
         <div className="dialogue-head">
