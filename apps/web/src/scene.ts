@@ -69,6 +69,7 @@ import {
   tickLock,
 } from './target-lock.js';
 import { applyThemeToPass } from './themes.js';
+import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -656,6 +657,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   rig.root.traverse((obj) => {
     obj.layers.set(CHARACTER_LAYER);
   });
+  // Scatter the local rig on a small ring so multiple tabs / runners don't
+  // spawn-stack at (0,0). The server scatters too (sphere-room.ts onJoin), so
+  // both ends pick a random off-origin coord on join; once the local rig
+  // sends its first 'move', the two converge on the client's choice.
+  {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 1.5 + Math.random() * 2.5;
+    rig.root.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+  }
   scene.add(rig.root);
 
   // ─── Equipped-cosmetic appearance (Chunk B, devlog 0040) ─────────────
@@ -1249,6 +1259,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const serverUrl = getServerUrl();
   let sceneDisposed = false;
   let reconnectAttempt = 0;
+  const standbyCleanups: Array<() => void> = [];
   const RECONNECT_DELAYS = [3_000, 6_000, 12_000];
 
   const netEl = document.createElement('div');
@@ -1401,7 +1412,68 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
     };
     void connectSphere();
+    const onStandbyReconnect = (): void => {
+      if (sceneDisposed) return;
+      if (!netSession) void connectSphere();
+    };
+    window.addEventListener('bitrunners:standby-reconnect', onStandbyReconnect);
+    standbyCleanups.push(() =>
+      window.removeEventListener('bitrunners:standby-reconnect', onStandbyReconnect),
+    );
   }
+
+  // ─── Page-Visibility standby (Phase 2) ──────────────────────────────
+  // Disconnect when the tab is hidden/backgrounded so the avatar leaves
+  // the server immediately (instead of waiting ~120s for the idle sweep).
+  // Reconnect on visible. Always installed — the standby ribbon shows
+  // even when running in offline / single-player mode.
+  const onStandbyEnter = (): void => {
+    if (sceneDisposed) return;
+    if (netSession) {
+      const s = netSession;
+      netSession = null;
+      clearRemoteAvatars();
+      // intentionalLeave inside dispose suppresses onDisconnect callback,
+      // so the RECONNECT_DELAYS path does NOT fire — standby is not a
+      // network drop.
+      void s.dispose();
+    }
+    setNet('net: standby · tab hidden', 'idle');
+    try {
+      host.classList.add('is-standby');
+    } catch {
+      // non-DOM env — ignore
+    }
+  };
+  const onStandbyExit = (): void => {
+    if (sceneDisposed) return;
+    try {
+      host.classList.remove('is-standby');
+    } catch {
+      // non-DOM env — ignore
+    }
+    // Only reconnect if a session was established before standby
+    // (serverUrl present) AND we don't currently have one.
+    if (!netSession && getServerUrl()) {
+      reconnectAttempt = 0;
+      // connectSphere is a const inside the else-branch closure — re-fire
+      // via the same event the disconnect path uses. We dispatch a tiny
+      // internal "reconnect" by setting up a no-op timer that the scene
+      // tick checks. Simpler: dispatch a custom event the network init
+      // block listens for.
+      try {
+        window.dispatchEvent(new CustomEvent('bitrunners:standby-reconnect'));
+      } catch {
+        // non-DOM env — ignore
+      }
+    }
+  };
+  window.addEventListener(STANDBY_ENTER_EVENT, onStandbyEnter);
+  window.addEventListener(STANDBY_EXIT_EVENT, onStandbyExit);
+  standbyCleanups.push(() => {
+    window.removeEventListener(STANDBY_ENTER_EVENT, onStandbyEnter);
+    window.removeEventListener(STANDBY_EXIT_EVENT, onStandbyExit);
+  });
 
   const tempFwd = new Vector3();
   const tempRight = new Vector3();
@@ -1709,6 +1781,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     sceneDisposed = true;
     cancelAnimationFrame(raf);
     ro.disconnect();
+    for (const fn of standbyCleanups) {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    }
+    standbyCleanups.length = 0;
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
     unsubscribeAppearance();
     petGeom?.dispose();

@@ -42,6 +42,20 @@ function randCoord(): number {
   return (Math.random() * 2 - 1) * PLATFORM_HALF;
 }
 
+// Random spawn for a newly-joined human player: random angle, radius in
+// [SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX] world units from origin. Keeps
+// newcomers near the spawn ring without stacking exactly on top of each
+// other or on top of the existing center decor (obelisk at (5.5, 5.5),
+// SAMM at (6.0, -5.5), terminal at (-5.5, 6.5), port at (-6.5, -6.5)
+// are all >= 5 units from origin, so a [1.5, 4.0] ring never collides).
+const SPAWN_RADIUS_MIN = 1.5;
+const SPAWN_RADIUS_MAX = 4.0;
+function randomSpawn(): { x: number; z: number } {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = SPAWN_RADIUS_MIN + Math.random() * (SPAWN_RADIUS_MAX - SPAWN_RADIUS_MIN);
+  return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius };
+}
+
 interface Npc {
   id: string;
   tx: number;
@@ -150,6 +164,13 @@ export class SphereRoom extends Room<SphereState> {
     if (options?.equippedTheme && isValidThemeKey(options.equippedTheme)) {
       p.equippedTheme = options.equippedTheme;
     }
+    // Scatter spawn coords so newcomers don't all stack at (0,0). The
+    // PlayerState schema defaults x/z to 0; without this every avatar
+    // remains at origin until the client's first 'move' message arrives,
+    // and any tab that goes idle stays there.
+    const spawn = randomSpawn();
+    p.x = spawn.x;
+    p.z = spawn.z;
     this.state.players.set(client.sessionId, p);
     this.lastSeen.set(client.sessionId, Date.now());
   }
