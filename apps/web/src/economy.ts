@@ -46,6 +46,11 @@ export interface EconomyState {
   // Spendable Tokens (premium currency). The proxy-wallet unlock (lore 009)
   // made these real; legacy `lockedTokens` blobs are folded in on load.
   tokens: number;
+  // Captured "chatter" — packet fragments from the Tether Hop minigame
+  // (Phase 3, docs/lore/017). Exchanged 1:1 with The Admin or The Company
+  // for credits via the in-game exchange. Additive field: older v1 blobs
+  // predate it and normalize to 0.
+  chatter: number;
   // First-play tutorial + unlocked classes (device-local; migrates with the
   // account later). Completing the tutorial unlocks server_speaker.
   tutorialDone: boolean;
@@ -81,6 +86,7 @@ function defaultState(): EconomyState {
     lifetimeScrapes: 0,
     lifetimePasscodes: 0,
     tokens: 0,
+    chatter: 0,
     tutorialDone: false,
     unlocks: [],
     owned: [],
@@ -157,6 +163,8 @@ function normalize(parsed: EconomyState): EconomyState {
     // a player who already minted some isn't locked out of the skill tree.
     lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
     tokens: fin(p.tokens) + fin(p.lockedTokens),
+    // Additive field (Phase 3): older v1 blobs predate it; default to 0.
+    chatter: fin(p.chatter),
     tutorialDone: p.tutorialDone === true,
     unlocks: strArray(p.unlocks),
     owned: strArray(p.owned),
@@ -445,6 +453,23 @@ export function addTokens(amount: number): void {
   if (!Number.isFinite(amount) || amount <= 0) return;
   state = { ...state, tokens: state.tokens + amount };
   persist();
+}
+
+/** Award captured chatter (Tether Hop hit). */
+export function addChatter(amount: number): void {
+  if (!Number.isFinite(amount) || amount <= 0) return;
+  state = { ...state, chatter: state.chatter + amount };
+  persist();
+}
+
+/** Spend chatter (exchange to Admin or Company). Returns true if balance
+ *  was sufficient and the spend happened; false if the call was a no-op. */
+export function spendChatter(amount: number): boolean {
+  if (!Number.isFinite(amount) || amount <= 0) return false;
+  if (state.chatter < amount) return false;
+  state = { ...state, chatter: state.chatter - amount };
+  persist();
+  return true;
 }
 
 /** Spend Tokens (token bet / token-priced item). False if insufficient. */
