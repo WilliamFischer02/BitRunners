@@ -3644,3 +3644,127 @@ dialog.panel::backdrop {
     gap: 6px;
   }
 }
+
+/* ════════ HUD launch row — under the starmap minimap (devlog 0065) ════════
+   The minimap occupies the top-right corner (132x132 desktop, 96x96 mobile).
+   The profile / scrape / shop launchers used to sit on top of (or behind) it
+   because they were absolute-positioned to top:12 / top:84 / top:134 right:12.
+   These overrides move all three into a compact icon-style row directly
+   underneath the minimap, anchored to the right edge.
+   Comes AFTER every existing launcher rule so the cascade wins naturally —
+   no !important needed. */
+.profile,
+.scrape-launch,
+.shop-launch {
+  top: 156px;
+  width: 60px;
+  height: 60px;
+  min-width: 0;
+  max-width: 60px;
+  min-height: 0;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  text-align: center;
+  overflow: hidden;
+}
+.shop-launch {
+  right: 12px;
+}
+.scrape-launch {
+  right: 80px;
+}
+.profile {
+  right: 148px;
+}
+
+/* Compact inner content: keep just an iconic glyph + tiny caption */
+.profile-rain {
+  display: none;
+}
+.profile-box {
+  padding: 0;
+  margin: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.profile-label,
+.profile-status {
+  display: none;
+}
+.profile-class {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 56px;
+}
+.profile-box::before {
+  content: "◉";
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.scrape-launch-label {
+  display: none;
+}
+.scrape-launch-sub {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 56px;
+}
+.scrape-launch::before {
+  content: "⌬";
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.shop-launch-glyph {
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+}
+.shop-launch-cap {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
+}
+
+/* Mobile: minimap shrinks to 96x96 at top: 8px; row anchors below at top: 116
+   (8 + 96 + 12). Buttons shrink to 54px so 3 fit comfortably on a narrow phone. */
+@media (max-width: 540px) {
+  .profile,
+  .scrape-launch,
+  .shop-launch {
+    top: 116px;
+    width: 54px;
+    height: 54px;
+    max-width: 54px;
+  }
+  .shop-launch {
+    right: 8px;
+  }
+  .scrape-launch {
+    right: 70px;
+  }
+  .profile {
+    right: 132px;
+  }
+}
