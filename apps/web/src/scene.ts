@@ -60,6 +60,7 @@ import {
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
+import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
 import {
   type LockedTarget,
   applyLock,
@@ -275,25 +276,39 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   const worldTile = new Group();
 
+  // Circuit-board floor (Phase 4, devlog 0068). FBM-driven copper traces
+  // animated by a current-pulse. Replaces the flat plane + grid strips.
+  // The shader picks pattern coordinates from local position.xy so the
+  // 3x3 wrap-tile cloning still tiles seamlessly. Stage A fallback flag
+  // `?floor=plain` reverts to the old MeshStandardMaterial path for an
+  // emergency rollback on low-end devices.
+  const floorPlain =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('floor') === 'plain';
+  const floorMaterial = floorPlain
+    ? new MeshStandardMaterial({ color: 0x1a2a1c, roughness: 0.95, metalness: 0.05 })
+    : createCircuitFloorMaterial();
   const platform = new MeshClass(
     new PlaneGeometry(PLATFORM_HALF * 2, PLATFORM_HALF * 2, 1, 1),
-    new MeshStandardMaterial({ color: 0x1a2a1c, roughness: 0.95, metalness: 0.05 }),
+    floorMaterial,
   );
   platform.rotation.x = -Math.PI / 2;
   worldTile.add(platform);
 
-  const gridProto = new MeshClass(
-    new BoxGeometry(PLATFORM_HALF * 2 - 0.4, 0.02, 0.06),
-    new MeshStandardMaterial({ color: 0x4c5056, roughness: 1 }),
-  );
-  for (let i = -3; i <= 3; i++) {
-    const a = gridProto.clone();
-    a.position.set(0, 0.01, i * 2.4);
-    worldTile.add(a);
-    const b = gridProto.clone();
-    b.rotation.y = Math.PI / 2;
-    b.position.set(i * 2.4, 0.01, 0);
-    worldTile.add(b);
+  if (floorPlain) {
+    const gridProto = new MeshClass(
+      new BoxGeometry(PLATFORM_HALF * 2 - 0.4, 0.02, 0.06),
+      new MeshStandardMaterial({ color: 0x4c5056, roughness: 1 }),
+    );
+    for (let i = -3; i <= 3; i++) {
+      const a = gridProto.clone();
+      a.position.set(0, 0.01, i * 2.4);
+      worldTile.add(a);
+      const b = gridProto.clone();
+      b.rotation.y = Math.PI / 2;
+      b.position.set(i * 2.4, 0.01, 0);
+      worldTile.add(b);
+    }
   }
 
   const port = new MeshClass(
@@ -1598,6 +1613,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     skybox.position.z = rig.root.position.z;
     const uTimeUniform = skyboxMaterial.uniforms.uTime as Uniform<number> | undefined;
     if (uTimeUniform) uTimeUniform.value = elapsed;
+    // Drive the circuit-floor pulse (Phase 4).
+    if (!floorPlain) {
+      const u = (floorMaterial as { uniforms?: CircuitFloorUniforms }).uniforms;
+      if (u?.uTime) u.uTime.value = elapsed;
+    }
 
     renderer.getClearColor(savedClear);
     const savedAlpha = renderer.getClearAlpha();
