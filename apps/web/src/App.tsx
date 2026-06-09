@@ -16,6 +16,7 @@ import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
+import { TetherHop } from './games/tether-hop/TetherHop.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
 
@@ -166,6 +167,7 @@ function Game({ className }: GameProps): JSX.Element {
       <Protocols />
       <ScrapeMenu />
       <Objectives />
+      <TetherHop />
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />
