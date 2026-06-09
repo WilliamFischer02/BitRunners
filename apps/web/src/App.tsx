@@ -12,12 +12,12 @@ import { Protocols } from './Protocols.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { Starmap } from './Starmap.js';
-import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
+import { BootDissolve } from './transitions/BootDissolve.js';
 
 // Boot the identity + badge-notification subsystems once. Idempotent.
 startIdentity();
@@ -95,7 +95,7 @@ function Shell(): JSX.Element {
       {phase === 'transition' && (
         <>
           <Game className={chosenClass} />
-          <TransitionRain onDone={onTransitionDone} />
+          <BootDissolve onDone={onTransitionDone} />
         </>
       )}
       {phase === 'game' && <Game className={chosenClass} />}
