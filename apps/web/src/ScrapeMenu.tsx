@@ -100,6 +100,11 @@ function rarityClass(item: ShopItem): string {
   return item.rarity ? `rar-${item.rarity}` : '';
 }
 
+// ScrapeMenu is now a panel-only component: the launcher row's Protocols
+// cartridge dispatches `bitrunners:open-scrape` (via the protocols-registry
+// `launchScrape` helper) which opens this panel. The old `scrape-launch` and
+// `shop-launch` buttons are gone — Shop, Themes, Inventory, Emoticons are
+// all sub-views inside this panel, reached via openScrape('shop') etc.
 export function ScrapeMenu(): JSX.Element {
   const [open, setOpen] = useState(false);
   const [initialView, setInitialView] = useState<View>('scrape');
@@ -114,35 +119,8 @@ export function ScrapeMenu(): JSX.Element {
     return () => window.removeEventListener(SCRAPE_OPEN_EVENT, onOpen);
   }, []);
 
-  return (
-    <>
-      <button
-        type="button"
-        className="scrape-launch"
-        onClick={() => {
-          setInitialView('scrape');
-          setOpen((v) => !v);
-        }}
-        title="open data scrape"
-      >
-        <div className="scrape-launch-label">{'// minigame'}</div>
-        <div className="scrape-launch-sub">{'> data scrape'}</div>
-      </button>
-      <button
-        type="button"
-        className="shop-launch"
-        onClick={() => {
-          setInitialView('shop');
-          setOpen(true);
-        }}
-        title="open shop"
-      >
-        <span className="shop-launch-glyph">$</span>
-        <span className="shop-launch-cap">shop</span>
-      </button>
-      {open && <ScrapePanel initialView={initialView} onClose={() => setOpen(false)} />}
-    </>
-  );
+  if (!open) return <></>;
+  return <ScrapePanel initialView={initialView} onClose={() => setOpen(false)} />;
 }
 
 interface ScrapePanelProps {
