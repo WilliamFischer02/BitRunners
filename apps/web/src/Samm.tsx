@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getLine } from './dialogue.js';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 import { type BetCurrency, type GambleResult, betTiers, canBet, gamble, minBet } from './samm.js';
+import { openWithDissolve } from './transitions/dialog-dissolve.js';
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -68,7 +69,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
-    dialog.showModal();
+    openWithDissolve(dialog);
     const onCancel = (e: Event): void => {
       e.preventDefault();
       onCloseRef.current();

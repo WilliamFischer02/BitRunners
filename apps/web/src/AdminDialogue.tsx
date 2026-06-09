@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMOTE_GLYPHS, type EmoteId } from './EmoteWheel.js';
 import { getLines } from './dialogue.js';
+import { playDissolve } from './transitions/dissolve.js';
 
 interface AdminDialogueProps {
   onClose(): void;
@@ -17,6 +18,20 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
   const [shownText, setShownText] = useState('');
   const [typing, setTyping] = useState(true);
   const [chosen, setChosen] = useState<EmoteId | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Phase 5: ASCII pixel-crush dissolve at mount, matching the boot→game
+  // and menu-modal vocabulary. The typewriter line reveal stays — this is
+  // the entrance animation for the *frame*, not the text inside.
+  useEffect(() => {
+    if (rootRef.current) {
+      requestAnimationFrame(() => {
+        if (rootRef.current) {
+          playDissolve(rootRef.current, 'in', { durationMs: 260, cell: 12 });
+        }
+      });
+    }
+  }, []);
 
   // The line to currently reveal, computed from phase + lineIdx + chosen.
   const targetLine = (() => {
@@ -104,7 +119,7 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
   };
 
   return (
-    <div className="dialogue-root">
+    <div className="dialogue-root" ref={rootRef}>
       <div className="dialogue-veil" aria-hidden="true" />
       <button type="button" className="dialogue-frame" onClick={onPanelClick}>
         <div className="dialogue-head">
