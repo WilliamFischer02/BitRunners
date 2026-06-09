@@ -6,16 +6,18 @@ import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { MissionDialogue } from './MissionDialogue.js';
+import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
+import { Protocols } from './Protocols.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
 import { Starmap } from './Starmap.js';
-import { TransitionRain } from './TransitionRain.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
+import { BootDissolve } from './transitions/BootDissolve.js';
 import { startVisibilityWatcher } from './visibility.js';
 
 // Boot the identity + badge-notification + visibility subsystems once. Idempotent.
@@ -95,7 +97,7 @@ function Shell(): JSX.Element {
       {phase === 'transition' && (
         <>
           <Game className={chosenClass} />
-          <TransitionRain onDone={onTransitionDone} />
+          <BootDissolve onDone={onTransitionDone} />
         </>
       )}
       {phase === 'game' && <Game className={chosenClass} />}
@@ -163,7 +165,9 @@ function Game({ className }: GameProps): JSX.Element {
     <div ref={hostRef} className="canvas-host">
       <div className="hint">{className} · arrows / wasd / stick</div>
       <ProfileIcon className={className} />
+      <Protocols />
       <ScrapeMenu />
+      <Objectives />
       <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />

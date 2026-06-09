@@ -3645,17 +3645,19 @@ dialog.panel::backdrop {
   }
 }
 
-/* ════════ HUD launch row — under the starmap minimap (devlog 0065) ════════
-   The minimap occupies the top-right corner (132x132 desktop, 96x96 mobile).
-   The profile / scrape / shop launchers used to sit on top of (or behind) it
-   because they were absolute-positioned to top:12 / top:84 / top:134 right:12.
-   These overrides move all three into a compact icon-style row directly
-   underneath the minimap, anchored to the right edge.
-   Comes AFTER every existing launcher rule so the cascade wins naturally —
-   no !important needed. */
+/* ════════ HUD launch row — under the starmap minimap (devlog 0066) ════════
+   Phase 1 of the protocols refactor. Old `.scrape-launch` / `.shop-launch`
+   buttons are gone. The row is now profile + protocols, anchored to the right
+   edge, sized to match the minimap width (132 px desktop, 96 px mobile).
+   Layout math:
+     desktop  60 + 8 + 60 = 128 px  (slightly inset under the 132 px minimap)
+     mobile   54 + 6 + 54 = 114 px  (slightly wider than the 96 px minimap —
+                                     accepted: launchers spill slightly left,
+                                     remains tappable).
+*/
 .profile,
-.scrape-launch,
-.shop-launch {
+.protocols-launch {
+  position: absolute;
   top: 156px;
   width: 60px;
   height: 60px;
@@ -3670,18 +3672,42 @@ dialog.panel::backdrop {
   gap: 2px;
   text-align: center;
   overflow: hidden;
+  appearance: none;
+  background: rgba(8, 12, 14, 0.75);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  cursor: pointer;
+  z-index: 20;
 }
-.shop-launch {
+.protocols-launch {
   right: 12px;
 }
-.scrape-launch {
+.profile {
   right: 80px;
 }
-.profile {
-  right: 148px;
+.protocols-launch:hover,
+.profile:hover {
+  border-color: #93e0b1;
+}
+.protocols-launch[aria-expanded="true"] {
+  border-color: #93e0b1;
+  background: rgba(14, 22, 18, 0.85);
+  box-shadow: inset 0 0 8px rgba(132, 216, 164, 0.18);
+}
+.protocols-launch-glyph {
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+}
+.protocols-launch-cap {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
 }
 
-/* Compact inner content: keep just an iconic glyph + tiny caption */
+/* Compact profile content: keep just an iconic glyph + tiny class abbreviation */
 .profile-rain {
   display: none;
 }
@@ -3715,57 +3741,19 @@ dialog.panel::backdrop {
   margin-bottom: 2px;
 }
 
-.scrape-launch-label {
-  display: none;
-}
-.scrape-launch-sub {
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: #c0ffd6;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 56px;
-}
-.scrape-launch::before {
-  content: "⌬";
-  font-size: 18px;
-  line-height: 1;
-  color: #93e0b1;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.shop-launch-glyph {
-  font-size: 18px;
-  line-height: 1;
-  color: #93e0b1;
-}
-.shop-launch-cap {
-  font-size: 9px;
-  letter-spacing: 0.04em;
-  color: #c0ffd6;
-}
-
-/* Mobile: minimap shrinks to 96x96 at top: 8px; row anchors below at top: 116
-   (8 + 96 + 12). Buttons shrink to 54px so 3 fit comfortably on a narrow phone. */
 @media (max-width: 540px) {
   .profile,
-  .scrape-launch,
-  .shop-launch {
+  .protocols-launch {
     top: 116px;
     width: 54px;
     height: 54px;
     max-width: 54px;
   }
-  .shop-launch {
+  .protocols-launch {
     right: 8px;
   }
-  .scrape-launch {
-    right: 70px;
-  }
   .profile {
-    right: 132px;
+    right: 68px;
   }
 }
 
@@ -3790,4 +3778,249 @@ dialog.panel::backdrop {
   background: rgba(8, 12, 14, 0.85);
   border-bottom: 1px solid #355042;
   pointer-events: none;
+}
+
+/* ════════ Protocols carousel (devlog 0066) ════════
+   Cartridge carousel that opens above the launcher row. Right-anchored
+   so it doesn't collide with the joystick / emote wheel. */
+.protocols-carousel {
+  position: absolute;
+  top: 224px;
+  right: 12px;
+  width: min(420px, calc(100vw - 24px));
+  background: rgba(6, 10, 12, 0.92);
+  border: 1px solid #355042;
+  border-radius: 4px;
+  z-index: 30;
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), inset 0 0 18px rgba(132, 216, 164, 0.06);
+}
+.protocols-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  border-bottom: 1px solid #2a3a32;
+  padding-bottom: 6px;
+}
+.protocols-title {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #c0ffd6;
+  flex: 1;
+}
+.protocols-sub {
+  font-size: 9px;
+  color: var(--tint-dim);
+  letter-spacing: 0.1em;
+}
+.protocols-close {
+  appearance: none;
+  background: transparent;
+  border: 1px solid #2a3a32;
+  border-radius: 2px;
+  color: #c0ffd6;
+  font-family: inherit;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  line-height: 1;
+}
+.protocols-close:hover {
+  border-color: #93e0b1;
+}
+.protocols-rail {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 4px 2px 8px;
+}
+.protocols-rail::-webkit-scrollbar {
+  display: none;
+}
+.protocol-cartridge {
+  appearance: none;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid #2a3a32;
+  border-radius: 3px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  cursor: pointer;
+  flex: 0 0 140px;
+  min-height: 144px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 14px 8px 10px;
+  scroll-snap-align: center;
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+.protocol-cartridge:hover {
+  border-color: #93e0b1;
+}
+.protocol-cartridge.is-focused {
+  border-color: #c0ffd6;
+  background: rgba(14, 22, 18, 0.78);
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(192, 255, 214, 0.12);
+}
+.protocol-cartridge.cart-tint--br.is-focused {
+  border-color: #b07cff;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(176, 124, 255, 0.16);
+}
+.protocol-cartridge.cart-tint--corp.is-focused {
+  border-color: #ff9450;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(255, 148, 80, 0.16);
+}
+.protocol-cartridge.is-locked {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.cart-glyph {
+  font-size: 36px;
+  line-height: 1;
+  color: #93e0b1;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+.protocol-cartridge.cart-tint--br .cart-glyph {
+  color: #b07cff;
+}
+.protocol-cartridge.cart-tint--corp .cart-glyph {
+  color: #ff9450;
+}
+.cart-label {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #c0ffd6;
+  text-align: center;
+}
+.cart-flavor {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--tint-dim);
+  text-align: center;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+.cart-insert {
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: #c0ffd6;
+  border: 1px solid currentColor;
+  padding: 2px 6px;
+  border-radius: 2px;
+}
+.cart-lock {
+  margin-top: 4px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #6e7a86;
+}
+.protocols-foot {
+  font-size: 9px;
+  color: var(--tint-dim);
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+@media (prefers-reduced-motion: reduce) {
+  .protocol-cartridge {
+    transition: none;
+  }
+  .protocol-cartridge.is-focused {
+    transform: none;
+  }
+}
+@media (max-width: 540px) {
+  .protocols-carousel {
+    top: 184px;
+    right: 8px;
+  }
+  .protocol-cartridge {
+    flex-basis: 120px;
+    min-height: 128px;
+  }
+}
+
+/* Objectives panel ────────────────────────────────────────────── */
+.objectives-panel {
+  width: min(520px, 100%);
+}
+.objective-card {
+  border: 1px solid #2a3a32;
+  background: rgba(8, 12, 14, 0.55);
+  border-radius: 3px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.objective-card.is-active {
+  border-color: #6cf0ff;
+  background: rgba(10, 18, 22, 0.7);
+  box-shadow: inset 0 0 8px rgba(108, 240, 255, 0.08);
+}
+.objective-card.is-complete {
+  border-color: #93e0b1;
+  background: rgba(14, 22, 18, 0.6);
+}
+.objective-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.objective-card-title {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: #c0ffd6;
+}
+.objective-card-state {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--tint-dim);
+}
+.objective-card.is-active .objective-card-state {
+  color: #6cf0ff;
+}
+.objective-card.is-complete .objective-card-state {
+  color: #93e0b1;
+}
+.objective-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #6cf0ff;
+}
+.objective-pip {
+  font-size: 12px;
+  color: #355042;
+}
+.objective-pip.is-done {
+  color: #93e0b1;
+}
+.objective-pip.is-next {
+  color: #6cf0ff;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.objective-card-count {
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--tint-dim);
+}
+.objective-card-flavor {
+  font-size: 10px;
+  color: #93a39a;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
 }
