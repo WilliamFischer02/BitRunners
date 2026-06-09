@@ -18,10 +18,12 @@ import { startBadgeMonitor } from './badge-notifications.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
+import { startVisibilityWatcher } from './visibility.js';
 
-// Boot the identity + badge-notification subsystems once. Idempotent.
+// Boot the identity + badge-notification + visibility subsystems once. Idempotent.
 startIdentity();
 startBadgeMonitor();
+startVisibilityWatcher();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
