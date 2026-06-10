@@ -1524,6 +1524,18 @@ dialog.panel::backdrop {
   line-height: 1;
   filter: drop-shadow(0 0 4px currentColor);
 }
+.player-tag-badge--empty {
+  color: var(--tint-dim);
+  opacity: 0.7;
+  filter: none;
+}
+.player-tag--self .player-tag-slot--badge {
+  /* Make the empty badge slot a comfortable tap target on phones so
+     the owner can discover the Badges modal without a visible badge. */
+  min-width: 18px;
+  min-height: 18px;
+  justify-content: center;
+}
 .player-tag-alert {
   font-size: 11px;
   font-weight: 700;
@@ -1996,14 +2008,25 @@ dialog.panel::backdrop {
   max-width: 200px;
 }
 .fps {
-  top: auto;
-  bottom: max(48px, calc(env(safe-area-inset-bottom, 0px) + 48px));
-  right: max(10px, env(safe-area-inset-right, 0px));
+  /* Move FPS to top-left under the hint on phones — bottom-right
+     collides with the emote wheel; the minimap owns top-right. */
+  top: max(28px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: auto;
+  bottom: auto;
   font-size: 10px;
 }
 .net-status {
-  bottom: max(10px, env(safe-area-inset-bottom, 0px));
-  max-width: 72vw;
+  /* Stack under FPS on top-left so the bottom HUD (joystick + emote
+     wheel) stays clear. The minimap owns top-right. */
+  top: max(46px, env(safe-area-inset-top, 0px));
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: auto;
+  bottom: auto;
+  transform: none;
+  max-width: calc(100vw - 156px);
+  font-size: 9px;
+  padding: 2px 8px;
 }
 .stick {
   bottom: max(22px, calc(env(safe-area-inset-bottom, 0px) + 22px));
@@ -4257,11 +4280,14 @@ dialog.panel::backdrop {
 }
 .cart-label {
   font-size: var(--ui-text-md);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   color: #c0ffd6;
   text-align: center;
   /* Allow the label to wrap if needed instead of truncating. */
+  width: 100%;
+  min-width: 0;
   word-break: break-word;
+  overflow-wrap: anywhere;
   hyphens: auto;
   line-height: 1.2;
 }
