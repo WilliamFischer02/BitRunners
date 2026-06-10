@@ -71,31 +71,98 @@ body,
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 132px;
-  height: 132px;
+  width: clamp(120px, 18vw, 156px);
+  height: clamp(120px, 18vw, 156px);
   border: 1px solid #355042;
-  border-radius: 3px;
+  border-radius: 4px;
   background: rgba(8, 12, 14, 0.4);
   z-index: 6;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
+  appearance: none;
+  padding: 0;
   box-shadow: inset 0 0 12px rgba(132, 216, 164, 0.05);
+}
+.starmap:hover,
+.starmap:focus-visible {
+  border-color: #84d8a4;
+  box-shadow: inset 0 0 12px rgba(132, 216, 164, 0.18), 0 0 8px rgba(132, 216, 164, 0.18);
 }
 .starmap-canvas {
   display: block;
-  width: 132px;
-  height: 132px;
+  width: 100%;
+  height: 100%;
 }
 @media (max-width: 540px) {
   .starmap {
-    width: 96px;
-    height: 96px;
+    width: clamp(108px, 30vw, 132px);
+    height: clamp(108px, 30vw, 132px);
     top: 8px;
     right: 8px;
   }
-  .starmap-canvas {
-    width: 96px;
-    height: 96px;
-  }
+}
+
+/* expanded modal: tap minimap to enlarge for phone legibility */
+.starmap-expanded-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 60;
+  padding: 16px;
+}
+.starmap-expanded {
+  background: rgba(8, 12, 14, 0.95);
+  border: 1px solid #84d8a4;
+  border-radius: 6px;
+  box-shadow: 0 0 30px rgba(132, 216, 164, 0.18);
+  padding: 10px 12px 14px;
+  display: flex;
+  flex-direction: column;
+  width: min(420px, 92vw);
+  max-height: 92vh;
+  color: #c0ffd6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.starmap-expanded-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #355042;
+  margin-bottom: 8px;
+}
+.starmap-expanded-close {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--tint-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.starmap-expanded-close:hover {
+  color: #ff9450;
+}
+.starmap-expanded-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  border: 1px solid #355042;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.6);
+}
+.starmap-expanded-foot {
+  font-size: 10px;
+  color: var(--tint-dim);
+  text-align: center;
+  padding-top: 8px;
+  letter-spacing: 0.06em;
 }
 
 .fps {
