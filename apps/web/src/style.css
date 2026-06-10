@@ -1068,6 +1068,139 @@ dialog.panel::backdrop {
   text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
 }
 
+/* ──────────── tether_chat (PR 83) ──────────── */
+.tether-tos-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: #c0ffd6;
+  cursor: pointer;
+}
+.tether-tos-row input {
+  margin-top: 3px;
+  accent-color: #84d8a4;
+}
+.tether-overlay {
+  position: fixed;
+  bottom: clamp(60px, 11vh, 110px);
+  right: clamp(12px, 2vw, 28px);
+  width: min(280px, 84vw);
+  max-height: 50vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(8, 12, 14, 0.92);
+  border: 1px solid #b07cff;
+  border-radius: 6px;
+  z-index: 7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  color: #c0ffd6;
+  box-shadow: 0 0 24px rgba(176, 124, 255, 0.25);
+}
+.tether-overlay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid #4a4060;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.tether-overlay-peer {
+  color: #b07cff;
+  font-weight: 700;
+}
+.tether-overlay-end {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--tint-dim);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 8px;
+}
+.tether-overlay-end:hover {
+  color: #ff9450;
+}
+.tether-overlay-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+.tether-msg {
+  max-width: 90%;
+  padding: 3px 8px;
+  border-radius: 8px;
+  word-break: break-word;
+  line-height: 1.3;
+}
+.tether-msg--me {
+  align-self: flex-end;
+  background: rgba(132, 216, 164, 0.22);
+  border: 1px solid #84d8a4;
+}
+.tether-msg--peer {
+  align-self: flex-start;
+  background: rgba(176, 124, 255, 0.22);
+  border: 1px solid #b07cff;
+}
+.tether-msg--system {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  color: var(--tint-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.tether-msg--emote {
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 10px;
+}
+.tether-overlay-input {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid #4a4060;
+}
+.tether-overlay-input input {
+  flex: 1;
+  background: rgba(20, 28, 24, 0.7);
+  border: 1px solid #2a3a32;
+  color: #c0ffd6;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 3px;
+  min-height: var(--ui-tap-min, 32px);
+}
+.tether-overlay-send {
+  appearance: none;
+  background: rgba(132, 216, 164, 0.22);
+  border: 1px solid #84d8a4;
+  color: #c0ffd6;
+  font-family: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  min-height: var(--ui-tap-min, 32px);
+}
+.tether-overlay-send:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.tether-incoming {
+  border-color: #b07cff;
+  box-shadow: 0 0 30px rgba(176, 124, 255, 0.35);
+}
+
 /* ──────────── grant-received toast ──────────── */
 .grant-toast {
   position: absolute;
