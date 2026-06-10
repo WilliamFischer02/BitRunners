@@ -13,9 +13,23 @@ export const APPEARANCE_EVENT = 'bitrunners:appearance-changed';
 
 export const STEP = 8;
 export const CREDITS_PER_PASSCODE = 4;
+// Credits minted per aura at the calculate-trade (post-passcode tier, PR 82).
+// Aura = 8 passcodes; selling one back as Credits returns more than
+// selling 8 individual passcodes — the post-passcode tier is a long-game
+// payoff, not strictly equivalent.
+export const CREDITS_PER_AURA = 48;
 // Proxy-wallet exchange rate: Credits to buy one Token (one-way). Tunable.
 export const CREDITS_PER_TOKEN = 100;
 export const INVENTORY_SLOTS = 16;
+// Prestige payout: tokens awarded per prestige = base + lifetimePasscodes /
+// divisor. Same formula across prestiges so the curve stays predictable.
+export const PRESTIGE_TOKEN_BASE = 1;
+export const PRESTIGE_TOKEN_DIVISOR = 30;
+// Permanent scrape-yield buff per prestige tier (additive +bits/scrape).
+export const PRESTIGE_BUFF_PER_LEVEL = 1;
+// Bot tick interval — single timer drives all auto-converter bots so the
+// scrape panel doesn't have to spawn one timer per upgrade. Tunable here.
+export const BOT_TICK_MS = 1100;
 
 export type RefinableTier = 'bits' | 'strings' | 'serials';
 export type Faction = 'admin' | 'company';
@@ -36,6 +50,9 @@ export interface EconomyState {
   strings: number;
   serials: number;
   passcodes: number;
+  // Post-passcode tier introduced by PR 82. Same 8× ladder ratio so the
+  // canon scrape rhythm doesn't break.
+  auras: number;
   credits: number;
   repCorporate: number;
   repBitrunner: number;
@@ -43,6 +60,11 @@ export interface EconomyState {
   // Cumulative passcodes ever minted (never decremented when spent in the
   // skill tree). Gates the tree: "after reaching 1 passcode created".
   lifetimePasscodes: number;
+  // Cumulative auras ever minted. Gates the post-passcode trade flow.
+  lifetimeAuras: number;
+  // Prestige tier reached so far (PR 82). +1 each time the player burns
+  // their scrape progress for tokens via the clean-slate trade.
+  prestiges: number;
   // Spendable Tokens (premium currency). The proxy-wallet unlock (lore 009)
   // made these real; legacy `lockedTokens` blobs are folded in on load.
   tokens: number;
@@ -64,6 +86,12 @@ const NEXT_TIER: Record<RefinableTier, 'strings' | 'serials' | 'passcodes'> = {
   serials: 'passcodes',
 };
 
+/** Post-passcode tier (PR 82) — 8 passcodes → 1 aura. Same ratio as the
+ *  classic ladder so the canon "8× costs" rule isn't broken. Kept separate
+ *  from RefinableTier so the public tabulate() API doesn't change shape;
+ *  auras have their own action + UI row. */
+export const PASSCODE_AURA_STEP = STEP;
+
 function emptySlots(): (string | null)[] {
   return Array.from({ length: INVENTORY_SLOTS }, () => null);
 }
@@ -75,11 +103,14 @@ function defaultState(): EconomyState {
     strings: 0,
     serials: 0,
     passcodes: 0,
+    auras: 0,
     credits: 0,
     repCorporate: 0,
     repBitrunner: 0,
     lifetimeScrapes: 0,
     lifetimePasscodes: 0,
+    lifetimeAuras: 0,
+    prestiges: 0,
     tokens: 0,
     tutorialDone: false,
     unlocks: [],
@@ -156,6 +187,10 @@ function normalize(parsed: EconomyState): EconomyState {
     // Additive field: old v1 blobs predate it. Seed from current passcodes so
     // a player who already minted some isn't locked out of the skill tree.
     lifetimePasscodes: Math.max(fin(p.lifetimePasscodes), fin(p.passcodes)),
+    // PR 82 fields are additive too — default to 0 / current values.
+    auras: fin(p.auras),
+    lifetimeAuras: Math.max(fin(p.lifetimeAuras), fin(p.auras)),
+    prestiges: fin(p.prestiges),
     tokens: fin(p.tokens) + fin(p.lockedTokens),
     tutorialDone: p.tutorialDone === true,
     unlocks: strArray(p.unlocks),
@@ -217,9 +252,16 @@ export function subscribeAppearance(cb: () => void): () => void {
   return () => window.removeEventListener(APPEARANCE_EVENT, handler);
 }
 
-/** Path 1 (scrape depth): bits minted per SCRAPE = 1 + level. */
+/** Path 1 (scrape depth): bits minted per SCRAPE = 1 + level + prestige buff. */
 export function scrapeYield(): number {
-  return 1 + (state.upgrades.scrape ?? 0);
+  return 1 + (state.upgrades.scrape ?? 0) + state.prestiges * PRESTIGE_BUFF_PER_LEVEL;
+}
+
+/** Calculate the credits awarded for trading one aura (PR 82). Scales with
+ *  the same yield upgrade as passcodes so late-game investments matter at
+ *  both tiers. */
+export function creditsPerAura(): number {
+  return CREDITS_PER_AURA + (state.upgrades.yield ?? 0) * STEP;
 }
 
 /**
@@ -235,6 +277,27 @@ export function creditsPerPasscode(): number {
 /** Path 2 unlock: hold the SCRAPE button to auto-repeat while held. */
 export function hasHoldScrape(): boolean {
   return (state.upgrades.hold ?? 0) >= 1;
+}
+
+/** Path 4 (PR 82) bot upgrade levels. Each is a single-level unlock — once
+ *  bought, the bot ticks once per BOT_TICK_MS while the scrape panel is
+ *  open. The scrape panel owns the timer so the bots stop when the panel is
+ *  closed (intentional — bots aren't truly autonomous, they're an active-
+ *  panel automation). */
+export function hasBotScrape(): boolean {
+  return (state.upgrades.bot_scrape ?? 0) >= 1;
+}
+export function hasBotBitsTab(): boolean {
+  return (state.upgrades.bot_bits ?? 0) >= 1;
+}
+export function hasBotStringsTab(): boolean {
+  return (state.upgrades.bot_strings ?? 0) >= 1;
+}
+export function hasBotSerialsTab(): boolean {
+  return (state.upgrades.bot_serials ?? 0) >= 1;
+}
+export function hasBotPasscodesTab(): boolean {
+  return (state.upgrades.bot_passcodes ?? 0) >= 1;
 }
 
 /**
@@ -336,6 +399,90 @@ export function calculate(faction: Faction): boolean {
   persist();
   try {
     window.dispatchEvent(new CustomEvent('bitrunners:reputation-earned', { detail: { faction } }));
+  } catch {
+    // non-DOM env — ignore
+  }
+  return true;
+}
+
+/** Post-passcode tier (PR 82): refine 8 passcodes → 1 aura. Auras can be
+ *  traded for a larger credit payout via calculateAura, or held to seed the
+ *  prestige reward. */
+export function canTabulateAura(): boolean {
+  return state.passcodes >= PASSCODE_AURA_STEP;
+}
+
+export function tabulateAura(): boolean {
+  if (state.passcodes < PASSCODE_AURA_STEP) return false;
+  state = {
+    ...state,
+    passcodes: state.passcodes - PASSCODE_AURA_STEP,
+    auras: state.auras + 1,
+    lifetimeAuras: state.lifetimeAuras + 1,
+  };
+  persist();
+  return true;
+}
+
+export function canCalculateAura(): boolean {
+  return state.auras >= 1;
+}
+
+export function calculateAura(faction: Faction): boolean {
+  if (state.auras < 1) return false;
+  const next = { ...state };
+  next.auras -= 1;
+  next.credits += creditsPerAura();
+  if (faction === 'company') next.repCorporate += 2;
+  else next.repBitrunner += 2;
+  state = next;
+  persist();
+  try {
+    window.dispatchEvent(new CustomEvent('bitrunners:reputation-earned', { detail: { faction } }));
+  } catch {
+    // non-DOM env — ignore
+  }
+  return true;
+}
+
+/** Prestige unlocks once the runner has minted at least one aura. */
+export function isPrestigeUnlocked(): boolean {
+  return state.lifetimeAuras >= 1;
+}
+
+/** Computes the token payout for a prestige reset given the current state.
+ *  Surfaced separately so the UI can preview the trade. */
+export function prestigeTokenPayout(): number {
+  return PRESTIGE_TOKEN_BASE + Math.floor(state.lifetimePasscodes / PRESTIGE_TOKEN_DIVISOR);
+}
+
+/** Prestige reset: burn the scrape buffers + skill-tree levels for tokens
+ *  and a permanent scrape-yield buff. Owned items, equipped slots,
+ *  reputation, badges, lifetime stats, and the prestige count itself are
+ *  preserved. The trade is one-way and idempotent — calling twice with no
+ *  fresh progress will still award the base payout. */
+export function prestigeReset(): boolean {
+  if (!isPrestigeUnlocked()) return false;
+  const payout = prestigeTokenPayout();
+  state = {
+    ...state,
+    bits: 0,
+    strings: 0,
+    serials: 0,
+    passcodes: 0,
+    auras: 0,
+    credits: 0,
+    upgrades: {},
+    tokens: state.tokens + payout,
+    prestiges: state.prestiges + 1,
+  };
+  persist();
+  try {
+    window.dispatchEvent(
+      new CustomEvent('bitrunners:prestige-reset', {
+        detail: { payout, level: state.prestiges },
+      }),
+    );
   } catch {
     // non-DOM env — ignore
   }
