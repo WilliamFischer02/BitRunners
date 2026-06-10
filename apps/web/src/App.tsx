@@ -5,6 +5,7 @@ import { AuthCallback } from './AuthCallback.js';
 import { BadgeToast } from './BadgeToast.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
+import { CreditsHud } from './CreditsHud.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
 import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
@@ -188,6 +189,7 @@ function Game({ className }: GameProps): JSX.Element {
   return (
     <div ref={hostRef} className="canvas-host">
       <div className="hint">{className} · arrows / wasd / stick</div>
+      <CreditsHud />
       <ProfileIcon className={className} />
       <Protocols />
       <ScrapeMenu />
