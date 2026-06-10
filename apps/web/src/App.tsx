@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
+import { AuthCallback } from './AuthCallback.js';
 import { BadgeToast } from './BadgeToast.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
@@ -17,52 +18,75 @@ import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
+import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
 import { startVisibilityWatcher } from './visibility.js';
 
-// Boot the identity + badge-notification + visibility subsystems once. Idempotent.
+// Boot the identity + badge-notification + visibility + signup-grant
+// subsystems once. Each is idempotent.
 startIdentity();
 startBadgeMonitor();
 startVisibilityWatcher();
+startSignupGrant();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
 const BOARD_HASH_PREFIX = '#board/';
+const AUTH_VERIFIED_HASH = '#auth/verified';
+const AUTH_RECOVERY_HASH = '#auth/recovery';
 
-function readSlug(): string | null {
+type RoutedSurface =
+  | { kind: 'board'; slug: string }
+  | { kind: 'auth-verified' }
+  | { kind: 'auth-recovery' }
+  | null;
+
+function readRoute(): RoutedSurface {
   const hash = window.location.hash;
-  if (!hash.startsWith(BOARD_HASH_PREFIX)) return null;
-  const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
-  return slug.length > 0 ? slug : null;
+  if (hash.startsWith(BOARD_HASH_PREFIX)) {
+    const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
+    return slug.length > 0 ? { kind: 'board', slug } : null;
+  }
+  // Supabase appends its own params after the route — match by prefix.
+  if (hash.startsWith(AUTH_VERIFIED_HASH)) return { kind: 'auth-verified' };
+  if (hash.startsWith(AUTH_RECOVERY_HASH)) return { kind: 'auth-recovery' };
+  return null;
 }
 
 type Phase = 'boot' | 'transition' | 'game';
 
 export function App(): JSX.Element {
-  const [slug, setSlug] = useState<string | null>(() => readSlug());
+  const [route, setRoute] = useState<RoutedSurface>(() => readRoute());
 
   useEffect(() => {
-    const onHash = (): void => setSlug(readSlug());
+    const onHash = (): void => setRoute(readRoute());
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  const content = slug ? (
-    <Suspense
-      fallback={
-        <div className="board">
-          <header className="board-header">
-            <span className="board-title">bitrunners · writer board</span>
-            <span className="board-status">loading editor…</span>
-          </header>
-        </div>
-      }
-    >
-      <Board slug={slug} />
-    </Suspense>
-  ) : (
-    <Shell />
-  );
+  let content: JSX.Element;
+  if (route?.kind === 'board') {
+    content = (
+      <Suspense
+        fallback={
+          <div className="board">
+            <header className="board-header">
+              <span className="board-title">bitrunners · writer board</span>
+              <span className="board-status">loading editor…</span>
+            </header>
+          </div>
+        }
+      >
+        <Board slug={route.slug} />
+      </Suspense>
+    );
+  } else if (route?.kind === 'auth-verified') {
+    content = <AuthCallback route="verified" />;
+  } else if (route?.kind === 'auth-recovery') {
+    content = <AuthCallback route="recovery" />;
+  } else {
+    content = <Shell />;
+  }
 
   return <ConstructionGate>{content}</ConstructionGate>;
 }
