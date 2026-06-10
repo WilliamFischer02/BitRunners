@@ -51,6 +51,14 @@ export interface Mission {
 //
 // Owner: refine these coords + the dialogue keys in 0011-physical-missions.md
 // before broad release.
+// Ten-mission chain. The checkpoint coords spread across the doubled
+// world half-extent (±19) while avoiding the existing colliders in
+// scene.ts (port -6.5,-6.5 / SAMM 6,-5.5 / obelisk 5.5,5.5 / terminal
+// -5.5,6.5 / rust pillar -12,4 / debris 10,-10 / column 12,12 / crate
+// -10,-12 / wall 0,14 / standing slab 14,0). Each mission carries 3
+// checkpoints and 5 dialogue keys (opening, two choice labels, two
+// closings). Lore lines live in dialogue.ts as DIALOGUE_DEFAULTS so the
+// admin console can override individual entries without a redeploy.
 export const MISSIONS: readonly Mission[] = [
   {
     key: 'aether_recovery_01',
@@ -70,7 +78,181 @@ export const MISSIONS: readonly Mission[] = [
       closingCorporate: 'mission.aether01.closing_corp',
     },
   },
+  {
+    key: 'dead_port_audit_02',
+    title: 'Audit a dead port cluster',
+    reward: 5,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 11, z: 3, label: 'port lattice A' },
+      { x: 13, z: -3, label: 'port lattice B' },
+      { x: 9, z: -7, label: 'silent port' },
+    ],
+    dialogue: {
+      opening: 'mission.deadport02.opening',
+      choiceBitrunner: 'mission.deadport02.choice_br',
+      choiceCorporate: 'mission.deadport02.choice_corp',
+      closingBitrunner: 'mission.deadport02.closing_br',
+      closingCorporate: 'mission.deadport02.closing_corp',
+    },
+  },
+  {
+    key: 'rogue_signal_03',
+    title: "Triangulate a rogue runner's broadcast",
+    reward: 6,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: -3, z: -15, label: 'first bounce' },
+      { x: 7, z: -16, label: 'echo crest' },
+      { x: -2, z: -9, label: 'broadcast nest' },
+    ],
+    dialogue: {
+      opening: 'mission.roguesignal03.opening',
+      choiceBitrunner: 'mission.roguesignal03.choice_br',
+      choiceCorporate: 'mission.roguesignal03.choice_corp',
+      closingBitrunner: 'mission.roguesignal03.closing_br',
+      closingCorporate: 'mission.roguesignal03.closing_corp',
+    },
+  },
+  {
+    key: 'company_courier_04',
+    title: 'Run a Company courier loop',
+    reward: 6,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 16, z: 5, label: 'depot ALPHA' },
+      { x: -3, z: 11, label: 'depot BETA' },
+      { x: 8, z: 8, label: 'depot OMICRON' },
+    ],
+    dialogue: {
+      opening: 'mission.courier04.opening',
+      choiceBitrunner: 'mission.courier04.choice_br',
+      choiceCorporate: 'mission.courier04.choice_corp',
+      closingBitrunner: 'mission.courier04.closing_br',
+      closingCorporate: 'mission.courier04.closing_corp',
+    },
+  },
+  {
+    key: 'whisper_trail_05',
+    title: 'Follow a whisper across the cloud',
+    reward: 7,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: -16, z: -4, label: 'soft murmur' },
+      { x: -14, z: -10, label: 'crowded murmur' },
+      { x: -6, z: -14, label: 'the whisper' },
+    ],
+    dialogue: {
+      opening: 'mission.whisper05.opening',
+      choiceBitrunner: 'mission.whisper05.choice_br',
+      choiceCorporate: 'mission.whisper05.choice_corp',
+      closingBitrunner: 'mission.whisper05.closing_br',
+      closingCorporate: 'mission.whisper05.closing_corp',
+    },
+  },
+  {
+    key: 'monolith_resonance_06',
+    title: 'Resonate three monoliths',
+    reward: 7,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 2, z: 16, label: 'east monolith' },
+      { x: -8, z: 13, label: 'west monolith' },
+      { x: 3, z: 3, label: 'shadow monolith' },
+    ],
+    dialogue: {
+      opening: 'mission.monolith06.opening',
+      choiceBitrunner: 'mission.monolith06.choice_br',
+      choiceCorporate: 'mission.monolith06.choice_corp',
+      closingBitrunner: 'mission.monolith06.closing_br',
+      closingCorporate: 'mission.monolith06.closing_corp',
+    },
+  },
+  {
+    key: 'bit_spekter_origin_07',
+    title: 'Trace the origin of bit_spekter',
+    reward: 8,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 0, z: -8, label: 'cradle echo' },
+      { x: -9, z: -7, label: 'broken cradle' },
+      { x: -3, z: -3, label: "the spekter's seed" },
+    ],
+    dialogue: {
+      opening: 'mission.origin07.opening',
+      choiceBitrunner: 'mission.origin07.choice_br',
+      choiceCorporate: 'mission.origin07.choice_corp',
+      closingBitrunner: 'mission.origin07.closing_br',
+      closingCorporate: 'mission.origin07.closing_corp',
+    },
+  },
+  {
+    key: 'server_space_breach_08',
+    title: 'Probe a Server Space breach point',
+    reward: 8,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 17, z: -4, label: 'thin wall' },
+      { x: 15, z: -14, label: 'fissure' },
+      { x: 5, z: -3, label: 'the breach' },
+    ],
+    dialogue: {
+      opening: 'mission.breach08.opening',
+      choiceBitrunner: 'mission.breach08.choice_br',
+      choiceCorporate: 'mission.breach08.choice_corp',
+      closingBitrunner: 'mission.breach08.closing_br',
+      closingCorporate: 'mission.breach08.closing_corp',
+    },
+  },
+  {
+    key: 'echo_chamber_09',
+    title: 'Map an echo chamber of older runners',
+    reward: 9,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: -15, z: -1, label: 'first echo' },
+      { x: -11, z: 14, label: 'colder echo' },
+      { x: -4, z: 16, label: 'oldest echo' },
+    ],
+    dialogue: {
+      opening: 'mission.echo09.opening',
+      choiceBitrunner: 'mission.echo09.choice_br',
+      choiceCorporate: 'mission.echo09.choice_corp',
+      closingBitrunner: 'mission.echo09.closing_br',
+      closingCorporate: 'mission.echo09.closing_corp',
+    },
+  },
+  {
+    key: 'the_admins_question_10',
+    title: "Answer The Admin's question",
+    reward: 12,
+    triggerDist: 1.6,
+    checkpoints: [
+      { x: 6, z: -2, label: 'the corridor' },
+      { x: -2, z: 5, label: "the admin's antechamber" },
+      { x: 5, z: 8, label: 'the obelisk audience' },
+    ],
+    dialogue: {
+      opening: 'mission.question10.opening',
+      choiceBitrunner: 'mission.question10.choice_br',
+      choiceCorporate: 'mission.question10.choice_corp',
+      closingBitrunner: 'mission.question10.closing_br',
+      closingCorporate: 'mission.question10.closing_corp',
+    },
+  },
 ];
+
+/** The ordered chain of mission keys for first-time progression. */
+export const MISSION_CHAIN: readonly string[] = MISSIONS.map((m) => m.key);
+
+/** Returns the first mission in the chain the runner has NOT completed yet,
+ *  given a list of completed keys. Returns null if the chain is exhausted. */
+export function nextMissionKey(completed: readonly string[]): string | null {
+  for (const key of MISSION_CHAIN) {
+    if (!completed.includes(key)) return key;
+  }
+  return null;
+}
 
 export function getMission(key: string): Mission | null {
   return MISSIONS.find((m) => m.key === key) ?? null;

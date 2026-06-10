@@ -49,11 +49,14 @@ import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { publishMinimapTick } from './minimap-state.js';
+import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
   MISSIONS,
+  type MissionState,
   advanceActiveCheckpoint,
   getActiveCheckpointAnchor,
   getActiveMission,
+  nextMissionKey,
   setActiveMission,
   subscribeMissionChanges,
 } from './missions.js';
@@ -615,18 +618,29 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   buildMissionMarkers();
   const unsubscribeMission = subscribeMissionChanges(() => buildMissionMarkers());
 
-  // Bootstrap the first mission as the active one for new runners. This stays
-  // client-only — the server's `start_mission` RPC is fired by the React
-  // layer once auth resolves. Guests see the markers without a server-side
-  // row (the RPC just no-ops without auth).
-  const firstMission = MISSIONS[0];
-  if (firstMission && !getActiveMission()) {
-    setActiveMission({
-      mission: firstMission,
-      nextIdx: 0,
-      state: 'active',
-      factionChoice: null,
-    });
+  // Bootstrap the runner's mission state from the device-local progress
+  // store (PR 81). On a fresh device this picks MISSIONS[0]; on a returning
+  // runner it picks the first unfinished mission in the chain, keeping
+  // their place across reloads. Without this, every page load reset to
+  // MISSIONS[0] and re-handed out the reputation reward.
+  // Guests see the markers without a server-side row — the
+  // `start_mission` / `complete_mission` RPCs no-op without auth.
+  if (!getActiveMission()) {
+    const progress = getMissionProgressLocal();
+    const targetKey = progress.active ?? nextMissionKey(progress.completed);
+    if (targetKey) {
+      const mission = MISSIONS.find((m) => m.key === targetKey);
+      if (mission) {
+        const state: MissionState = progress.active === targetKey ? progress.activeState : 'active';
+        const nextIdx = progress.active === targetKey ? progress.nextIdx : 0;
+        setActiveMission({
+          mission,
+          nextIdx,
+          state,
+          factionChoice: null,
+        });
+      }
+    }
   }
 
   const skyboxMaterial = new ShaderMaterial({

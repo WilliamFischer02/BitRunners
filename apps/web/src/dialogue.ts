@@ -108,6 +108,309 @@ export const DIALOGUE_DEFAULTS: readonly DialogueEntry[] = [
     label: 'Mission: aether01 · closing (Corporate)',
     lines: ['transaction filed.', '// company acknowledges your contribution.'],
   },
+  // ── Mission 02 — dead port audit ─────────────────────────────────────
+  {
+    key: 'mission.deadport02.opening',
+    label: 'Mission: deadport02 · opening',
+    lines: [
+      'three ports went dark this cycle.',
+      'walk them. log what answers back.',
+      'ports remember more than runners do.',
+    ],
+  },
+  {
+    key: 'mission.deadport02.choice_br',
+    label: 'Mission: deadport02 · BitRunner choice',
+    lines: ['// hand the audit to The Admin'],
+  },
+  {
+    key: 'mission.deadport02.choice_corp',
+    label: 'Mission: deadport02 · Corporate choice',
+    lines: ['// file the audit with The Company'],
+  },
+  {
+    key: 'mission.deadport02.closing_br',
+    label: 'Mission: deadport02 · closing (BitRunner)',
+    lines: ['the admin nods.', '// dead ports stay dead until the cloud says otherwise.'],
+  },
+  {
+    key: 'mission.deadport02.closing_corp',
+    label: 'Mission: deadport02 · closing (Corporate)',
+    lines: ['company actuaries log the cost.', '// the ports will be reopened on schedule.'],
+  },
+  // ── Mission 03 — rogue signal ────────────────────────────────────────
+  {
+    key: 'mission.roguesignal03.opening',
+    label: 'Mission: roguesignal03 · opening',
+    lines: [
+      'a rogue is broadcasting on the runner band.',
+      'find where the signal bounces three times.',
+      'do not answer it. just locate it.',
+    ],
+  },
+  {
+    key: 'mission.roguesignal03.choice_br',
+    label: 'Mission: roguesignal03 · BitRunner choice',
+    lines: ['// route the coords to The Admin'],
+  },
+  {
+    key: 'mission.roguesignal03.choice_corp',
+    label: 'Mission: roguesignal03 · Corporate choice',
+    lines: ['// hand the coords to The Company'],
+  },
+  {
+    key: 'mission.roguesignal03.closing_br',
+    label: 'Mission: roguesignal03 · closing (BitRunner)',
+    lines: [
+      'the admin will listen first, then decide.',
+      '// rogues sometimes carry useful complaints.',
+    ],
+  },
+  {
+    key: 'mission.roguesignal03.closing_corp',
+    label: 'Mission: roguesignal03 · closing (Corporate)',
+    lines: [
+      'company enforcement is dispatched.',
+      '// the rogue signal will be quieted by the next shift.',
+    ],
+  },
+  // ── Mission 04 — Company courier loop ────────────────────────────────
+  {
+    key: 'mission.courier04.opening',
+    label: 'Mission: courier04 · opening',
+    lines: [
+      'the company moves goods between depots in routes.',
+      'one route is short three feet today.',
+      'walk it. keep your head down.',
+    ],
+  },
+  {
+    key: 'mission.courier04.choice_br',
+    label: 'Mission: courier04 · BitRunner choice',
+    lines: ['// slip a copy of the manifest to The Admin'],
+  },
+  {
+    key: 'mission.courier04.choice_corp',
+    label: 'Mission: courier04 · Corporate choice',
+    lines: ['// deliver the manifest clean to The Company'],
+  },
+  {
+    key: 'mission.courier04.closing_br',
+    label: 'Mission: courier04 · closing (BitRunner)',
+    lines: [
+      'the admin reads the manifest twice.',
+      '// every shipped object teaches the cloud something.',
+    ],
+  },
+  {
+    key: 'mission.courier04.closing_corp',
+    label: 'Mission: courier04 · closing (Corporate)',
+    lines: ['company schedulers credit your run.', '// you have been added to the courier ledger.'],
+  },
+  // ── Mission 05 — whisper trail ───────────────────────────────────────
+  {
+    key: 'mission.whisper05.opening',
+    label: 'Mission: whisper05 · opening',
+    lines: [
+      'a whisper crosses the cloud at the edge of hearing.',
+      'three crests, then a source.',
+      'walk to where it is no longer faint.',
+    ],
+  },
+  {
+    key: 'mission.whisper05.choice_br',
+    label: 'Mission: whisper05 · BitRunner choice',
+    lines: ['// describe it to The Admin'],
+  },
+  {
+    key: 'mission.whisper05.choice_corp',
+    label: 'Mission: whisper05 · Corporate choice',
+    lines: ['// flag it as a corporate concern'],
+  },
+  {
+    key: 'mission.whisper05.closing_br',
+    label: 'Mission: whisper05 · closing (BitRunner)',
+    lines: [
+      'the admin is quiet for a long second.',
+      '// the whisper is older than the cloud. that is all you need to know.',
+    ],
+  },
+  {
+    key: 'mission.whisper05.closing_corp',
+    label: 'Mission: whisper05 · closing (Corporate)',
+    lines: [
+      'company audio analysts file it as ambient noise.',
+      '// the whisper is not a corporate concern. yet.',
+    ],
+  },
+  // ── Mission 06 — monolith resonance ──────────────────────────────────
+  {
+    key: 'mission.monolith06.opening',
+    label: 'Mission: monolith06 · opening',
+    lines: [
+      'three monoliths share a chord nobody sang.',
+      'stand beside each in turn. let them hear you.',
+      'they will know what to do.',
+    ],
+  },
+  {
+    key: 'mission.monolith06.choice_br',
+    label: 'Mission: monolith06 · BitRunner choice',
+    lines: ['// offer the resonance to The Admin'],
+  },
+  {
+    key: 'mission.monolith06.choice_corp',
+    label: 'Mission: monolith06 · Corporate choice',
+    lines: ['// report the resonance to The Company'],
+  },
+  {
+    key: 'mission.monolith06.closing_br',
+    label: 'Mission: monolith06 · closing (BitRunner)',
+    lines: [
+      'the admin hums the chord back to you.',
+      '// the monoliths are not decoration. remember that.',
+    ],
+  },
+  {
+    key: 'mission.monolith06.closing_corp',
+    label: 'Mission: monolith06 · closing (Corporate)',
+    lines: ['company engineers schedule a sweep.', '// the resonance will be measured and filed.'],
+  },
+  // ── Mission 07 — bit_spekter origin ──────────────────────────────────
+  {
+    key: 'mission.origin07.opening',
+    label: 'Mission: origin07 · opening',
+    lines: [
+      'bit_spekter shapes are born somewhere.',
+      'walk the cradle echoes. find the first one.',
+      'you will not like what you find.',
+    ],
+  },
+  {
+    key: 'mission.origin07.choice_br',
+    label: 'Mission: origin07 · BitRunner choice',
+    lines: ['// tell The Admin what you found'],
+  },
+  {
+    key: 'mission.origin07.choice_corp',
+    label: 'Mission: origin07 · Corporate choice',
+    lines: ['// tell The Company what you found'],
+  },
+  {
+    key: 'mission.origin07.closing_br',
+    label: 'Mission: origin07 · closing (BitRunner)',
+    lines: ['the admin does not respond.', '// the silence is the answer.'],
+  },
+  {
+    key: 'mission.origin07.closing_corp',
+    label: 'Mission: origin07 · closing (Corporate)',
+    lines: ['company classifies the cradle data.', '// the bit_spekter line is now archived.'],
+  },
+  // ── Mission 08 — Server Space breach ─────────────────────────────────
+  {
+    key: 'mission.breach08.opening',
+    label: 'Mission: breach08 · opening',
+    lines: [
+      'something is leaking through from server space.',
+      'three points of pressure. one source.',
+      'do not stand directly in front of it.',
+    ],
+  },
+  {
+    key: 'mission.breach08.choice_br',
+    label: 'Mission: breach08 · BitRunner choice',
+    lines: ['// describe the breach to The Admin'],
+  },
+  {
+    key: 'mission.breach08.choice_corp',
+    label: 'Mission: breach08 · Corporate choice',
+    lines: ['// hand the breach data to The Company'],
+  },
+  {
+    key: 'mission.breach08.closing_br',
+    label: 'Mission: breach08 · closing (BitRunner)',
+    lines: ['the admin marks the spot in the cloud.', '// runners will know to avoid it. or not.'],
+  },
+  {
+    key: 'mission.breach08.closing_corp',
+    label: 'Mission: breach08 · closing (Corporate)',
+    lines: [
+      'company dispatch will seal the breach by morning.',
+      '// containment is a corporate strength.',
+    ],
+  },
+  // ── Mission 09 — echo chamber ────────────────────────────────────────
+  {
+    key: 'mission.echo09.opening',
+    label: 'Mission: echo09 · opening',
+    lines: [
+      'older runners left echoes here.',
+      'three locations remember three voices.',
+      'listen carefully. do not interrupt.',
+    ],
+  },
+  {
+    key: 'mission.echo09.choice_br',
+    label: 'Mission: echo09 · BitRunner choice',
+    lines: ['// hand the recordings to The Admin'],
+  },
+  {
+    key: 'mission.echo09.choice_corp',
+    label: 'Mission: echo09 · Corporate choice',
+    lines: ['// hand the recordings to The Company'],
+  },
+  {
+    key: 'mission.echo09.closing_br',
+    label: 'Mission: echo09 · closing (BitRunner)',
+    lines: [
+      'the admin replays one of the voices for you.',
+      '// the cloud is older than it pretends to be.',
+    ],
+  },
+  {
+    key: 'mission.echo09.closing_corp',
+    label: 'Mission: echo09 · closing (Corporate)',
+    lines: [
+      'company archivists log the recordings.',
+      '// future bit_spekter templates may inherit a phrase or two.',
+    ],
+  },
+  // ── Mission 10 — The Admin's question ────────────────────────────────
+  {
+    key: 'mission.question10.opening',
+    label: 'Mission: question10 · opening',
+    lines: [
+      'the admin has a question for you.',
+      'walk the corridor. it is not long.',
+      'when you stand at the obelisk, choose carefully.',
+    ],
+  },
+  {
+    key: 'mission.question10.choice_br',
+    label: 'Mission: question10 · BitRunner choice',
+    lines: ['// answer The Admin honestly'],
+  },
+  {
+    key: 'mission.question10.choice_corp',
+    label: 'Mission: question10 · Corporate choice',
+    lines: ['// tell The Company what The Admin asked'],
+  },
+  {
+    key: 'mission.question10.closing_br',
+    label: 'Mission: question10 · closing (BitRunner)',
+    lines: [
+      'the admin smiles, briefly.',
+      '// you have answered the cloud. the cloud will remember.',
+    ],
+  },
+  {
+    key: 'mission.question10.closing_corp',
+    label: 'Mission: question10 · closing (Corporate)',
+    lines: [
+      'company intelligence files your report.',
+      '// the admin question is now a corporate asset.',
+    ],
+  },
 ];
 
 const byKey = new Map<string, DialogueEntry>(DIALOGUE_DEFAULTS.map((e) => [e.key, e]));
