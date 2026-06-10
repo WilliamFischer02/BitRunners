@@ -3,6 +3,27 @@
   --tint: #c8e8d4;
   --tint-dim: #5a8870;
   --bg: #050807;
+
+  /* Fluid type scale — readable on phone AND desktop without separate
+     breakpoints. Each `clamp(min, preferred, max)` keeps mobile sizes
+     reasonable while letting desktop grow into more comfortable text. */
+  --ui-text-2xs: clamp(9px, 1.0vw, 10px);
+  --ui-text-xs: clamp(10px, 1.3vw, 12px);
+  --ui-text-sm: clamp(11px, 1.5vw, 13.5px);
+  --ui-text-md: clamp(12.5px, 1.75vw, 15px);
+  --ui-text-lg: clamp(14px, 2.0vw, 17px);
+  --ui-text-xl: clamp(17px, 2.6vw, 22px);
+  --ui-text-2xl: clamp(20px, 3.2vw, 28px);
+
+  /* Spacing tokens follow the same shape. */
+  --ui-pad-xs: clamp(3px, 0.6vw, 5px);
+  --ui-pad-sm: clamp(5px, 1.0vw, 8px);
+  --ui-pad-md: clamp(8px, 1.4vw, 12px);
+  --ui-pad-lg: clamp(12px, 2.0vw, 18px);
+
+  /* Touch-target minimum (WCAG / iOS HIG). Buttons in the HUD launch
+     row and on dialogs should be at least this wide AND tall on touch. */
+  --ui-tap-min: 44px;
 }
 * {
   box-sizing: border-box;
@@ -38,7 +59,7 @@ body,
   position: absolute;
   top: 12px;
   left: 12px;
-  font-size: 11px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.05em;
   color: var(--tint-dim);
   pointer-events: none;
@@ -757,7 +778,7 @@ dialog.panel::backdrop {
   background: #0d1110;
 }
 .panel-title {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   color: #b48bff;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -768,9 +789,11 @@ dialog.panel::backdrop {
   border: 1px solid #2a3340;
   color: #93e0b1;
   font-family: inherit;
-  font-size: 11px;
+  font-size: var(--ui-text-sm);
   letter-spacing: 0.06em;
-  padding: 4px 10px;
+  padding: var(--ui-pad-xs) var(--ui-pad-sm);
+  min-height: var(--ui-tap-min);
+  min-width: var(--ui-tap-min);
   cursor: pointer;
   border-radius: 3px;
 }
@@ -779,14 +802,14 @@ dialog.panel::backdrop {
   background: rgba(60, 110, 80, 0.18);
 }
 .panel-section {
-  padding: 14px 16px;
+  padding: var(--ui-pad-md) var(--ui-pad-lg);
   border-bottom: 1px solid #1a2028;
 }
 .panel-section:last-of-type {
   border-bottom: none;
 }
 .panel-section-title {
-  font-size: 11px;
+  font-size: var(--ui-text-sm);
   color: #b48bff;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -795,19 +818,24 @@ dialog.panel::backdrop {
 .panel-row {
   display: flex;
   justify-content: space-between;
-  padding: 3px 0;
-  font-size: 13px;
+  padding: 4px 0;
+  gap: 8px;
+  font-size: var(--ui-text-md);
+  align-items: center;
 }
 .panel-key {
   color: #8aa597;
 }
 .panel-val {
   color: #c0ffd6;
+  text-align: right;
+  word-break: break-word;
 }
 .panel-stub {
   color: #6e7a86;
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   margin: 4px 0 10px;
+  line-height: 1.5;
 }
 .panel-action {
   appearance: none;
@@ -815,8 +843,9 @@ dialog.panel::backdrop {
   border: 1px solid #2a3340;
   color: #93e0b1;
   font-family: inherit;
-  font-size: 12px;
-  padding: 6px 12px;
+  font-size: var(--ui-text-sm);
+  padding: var(--ui-pad-sm) var(--ui-pad-md);
+  min-height: var(--ui-tap-min);
   cursor: pointer;
   border-radius: 3px;
 }
@@ -825,11 +854,12 @@ dialog.panel::backdrop {
   cursor: not-allowed;
 }
 .panel-footer {
-  padding: 10px 14px;
+  padding: var(--ui-pad-md) var(--ui-pad-lg);
   border-top: 1px solid #2a3340;
   background: #0d1110;
   color: #6e7a86;
-  font-size: 11px;
+  font-size: var(--ui-text-xs);
+  line-height: 1.5;
 }
 
 /* ──────────── emote wheel ──────────── */
@@ -1152,9 +1182,10 @@ dialog.panel::backdrop {
   border: 1px solid #2a3340;
   color: var(--tint-dim);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--ui-text-sm);
   letter-spacing: 0.05em;
-  padding: 4px 10px;
+  padding: var(--ui-pad-sm) var(--ui-pad-md);
+  min-height: var(--ui-tap-min);
   border-radius: 3px;
   cursor: pointer;
 }
@@ -3616,12 +3647,12 @@ dialog.panel::backdrop {
   border-color: #ff9450;
 }
 .mission-choice-label {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   letter-spacing: 0.04em;
   color: #c0ffd6;
 }
 .mission-choice-meta {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--tint-dim);
@@ -3659,17 +3690,19 @@ dialog.panel::backdrop {
 .protocols-launch {
   position: absolute;
   top: 156px;
-  width: 60px;
-  height: 60px;
-  min-width: 0;
-  max-width: 60px;
-  min-height: 0;
-  padding: 4px 2px;
+  /* Wider tiles so labels don't truncate, and meet the 44px touch
+     minimum on the short axis. Tiles flex slightly with viewport so
+     desktop reads larger without cramming mobile. */
+  width: clamp(60px, 8.4vw, 78px);
+  height: clamp(60px, 8.4vw, 78px);
+  min-width: var(--ui-tap-min);
+  min-height: var(--ui-tap-min);
+  padding: var(--ui-pad-xs) var(--ui-pad-xs);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: var(--ui-pad-xs);
   text-align: center;
   overflow: hidden;
   appearance: none;
@@ -3685,7 +3718,9 @@ dialog.panel::backdrop {
   right: 12px;
 }
 .profile {
-  right: 80px;
+  /* Two tiles + a small gutter — derived from launcher width so the
+     mobile/desktop spacing stays in sync. */
+  right: calc(12px + clamp(60px, 8.4vw, 78px) + 8px);
 }
 .protocols-launch:hover,
 .profile:hover {
@@ -3697,12 +3732,12 @@ dialog.panel::backdrop {
   box-shadow: inset 0 0 8px rgba(132, 216, 164, 0.18);
 }
 .protocols-launch-glyph {
-  font-size: 18px;
+  font-size: var(--ui-text-xl);
   line-height: 1;
   color: #93e0b1;
 }
 .protocols-launch-cap {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.04em;
   color: #c0ffd6;
 }
@@ -3724,17 +3759,18 @@ dialog.panel::backdrop {
   display: none;
 }
 .profile-class {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.04em;
   color: #c0ffd6;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 56px;
+  max-width: 100%;
+  padding: 0 2px;
 }
 .profile-box::before {
   content: "◉";
-  font-size: 18px;
+  font-size: var(--ui-text-xl);
   line-height: 1;
   color: #93e0b1;
   display: block;
@@ -3745,9 +3781,12 @@ dialog.panel::backdrop {
   .profile,
   .protocols-launch {
     top: 116px;
+    /* Mobile keeps a slightly smaller min so two tiles fit on narrow phones,
+       but still respects the 44px touch minimum. */
     width: 54px;
     height: 54px;
-    max-width: 54px;
+    min-width: 44px;
+    min-height: 44px;
   }
   .protocols-launch {
     right: 8px;
@@ -3807,13 +3846,13 @@ dialog.panel::backdrop {
   padding-bottom: 6px;
 }
 .protocols-title {
-  font-size: 11px;
+  font-size: var(--ui-text-sm);
   letter-spacing: 0.1em;
   color: #c0ffd6;
   flex: 1;
 }
 .protocols-sub {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   color: var(--tint-dim);
   letter-spacing: 0.1em;
 }
@@ -3824,9 +3863,11 @@ dialog.panel::backdrop {
   border-radius: 2px;
   color: #c0ffd6;
   font-family: inherit;
-  font-size: 11px;
-  width: 22px;
-  height: 22px;
+  font-size: var(--ui-text-sm);
+  width: var(--ui-tap-min);
+  height: var(--ui-tap-min);
+  min-width: var(--ui-tap-min);
+  min-height: var(--ui-tap-min);
   cursor: pointer;
   line-height: 1;
 }
@@ -3884,7 +3925,7 @@ dialog.panel::backdrop {
   cursor: not-allowed;
 }
 .cart-glyph {
-  font-size: 36px;
+  font-size: clamp(28px, 5vw, 40px);
   line-height: 1;
   color: #93e0b1;
   filter: drop-shadow(0 0 6px currentColor);
@@ -3896,26 +3937,30 @@ dialog.panel::backdrop {
   color: #ff9450;
 }
 .cart-label {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   letter-spacing: 0.08em;
   color: #c0ffd6;
   text-align: center;
+  /* Allow the label to wrap if needed instead of truncating. */
+  word-break: break-word;
+  hyphens: auto;
+  line-height: 1.2;
 }
 .cart-flavor {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.04em;
   color: var(--tint-dim);
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.35;
   margin-top: 2px;
 }
 .cart-insert {
   margin-top: 4px;
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.15em;
   color: #c0ffd6;
   border: 1px solid currentColor;
-  padding: 2px 6px;
+  padding: 3px 8px;
   border-radius: 2px;
 }
 .cart-lock {
@@ -3979,12 +4024,13 @@ dialog.panel::backdrop {
   gap: 8px;
 }
 .objective-card-title {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   letter-spacing: 0.04em;
   color: #c0ffd6;
+  word-break: break-word;
 }
 .objective-card-state {
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.08em;
   color: var(--tint-dim);
 }
@@ -3998,11 +4044,11 @@ dialog.panel::backdrop {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   color: #6cf0ff;
 }
 .objective-pip {
-  font-size: 12px;
+  font-size: var(--ui-text-md);
   color: #355042;
 }
 .objective-pip.is-done {
@@ -4014,15 +4060,15 @@ dialog.panel::backdrop {
 }
 .objective-card-count {
   margin-left: auto;
-  font-size: 9px;
+  font-size: var(--ui-text-xs);
   letter-spacing: 0.08em;
   color: var(--tint-dim);
 }
 .objective-card-flavor {
-  font-size: 10px;
+  font-size: var(--ui-text-sm);
   color: #93a39a;
   letter-spacing: 0.04em;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 /* ════════ Auth callback (verified / recovery landings) ════════ */
