@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { EmoticonSubmission } from './EmoticonSubmission.js';
 import { ThemeView } from './ThemeShop.js';
 import {
+  BOT_TICK_MS,
   CREDITS_PER_TOKEN,
   EQUIP_SLOTS,
   type EconomyState,
@@ -9,24 +10,37 @@ import {
   type RefinableTier,
   STEP,
   calculate,
+  calculateAura,
   canCalculate,
+  canCalculateAura,
   canTabulate,
   canTabulateAll,
+  canTabulateAura,
+  creditsPerAura,
   creditsPerPasscode,
   equip,
   exchangeCreditsForTokens,
   getEconomy,
   getEquipped,
   hasAutoScrape,
+  hasBotBitsTab,
+  hasBotPasscodesTab,
+  hasBotScrape,
+  hasBotSerialsTab,
+  hasBotStringsTab,
   hasHoldScrape,
   isAppearanceHidden,
+  isPrestigeUnlocked,
   isTreeUnlocked,
+  prestigeReset,
+  prestigeTokenPayout,
   scrape,
   scrapeYield,
   setAppearanceHidden,
   subscribeEconomy,
   tabulate,
   tabulateAll,
+  tabulateAura,
   tabulateReach,
 } from './economy.js';
 import {
@@ -148,8 +162,14 @@ function DataHud({ eco, auto }: { eco: EconomyState; auto: boolean }): JSX.Eleme
       <div className="scrape-hud-row scrape-hud--passcode">
         <span className="scrape-hud-glyph">#</span>
         <span className="scrape-hud-name">passcodes</span>
-        <span className="scrape-hud-bar">{'▓'.repeat(Math.min(eco.passcodes, STEP))}</span>
+        <span className="scrape-hud-bar">{ladderBar(eco.passcodes)}</span>
         <span className="scrape-hud-val">{eco.passcodes}</span>
+      </div>
+      <div className="scrape-hud-row scrape-hud--aura">
+        <span className="scrape-hud-glyph">✺</span>
+        <span className="scrape-hud-name">auras</span>
+        <span className="scrape-hud-bar">{'▒'.repeat(Math.min(eco.auras, STEP))}</span>
+        <span className="scrape-hud-val">{eco.auras}</span>
       </div>
       <div className="scrape-hud-div">────────────────</div>
       <div className="scrape-hud-row scrape-hud--currency">
@@ -405,6 +425,38 @@ export function InventoryView(): JSX.Element {
   );
 }
 
+function BotsStatus(): JSX.Element | null {
+  // Reflects which bots are currently humming. Re-renders on economy updates
+  // since buying a bot in the tree view flips its flag.
+  const [, force] = useState(0);
+  useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
+
+  const bots = [
+    { on: hasBotScrape(), label: 'mining bot · SCRAPE' },
+    { on: hasBotBitsTab(), label: 'bits → strings' },
+    { on: hasBotStringsTab(), label: 'strings → serials' },
+    { on: hasBotSerialsTab(), label: 'serials → passcodes' },
+    { on: hasBotPasscodesTab(), label: 'passcodes → auras' },
+  ];
+  const anyOn = bots.some((b) => b.on);
+  if (!anyOn) return null;
+
+  return (
+    <section className="panel-section scrape-bots">
+      <div className="panel-section-title">$ bots · tick every {BOT_TICK_MS}ms</div>
+      {bots
+        .filter((b) => b.on)
+        .map((b) => (
+          <div className="panel-row" key={b.label}>
+            <span className="panel-key">{b.label}</span>
+            <span className="scrape-hud-val">▶</span>
+          </div>
+        ))}
+      <div className="panel-stub">─── bots pause when this panel is closed.</div>
+    </section>
+  );
+}
+
 function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
   const [verb, setVerb] = useState<Verb>('SCRAPE');
@@ -496,8 +548,29 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     return () => window.clearInterval(id);
   }, [autoOn]);
 
+  // Auto-converter bots (Path 4 unlocks — PR 82). One shared interval walks
+  // the bits→strings→serials→passcodes→auras ladder once per tick. Each
+  // upgrade flag gates one rung; an unbought rung is just skipped. Closing
+  // the panel stops the loop — bots are active-panel automation, not truly
+  // background workers.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      // Re-check the upgrade flags every tick so a level bought in the tree
+      // view turns the matching bot on without a panel reopen.
+      if (hasBotScrape()) scrapeRef.current(false);
+      if (hasBotBitsTab()) tabulate('bits');
+      if (hasBotStringsTab()) tabulate('strings');
+      if (hasBotSerialsTab()) tabulate('serials');
+      if (hasBotPasscodesTab()) tabulateAura();
+    }, BOT_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+
   const onTabulate = (from: RefinableTier): void => {
     if (tabulate(from)) flash('TABULATING');
+  };
+  const onTabulateAura = (): void => {
+    if (tabulateAura()) flash('TABULATING');
   };
   const onTabulateAll = (): void => {
     if (tabulateAll()) flash('TABULATING');
@@ -505,8 +578,14 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const onTrade = (faction: Faction): void => {
     if (calculate(faction)) flash('CALCULATING');
   };
+  const onTradeAura = (faction: Faction): void => {
+    if (calculateAura(faction)) flash('CALCULATING');
+  };
   const tradeReady = canCalculate();
+  const tradeAuraReady = canCalculateAura();
   const showAll = tabulateReach() >= 1;
+  const auraReady = canTabulateAura();
+  const prestigeOn = isPrestigeUnlocked();
 
   const VIEW_LABELS: Record<View, string> = {
     scrape: 'scrape',
@@ -628,6 +707,17 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
                   </button>
                 </div>
               )}
+              <div className="panel-row">
+                <span className="panel-key">passcodes → aura</span>
+                <button
+                  type="button"
+                  className={auraReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                  disabled={!auraReady}
+                  onClick={onTabulateAura}
+                >
+                  {`[ ${STEP} → 1 ]`}
+                </button>
+              </div>
             </section>
 
             <section className="panel-section">
@@ -661,6 +751,64 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
                 curve pending faction-reward Q&amp;A.
               </div>
             </section>
+
+            <section className="panel-section">
+              <div className="panel-section-title">
+                $ calculate · trade aura · +{creditsPerAura()} cr each
+              </div>
+              <div className="panel-row">
+                <span className="panel-key">the company · recycle</span>
+                <button
+                  type="button"
+                  className={tradeAuraReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                  disabled={!tradeAuraReady}
+                  onClick={() => onTradeAura('company')}
+                >
+                  [ trade ]
+                </button>
+              </div>
+              <div className="panel-row">
+                <span className="panel-key">the admin · destroy</span>
+                <button
+                  type="button"
+                  className={tradeAuraReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                  disabled={!tradeAuraReady}
+                  onClick={() => onTradeAura('admin')}
+                >
+                  [ trade ]
+                </button>
+              </div>
+              <div className="panel-stub">
+                ─── aura trades grant +2 samaritan to the chosen faction (vs +1 for passcodes).
+              </div>
+            </section>
+
+            {prestigeOn && (
+              <section className="panel-section scrape-prestige">
+                <div className="panel-section-title">$ prestige · clean slate</div>
+                <div className="panel-stub">
+                  ─── trade your scrape buffers + skill levels for tokens. cosmetics, equipped
+                  items, reputation, and badges stay. each prestige adds +{1} permanent bit /
+                  SCRAPE.
+                </div>
+                <div className="panel-row">
+                  <span className="panel-key">current tier · {eco.prestiges}</span>
+                  <span className="scrape-hud-val">+{eco.prestiges} bits / SCRAPE</span>
+                </div>
+                <div className="panel-row">
+                  <span className="panel-key">reset payout · {prestigeTokenPayout()} tk</span>
+                  <button
+                    type="button"
+                    className="scrape-mini is-ready"
+                    onClick={() => prestigeReset()}
+                  >
+                    [ trade ]
+                  </button>
+                </div>
+              </section>
+            )}
+
+            <BotsStatus />
           </>
         )}
 

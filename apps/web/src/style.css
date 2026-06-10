@@ -2141,9 +2141,23 @@ dialog.panel::backdrop {
 .scrape-hud--passcode .scrape-hud-bar {
   color: #93e0b1;
 }
+.scrape-hud--aura .scrape-hud-bar {
+  color: #b07cff;
+}
+.scrape-hud--aura .scrape-hud-glyph {
+  color: #b07cff;
+  text-shadow: 0 0 6px rgba(176, 124, 255, 0.6);
+}
 .scrape-hud--passcode .scrape-hud-val,
+.scrape-hud--aura .scrape-hud-val,
 .scrape-hud--currency .scrape-hud-val {
   font-weight: 700;
+}
+.scrape-prestige {
+  border-top: 1px solid #b07cff;
+}
+.scrape-bots {
+  border-top: 1px dashed #4a6850;
 }
 .scrape-hud-div {
   color: #2a3340;

@@ -17,7 +17,7 @@
 // Isolated: imports only economy.js. No scene/network/server coupling.
 import { getEconomy, getUpgradeLevel, isTreeUnlocked, purchaseTreeNode } from './economy.js';
 
-export type PathId = 1 | 2 | 3;
+export type PathId = 1 | 2 | 3 | 4;
 
 export interface SkillPath {
   path: PathId;
@@ -47,6 +47,7 @@ export const SKILL_PATHS: readonly SkillPath[] = [
   { path: 1, title: 'scrape depth', blurb: 'raw bits per tap' },
   { path: 2, title: 'persistent kit', blurb: 'one-off unlocks' },
   { path: 3, title: 'conversion alchemy', blurb: 'passcodes worth more' },
+  { path: 4, title: 'autonomous swarm', blurb: 'bots walk the ladder' },
 ];
 
 export const SKILL_NODES: readonly SkillNode[] = [
@@ -56,7 +57,7 @@ export const SKILL_NODES: readonly SkillNode[] = [
     name: 'deeper scrape',
     blurb: 'pull more bits from every tap',
     upgradeKey: 'scrape',
-    maxLevel: 12,
+    maxLevel: 30,
     costFor: (level) => 1 + Math.floor(level / 2),
     effect: '+1 bit / SCRAPE',
   },
@@ -96,9 +97,61 @@ export const SKILL_NODES: readonly SkillNode[] = [
     name: 'data appreciation',
     blurb: 'a finished passcode is worth more Credits at the trade',
     upgradeKey: 'yield',
-    maxLevel: 12,
+    maxLevel: 30,
     costFor: (level) => 3 + level * 2,
     effect: '+1 Credit / passcode',
+  },
+  // Path 4 — auto-converter bots (PR 82). Each unlocks one rung of the
+  // ladder. Bots tick once per BOT_TICK_MS while the scrape panel is open.
+  {
+    id: 't.bot.scrape',
+    path: 4,
+    name: 'mining bot',
+    blurb: 'a bot taps SCRAPE for you while the panel is open',
+    upgradeKey: 'bot_scrape',
+    maxLevel: 1,
+    costFor: () => 25,
+    effect: 'bot mines bits',
+  },
+  {
+    id: 't.bot.bits',
+    path: 4,
+    name: 'bits converter',
+    blurb: 'a bot tabulates bits → strings on its own',
+    upgradeKey: 'bot_bits',
+    maxLevel: 1,
+    costFor: () => 30,
+    effect: 'bot: bits→strings',
+  },
+  {
+    id: 't.bot.strings',
+    path: 4,
+    name: 'strings converter',
+    blurb: 'a bot tabulates strings → serials on its own',
+    upgradeKey: 'bot_strings',
+    maxLevel: 1,
+    costFor: () => 50,
+    effect: 'bot: strings→serials',
+  },
+  {
+    id: 't.bot.serials',
+    path: 4,
+    name: 'serials converter',
+    blurb: 'a bot tabulates serials → passcodes on its own',
+    upgradeKey: 'bot_serials',
+    maxLevel: 1,
+    costFor: () => 80,
+    effect: 'bot: serials→passcodes',
+  },
+  {
+    id: 't.bot.passcodes',
+    path: 4,
+    name: 'passcode condenser',
+    blurb: 'a bot folds passcodes → auras (post-passcode tier)',
+    upgradeKey: 'bot_passcodes',
+    maxLevel: 1,
+    costFor: () => 140,
+    effect: 'bot: passcodes→auras',
   },
 ];
 
