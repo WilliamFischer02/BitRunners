@@ -19,18 +19,20 @@ import { Starmap } from './Starmap.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
+import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
 import { startVisibilityWatcher } from './visibility.js';
 
-// Boot the identity + badge-notification + visibility + signup-grant
-// subsystems once. Each is idempotent.
+// Boot the identity + badge-notification + visibility + signup-grant +
+// mission-sync subsystems once. Each is idempotent.
 startIdentity();
 startBadgeMonitor();
 startVisibilityWatcher();
 startSignupGrant();
+startMissionSync();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 
