@@ -51,6 +51,8 @@ import {
 } from './skilltree.js';
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
+// Shop and Inventory are now their own modal (PR 80). The remaining
+// sub-views stay inside the data-scrape panel.
 export type View = 'scrape' | 'tree' | 'shop' | 'inventory' | 'themes' | 'emoticons';
 
 const SCRAPE_OPEN_EVENT = 'bitrunners:open-scrape';
@@ -203,7 +205,7 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
   );
 }
 
-function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
+export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section">
       <div className="panel-section-title">$ shop · credits &amp; tokens</div>
@@ -323,7 +325,7 @@ function TreeView({ eco }: { eco: EconomyState }): JSX.Element {
   );
 }
 
-function InventoryView(): JSX.Element {
+export function InventoryView(): JSX.Element {
   const slots = getEconomy().slots;
   const equipped = getEconomy().equipped;
   const hidden = isAppearanceHidden();
@@ -552,8 +554,6 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
           <div className="scrape-headbtns">
             {nav('scrape', 'scrape')}
             {nav('tree', 'tree')}
-            {nav('shop', 'shop')}
-            {nav('inventory', 'inv')}
             {nav('themes', 'theme')}
             {nav('emoticons', 'emote')}
             <button type="button" className="panel-close" onClick={requestClose}>

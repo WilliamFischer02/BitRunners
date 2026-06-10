@@ -2066,6 +2066,35 @@ dialog.panel::backdrop {
 .scrape-tabbtn:hover {
   border-color: #93e0b1;
 }
+
+/* ──────────── shop+inventory 2-tab header (PR 80) ──────────── */
+.shopinv-tabs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.shopinv-tab {
+  appearance: none;
+  background: rgba(20, 28, 24, 0.7);
+  border: 1px solid #2a3a32;
+  border-radius: 3px;
+  color: var(--tint-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 4px 12px;
+  min-height: var(--ui-tap-min, 44px);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+}
+.shopinv-tab:hover {
+  border-color: #93e0b1;
+}
+.shopinv-tab.is-on {
+  border-color: #84d8a4;
+  color: #c0ffd6;
+  background: rgba(40, 60, 50, 0.7);
+  box-shadow: inset 0 0 6px rgba(132, 216, 164, 0.25);
+}
 .scrape-hud {
   position: relative;
   overflow: hidden;
