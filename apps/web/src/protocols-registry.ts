@@ -9,7 +9,7 @@
 //
 // Phase 3 will add `tether_hop`; for now we ship Scrape and Objectives.
 
-export type ProtocolKey = 'scrape' | 'objectives';
+export type ProtocolKey = 'scrape' | 'objectives' | 'shop';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -50,10 +50,20 @@ export function openObjectives(): void {
 
 export { PROTOCOLS_LAUNCH_EVENT, OBJECTIVES_OPEN_EVENT };
 
-// Lazy import of the ScrapeMenu opener so this registry is free of UI deps.
+// Lazy events so this registry stays UI-dep free.
 function launchScrape(): void {
   try {
     window.dispatchEvent(new CustomEvent('bitrunners:open-scrape', { detail: { view: 'scrape' } }));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
+function launchShop(): void {
+  try {
+    window.dispatchEvent(
+      new CustomEvent('bitrunners:open-shop-inventory', { detail: { tab: 'shop' } }),
+    );
   } catch {
     // non-DOM env — ignore
   }
@@ -77,5 +87,14 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'br',
     available: true,
     launch: openObjectives,
+  },
+  {
+    key: 'shop',
+    label: 'shop',
+    flavor: 'cosmetics + credits',
+    glyph: '⌶',
+    tint: 'corp',
+    available: true,
+    launch: launchShop,
   },
 ];

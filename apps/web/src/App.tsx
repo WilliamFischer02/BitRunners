@@ -10,7 +10,8 @@ import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Protocols } from './Protocols.js';
 import { Samm } from './Samm.js';
-import { ScrapeMenu, openScrape } from './ScrapeMenu.js';
+import { ScrapeMenu } from './ScrapeMenu.js';
+import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
 import { Starmap } from './Starmap.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
@@ -167,8 +168,9 @@ function Game({ className }: GameProps): JSX.Element {
       <ProfileIcon className={className} />
       <Protocols />
       <ScrapeMenu />
+      <ShopInventoryModal />
       <Objectives />
-      <EmoteWheel onEmote={onEmote} onInventory={() => openScrape('inventory')} />
+      <EmoteWheel onEmote={onEmote} onInventory={() => openShopInventory('inventory')} />
       <Samm inRange={sammInRange} />
       <Tutorial />
       <Starmap />
