@@ -3,6 +3,7 @@ import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
 import { AuthCallback } from './AuthCallback.js';
 import { BadgeToast } from './BadgeToast.js';
+import { BadgesModal } from './BadgesModal.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { CreditsHud } from './CreditsHud.js';
@@ -200,6 +201,7 @@ function Game({ className }: GameProps): JSX.Element {
       <Starmap />
       <AdminConsole />
       <UsernameEditor />
+      <BadgesModal />
       <BadgeToast />
       <MissionDialogue />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
