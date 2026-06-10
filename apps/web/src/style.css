@@ -4024,3 +4024,61 @@ dialog.panel::backdrop {
   letter-spacing: 0.04em;
   line-height: 1.4;
 }
+
+/* ════════ Persistent credits HUD (devlog 0072) ════════
+   Always-visible currency pill at the top-center of the canvas-host.
+   Sits BELOW the minimap on its z-stack so dialogs / modals overlay it,
+   but stays above the world canvas. Uses the design tokens so font /
+   spacing scale with viewport. */
+.credits-hud {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--ui-pad-md);
+  padding: var(--ui-pad-xs) var(--ui-pad-md);
+  background: rgba(8, 12, 14, 0.72);
+  border: 1px solid #2a3340;
+  border-radius: 999px;
+  z-index: 8;
+  pointer-events: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45), inset 0 0 12px rgba(132, 216, 164, 0.04);
+}
+.credits-hud-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-pad-xs);
+}
+.credits-hud-glyph {
+  font-size: var(--ui-text-md);
+  line-height: 1;
+  filter: drop-shadow(0 0 4px currentColor);
+}
+.credits-hud-glyph--credits {
+  color: #c0ffd6;
+}
+.credits-hud-glyph--tokens {
+  color: #b07cff;
+}
+.credits-hud-glyph--chatter {
+  color: #6cf0ff;
+}
+.credits-hud-val {
+  font-size: var(--ui-text-sm);
+  color: #c0ffd6;
+  font-weight: 600;
+}
+
+/* Very narrow phones: pull the pill closer to the top edge and tighten
+   the cell gaps so it doesn't crowd the hint badge / minimap. */
+@media (max-width: 380px) {
+  .credits-hud {
+    top: 6px;
+    gap: 6px;
+    padding: 4px 8px;
+  }
+}
