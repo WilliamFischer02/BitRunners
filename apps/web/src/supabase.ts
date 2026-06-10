@@ -99,8 +99,35 @@ export async function signUpWithEmail(
   const { error } = await sb.auth.signUp({
     email,
     password,
-    options: { emailRedirectTo: window.location.origin },
+    options: {
+      // Send verification clicks to a hash route we control so we can
+      // show a friendly "email verified" page instead of dropping the
+      // user on the bare site root. detectSessionInUrl on the client
+      // auto-consumes the session token from the hash on arrival.
+      emailRedirectTo: `${window.location.origin}#auth/verified`,
+    },
   });
+  return { error: error?.message ?? null };
+}
+
+/** Send a password-reset email. The link in it lands on
+ *  `#auth/recovery` which renders the `<AuthCallback />` reset form. */
+export async function requestPasswordReset(email: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: `${window.location.origin}#auth/recovery`,
+  });
+  return { error: error?.message ?? null };
+}
+
+/** Set a new password for the currently-authenticated user. Called from
+ *  the reset-completion form after Supabase has consumed the recovery
+ *  token in the URL hash and established a session. */
+export async function updatePassword(newPassword: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.auth.updateUser({ password: newPassword });
   return { error: error?.message ?? null };
 }
 

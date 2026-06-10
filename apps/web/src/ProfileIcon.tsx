@@ -4,6 +4,7 @@ import { getJoinedRoomId } from './network.js';
 import {
   type AuthSnapshot,
   isAuthConfigured,
+  requestPasswordReset,
   signInWithEmail,
   signOut,
   signUpWithEmail,
@@ -186,13 +187,14 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
 
 function AccountSection(): JSX.Element {
   const [auth, setAuth] = useState<AuthSnapshot>({ status: 'guest' });
-  const [mode, setMode] = useState<'in' | 'up'>('in');
+  const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [showPw, setShowPw] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [synced, setSynced] = useState(false);
   const configured = isAuthConfigured();
 
@@ -250,15 +252,25 @@ function AccountSection(): JSX.Element {
     );
   }
 
-  const switchMode = (m: 'in' | 'up'): void => {
+  const switchMode = (m: 'in' | 'up' | 'reset'): void => {
     setMode(m);
     setError(null);
+    setNotice(null);
   };
 
   const submit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (busy) return;
     setError(null);
+    setNotice(null);
+    if (mode === 'reset') {
+      setBusy(true);
+      const res = await requestPasswordReset(email);
+      setBusy(false);
+      if (res.error) setError(res.error);
+      else setNotice('check your email for a reset link');
+      return;
+    }
     if (mode === 'up' && password !== confirm) {
       setError('passwords do not match');
       return;
@@ -267,6 +279,9 @@ function AccountSection(): JSX.Element {
     const action = mode === 'up' ? signUpWithEmail : signInWithEmail;
     const res = await action(email, password);
     if (res.error) setError(res.error);
+    else if (mode === 'up') {
+      setNotice('check your email to verify your account.');
+    }
     setBusy(false);
   };
 
@@ -288,6 +303,13 @@ function AccountSection(): JSX.Element {
         >
           sign up
         </button>
+        <button
+          type="button"
+          className={mode === 'reset' ? 'auth-tab is-on' : 'auth-tab'}
+          onClick={() => switchMode('reset')}
+        >
+          reset
+        </button>
       </div>
       <form className="auth-form" onSubmit={submit}>
         <input
@@ -299,26 +321,28 @@ function AccountSection(): JSX.Element {
           autoComplete="email"
           required
         />
-        <div className="auth-pw-row">
-          <input
-            type={showPw ? 'text' : 'password'}
-            className="auth-input"
-            placeholder="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
-            minLength={8}
-            required
-          />
-          <button
-            type="button"
-            className="auth-peek"
-            onClick={() => setShowPw((v) => !v)}
-            aria-label={showPw ? 'hide password' : 'show password'}
-          >
-            {showPw ? 'hide' : 'show'}
-          </button>
-        </div>
+        {mode !== 'reset' && (
+          <div className="auth-pw-row">
+            <input
+              type={showPw ? 'text' : 'password'}
+              className="auth-input"
+              placeholder="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={mode === 'up' ? 'new-password' : 'current-password'}
+              minLength={8}
+              required
+            />
+            <button
+              type="button"
+              className="auth-peek"
+              onClick={() => setShowPw((v) => !v)}
+              aria-label={showPw ? 'hide password' : 'show password'}
+            >
+              {showPw ? 'hide' : 'show'}
+            </button>
+          </div>
+        )}
         {mode === 'up' && (
           <input
             type={showPw ? 'text' : 'password'}
@@ -332,10 +356,22 @@ function AccountSection(): JSX.Element {
           />
         )}
         <button type="submit" className="auth-btn auth-submit" disabled={busy}>
-          {busy ? '…' : mode === 'up' ? 'create account' : 'sign in'}
+          {busy
+            ? '…'
+            : mode === 'up'
+              ? 'create account'
+              : mode === 'reset'
+                ? 'send reset link'
+                : 'sign in'}
         </button>
+        {mode === 'in' && (
+          <button type="button" className="auth-link" onClick={() => switchMode('reset')}>
+            forgot your password?
+          </button>
+        )}
       </form>
       {error && <div className="auth-error">! {error}</div>}
+      {notice && <div className="auth-notice">{notice}</div>}
     </section>
   );
 }
