@@ -9,7 +9,7 @@
 //
 // Phase 3 will add `tether_hop`; for now we ship Scrape and Objectives.
 
-export type ProtocolKey = 'scrape' | 'objectives' | 'shop';
+export type ProtocolKey = 'scrape' | 'objectives' | 'shop' | 'tether_chat';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -69,6 +69,14 @@ function launchShop(): void {
   }
 }
 
+function launchTetherChat(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('bitrunners:open-tether-chat'));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
@@ -96,5 +104,14 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'corp',
     available: true,
     launch: launchShop,
+  },
+  {
+    key: 'tether_chat',
+    label: 'tether_chat',
+    flavor: 'tap a runner · talk',
+    glyph: '⌥',
+    tint: 'br',
+    available: true,
+    launch: launchTetherChat,
   },
 ];

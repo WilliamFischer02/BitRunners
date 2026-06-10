@@ -16,6 +16,7 @@ import { Samm } from './Samm.js';
 import { ScrapeMenu } from './ScrapeMenu.js';
 import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
 import { Starmap } from './Starmap.js';
+import { TetherChat } from './TetherChat.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
@@ -206,6 +207,7 @@ function Game({ className }: GameProps): JSX.Element {
       <AdminConsole />
       <UsernameEditor />
       <BadgesModal />
+      <TetherChat />
       <BadgeToast />
       <MissionDialogue />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
