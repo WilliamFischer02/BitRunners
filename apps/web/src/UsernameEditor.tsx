@@ -1,30 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BADGES, BADGE_TIERS, type BadgeFaction, tierForSamaritan } from './badges.js';
 import {
-  decrementUnacknowledged,
-  getIdentity,
-  refreshIdentity,
-  setEquippedBadgeLocal,
-  subscribeIdentity,
-} from './profile.js';
+  NAME_TINT_OPTIONS,
+  type NameTint,
+  type NameWeight,
+  getNameStyle,
+  setNameStyle,
+  subscribeNameStyle,
+} from './name-style.js';
+import { getIdentity, refreshIdentity, subscribeIdentity } from './profile.js';
 import {
   type DictionaryWord,
-  type MyBadge,
-  acknowledgeBadge,
-  equipBadge,
   fetchDictionary,
-  fetchMyBadges,
   isAuthConfigured,
   submitDisplayName,
 } from './supabase.js';
 
 // Opens when the user taps the floating name above their character.
-// Mounted inside App next to the Tutorial/AdminConsole overlays. Driven by
-// the 'bitrunners:edit-identity' event the scene dispatches on tap.
-//
-// Guest gating: when the user is not signed in, the panel renders the
-// "make account to change username and display badges" prompt + a sign-up
-// button. The composer + BadgeStrip render greyed-out behind it.
+// Driven by the 'bitrunners:edit-identity' event the scene dispatches on
+// tap. Badge management lives in its own modal (BadgesModal.tsx) — open
+// from the badge slot of the player tag.
 
 const EDIT_EVENT = 'bitrunners:edit-identity';
 
@@ -46,19 +40,17 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Identity / badges state.
   const [id, setId] = useState(getIdentity());
-  const [badges, setBadges] = useState<MyBadge[] | null>(null);
   const [dict, setDict] = useState<DictionaryWord[] | null>(null);
   const [wordA, setWordA] = useState('');
   const [wordB, setWordB] = useState('');
+  const [custom, setCustom] = useState('');
+  const [tab, setTab] = useState<'pick' | 'custom'>('pick');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  // Subscribe to identity changes so equip flips re-render instantly.
   useEffect(() => subscribeIdentity(setId), []);
 
-  // Modal lifecycle (showModal + ESC + restore focus on close).
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -75,10 +67,8 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
     };
   }, []);
 
-  // Initial data fetches (only when signed in).
   useEffect(() => {
     if (!id.signedIn) return;
-    void fetchMyBadges().then((b) => setBadges(b ?? []));
     void fetchDictionary().then((d) => setDict(d));
   }, [id.signedIn]);
 
@@ -87,7 +77,7 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
     return dict.filter((d) => d.category === 'name').map((d) => d.word);
   }, [dict]);
 
-  const composedName = wordB ? `${wordA}_${wordB}` : wordA;
+  const composedName = tab === 'custom' ? custom.trim() : wordB ? `${wordA}_${wordB}` : wordA;
 
   const submit = useCallback(async (): Promise<void> => {
     if (busy) return;
@@ -106,32 +96,6 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
     }
     setBusy(false);
   }, [busy, composedName]);
-
-  const onEquip = useCallback(
-    async (key: string, badgeKeyForAck: string): Promise<void> => {
-      if (busy) return;
-      setBusy(true);
-      setMsg(null);
-      // Optimistic local flip so the floating label updates immediately.
-      setEquippedBadgeLocal(key);
-      const res = await equipBadge(key || null);
-      if (res.error) {
-        setMsg(`! ${res.error}`);
-        // Roll back to whatever the server thinks.
-        await refreshIdentity();
-      } else if (badgeKeyForAck) {
-        // Equipping silences the '!' dot for that badge.
-        const ack = await acknowledgeBadge(badgeKeyForAck);
-        if (!ack.error) {
-          decrementUnacknowledged();
-          // Re-fetch the badge list so the UI shows the acknowledged state.
-          void fetchMyBadges().then((b) => setBadges(b ?? []));
-        }
-      }
-      setBusy(false);
-    },
-    [busy],
-  );
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop close is pointer-only; keyboard close goes through the native cancel event in useEffect
@@ -182,51 +146,80 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
         <>
           <section className={`panel-section ${busy ? 'is-busy' : ''}`}>
             <div className="panel-section-title">$ request new handle</div>
-            <div className="panel-stub">
-              ─── pick 1–2 words from the dictionary. owner reviews before it becomes your public
-              name.
+            <div className="auth-tabs">
+              <button
+                type="button"
+                className={tab === 'pick' ? 'auth-tab is-on' : 'auth-tab'}
+                onClick={() => setTab('pick')}
+              >
+                from dictionary
+              </button>
+              <button
+                type="button"
+                className={tab === 'custom' ? 'auth-tab is-on' : 'auth-tab'}
+                onClick={() => setTab('custom')}
+              >
+                custom (review)
+              </button>
             </div>
-            {dict === null ? (
-              <div className="panel-stub">─── loading dictionary…</div>
+            <div className="panel-stub">
+              ─── owner reviews all handles before they become public. custom requests take longer.
+            </div>
+            {tab === 'pick' ? (
+              dict === null ? (
+                <div className="panel-stub">─── loading dictionary…</div>
+              ) : (
+                <div className="username-composer">
+                  <WordPicker label="word 1" words={nameWords} value={wordA} onChange={setWordA} />
+                  <WordPicker
+                    label="word 2 (optional)"
+                    words={['', ...nameWords]}
+                    value={wordB}
+                    onChange={setWordB}
+                  />
+                </div>
+              )
             ) : (
               <div className="username-composer">
-                <WordPicker label="word 1" words={nameWords} value={wordA} onChange={setWordA} />
-                <WordPicker
-                  label="word 2 (optional)"
-                  words={['', ...nameWords]}
-                  value={wordB}
-                  onChange={setWordB}
-                />
                 <div className="panel-row">
-                  <span className="panel-key">preview</span>
-                  <span className="panel-value">{composedName || '—'}</span>
+                  <span className="panel-key">handle</span>
+                  <input
+                    type="text"
+                    className="auth-input"
+                    maxLength={24}
+                    placeholder="my_handle"
+                    value={custom}
+                    onChange={(e) =>
+                      setCustom(e.target.value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 24))
+                    }
+                    aria-label="custom handle"
+                  />
                 </div>
-                <div className="panel-row">
-                  <span className="panel-key">{msg ?? 'submit to queue for review'}</span>
-                  <button
-                    type="button"
-                    className="panel-toggle is-on"
-                    disabled={busy || composedName.length < 3}
-                    onClick={() => {
-                      void submit();
-                    }}
-                  >
-                    [ submit ]
-                  </button>
+                <div className="panel-stub">
+                  ─── 3–24 chars · letters, numbers, _ or - only · no slurs / impersonation
                 </div>
               </div>
             )}
+            <div className="panel-row">
+              <span className="panel-key">preview</span>
+              <span className="panel-value">{composedName || '—'}</span>
+            </div>
+            <div className="panel-row">
+              <span className="panel-key">{msg ?? 'submit to queue for review'}</span>
+              <button
+                type="button"
+                className="panel-toggle is-on"
+                disabled={busy || composedName.length < 3}
+                onClick={() => {
+                  void submit();
+                }}
+              >
+                [ submit ]
+              </button>
+            </div>
           </section>
 
-          <BadgeStrip
-            badges={badges}
-            equipped={id.equippedBadge}
-            samaritanCorp={id.samaritanCorporate}
-            samaritanBr={id.samaritanBitrunner}
-            onEquip={(key, badgeKey) => {
-              void onEquip(key, badgeKey);
-            }}
-          />
+          <NameStyleSection />
         </>
       )}
 
@@ -298,120 +291,59 @@ function GuestGate(): JSX.Element {
   );
 }
 
-interface BadgeStripProps {
-  badges: MyBadge[] | null;
-  equipped: string;
-  samaritanCorp: number;
-  samaritanBr: number;
-  onEquip(key: string, badgeKey: string): void;
-}
+function NameStyleSection(): JSX.Element {
+  const [style, setStyle] = useState(getNameStyle());
+  useEffect(() => subscribeNameStyle(setStyle), []);
 
-function BadgeStrip({
-  badges,
-  equipped,
-  samaritanCorp,
-  samaritanBr,
-  onEquip,
-}: BadgeStripProps): JSX.Element {
-  const ownedKeys = useMemo(() => new Set((badges ?? []).map((b) => b.badgeKey)), [badges]);
-  const unackKeys = useMemo(
-    () => new Set((badges ?? []).filter((b) => !b.acknowledged).map((b) => b.badgeKey)),
-    [badges],
-  );
+  const setWeight = (weight: NameWeight): void => setNameStyle({ weight });
+  const setTint = (tint: NameTint): void => setNameStyle({ tint });
 
   return (
     <section className="panel-section">
-      <div className="panel-section-title">$ badges</div>
+      <div className="panel-section-title">$ name styling</div>
+      <div className="panel-stub">
+        ─── account-only flair for the floating name above your runner.
+      </div>
       <div className="panel-row">
-        <span className="panel-key">equipped</span>
-        <span className="panel-value">{equipped || '(none)'}</span>
-        {equipped && (
+        <span className="panel-key">weight</span>
+        <div className="name-style-row">
           <button
             type="button"
-            className="panel-toggle"
-            onClick={() => onEquip('', equipped)}
-            aria-label="unequip"
+            className={style.weight === 'regular' ? 'name-style-pill is-on' : 'name-style-pill'}
+            onClick={() => setWeight('regular')}
           >
-            [ x ]
+            regular
           </button>
-        )}
+          <button
+            type="button"
+            className={style.weight === 'bold' ? 'name-style-pill is-on' : 'name-style-pill'}
+            onClick={() => setWeight('bold')}
+          >
+            bold
+          </button>
+        </div>
       </div>
-      <div className="badge-ladders">
-        <BadgeLadder
-          faction="corp"
-          owned={ownedKeys}
-          unack={unackKeys}
-          equipped={equipped}
-          samaritan={samaritanCorp}
-          onEquip={onEquip}
-        />
-        <BadgeLadder
-          faction="br"
-          owned={ownedKeys}
-          unack={unackKeys}
-          equipped={equipped}
-          samaritan={samaritanBr}
-          onEquip={onEquip}
-        />
+      <div className="panel-row">
+        <span className="panel-key">tint</span>
+        <div className="name-style-row">
+          {NAME_TINT_OPTIONS.map((opt) => {
+            const previewClass = `name-style-pill name--${opt.value}${
+              style.tint === opt.value ? ' is-on' : ''
+            }`;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={previewClass}
+                onClick={() => setTint(opt.value)}
+                aria-label={`tint ${opt.label}`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
-  );
-}
-
-function BadgeLadder({
-  faction,
-  owned,
-  unack,
-  equipped,
-  samaritan,
-  onEquip,
-}: {
-  faction: BadgeFaction;
-  owned: Set<string>;
-  unack: Set<string>;
-  equipped: string;
-  samaritan: number;
-  onEquip(key: string, badgeKey: string): void;
-}): JSX.Element {
-  const currentTier = tierForSamaritan(samaritan);
-  const label = faction === 'corp' ? 'corporate' : 'bitrunner';
-  return (
-    <div className="badge-ladder">
-      <div className="badge-ladder-label">
-        {label} · +{samaritan}
-        {currentTier ? ` · ${currentTier}` : ''}
-      </div>
-      <div className="badge-ladder-list">
-        {BADGE_TIERS.map((tier) => {
-          const key = `${faction}:${tier}`;
-          const meta = BADGES[key];
-          if (!meta) return null;
-          const isOwned = owned.has(key);
-          const isEquipped = equipped === key;
-          const isUnack = unack.has(key);
-          const cls = `badge-cell${isOwned ? ' is-owned' : ''}${
-            isEquipped ? ' is-equipped' : ''
-          }${isUnack ? ' is-new' : ''}`;
-          return (
-            <button
-              key={key}
-              type="button"
-              className={cls}
-              disabled={!isOwned}
-              onClick={() => onEquip(key, key)}
-              style={isOwned ? { color: meta.tint } : undefined}
-              title={`${label} ${tier} (+${meta.tierIndex * 10})`}
-              aria-label={`${label} ${tier}${isOwned ? '' : ' (locked)'}${
-                isEquipped ? ' (equipped)' : ''
-              }`}
-            >
-              <span className="badge-cell-glyph">{meta.glyph}</span>
-              <span className="badge-cell-name">{tier}</span>
-              {isUnack && <span className="badge-cell-new">!</span>}
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }

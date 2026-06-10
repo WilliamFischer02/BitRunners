@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
 import { BadgeToast } from './BadgeToast.js';
+import { BadgesModal } from './BadgesModal.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
@@ -174,6 +175,7 @@ function Game({ className }: GameProps): JSX.Element {
       <Starmap />
       <AdminConsole />
       <UsernameEditor />
+      <BadgesModal />
       <BadgeToast />
       <MissionDialogue />
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}

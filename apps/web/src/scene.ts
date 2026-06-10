@@ -57,6 +57,7 @@ import {
   setActiveMission,
   subscribeMissionChanges,
 } from './missions.js';
+import { type NameStyle, getNameStyle, nameStyleClass, subscribeNameStyle } from './name-style.js';
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
@@ -1017,28 +1018,47 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   // Local player's floating name tag. Reads the resolved displayName from
   // profile.ts (signed-in users see their approved handle; guests get a
-  // deterministic `runner_xxxxxx` placeholder). Tapping the tag opens the
-  // username editor. Badge glyph + '!' dot react to identity changes.
-  const playerTagEl = document.createElement('button');
-  playerTagEl.type = 'button';
+  // deterministic `runner_xxxxxx` placeholder).
+  //
+  // Tap regions (PR 79):
+  //   - badge slot  → opens the Badges modal
+  //   - name + sub  → opens the runner-identity editor
+  const playerTagEl = document.createElement('div');
   playerTagEl.className = 'player-tag player-tag--self';
-  playerTagEl.setAttribute('aria-label', 'edit runner identity');
-  const playerTagName = document.createElement('span');
-  playerTagName.className = 'player-tag-name';
+  const playerTagBadgeBtn = document.createElement('button');
+  playerTagBadgeBtn.type = 'button';
+  playerTagBadgeBtn.className = 'player-tag-slot player-tag-slot--badge';
+  playerTagBadgeBtn.setAttribute('aria-label', 'open badges');
   const playerTagBadge = document.createElement('span');
   playerTagBadge.className = 'player-tag-badge';
+  playerTagBadgeBtn.appendChild(playerTagBadge);
+  const playerTagNameBtn = document.createElement('button');
+  playerTagNameBtn.type = 'button';
+  playerTagNameBtn.className = 'player-tag-slot player-tag-slot--name';
+  playerTagNameBtn.setAttribute('aria-label', 'edit runner identity');
+  const playerTagName = document.createElement('span');
+  playerTagName.className = 'player-tag-name';
   const playerTagAlert = document.createElement('span');
   playerTagAlert.className = 'player-tag-alert';
   playerTagAlert.textContent = '!';
   const playerTagSub = document.createElement('span');
   playerTagSub.className = 'player-tag-sub';
   playerTagSub.textContent = '// tap to edit';
-  playerTagEl.appendChild(playerTagBadge);
-  playerTagEl.appendChild(playerTagName);
-  playerTagEl.appendChild(playerTagAlert);
-  playerTagEl.appendChild(playerTagSub);
+  playerTagNameBtn.appendChild(playerTagName);
+  playerTagNameBtn.appendChild(playerTagAlert);
+  playerTagNameBtn.appendChild(playerTagSub);
+  playerTagEl.appendChild(playerTagBadgeBtn);
+  playerTagEl.appendChild(playerTagNameBtn);
   host.appendChild(playerTagEl);
-  playerTagEl.addEventListener('click', (e) => {
+  playerTagBadgeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try {
+      window.dispatchEvent(new CustomEvent('bitrunners:open-badges'));
+    } catch {
+      // non-DOM env — ignore
+    }
+  });
+  playerTagNameBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     try {
       window.dispatchEvent(new CustomEvent('bitrunners:edit-identity'));
@@ -1073,6 +1093,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   // Initial render + identity subscription.
   let localIdentity: LocalIdentity = getIdentity();
+  let localNameStyle: NameStyle = { ...getNameStyle() };
+  function applyLocalNameStyle(): void {
+    const cls = nameStyleClass(localNameStyle, localIdentity.signedIn);
+    playerTagName.className = `player-tag-name${cls ? ` ${cls}` : ''}`;
+  }
   applyTag(
     playerTagEl,
     playerTagName,
@@ -1082,6 +1107,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     localIdentity.equippedBadge,
     localIdentity.unacknowledged,
   );
+  applyLocalNameStyle();
   // Apply the stored theme immediately (no-ops for empty string / guest).
   applyThemeToPass(asciiPass, localIdentity.equippedTheme);
 
@@ -1089,6 +1115,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const wasName = localIdentity.displayName;
     const wasBadge = localIdentity.equippedBadge;
     const wasTheme = localIdentity.equippedTheme;
+    const wasSignedIn = localIdentity.signedIn;
     localIdentity = next;
     applyTag(
       playerTagEl,
@@ -1099,6 +1126,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       next.equippedBadge,
       next.unacknowledged,
     );
+    // The signed-in flip changes whether name styling applies.
+    if (wasSignedIn !== next.signedIn) applyLocalNameStyle();
     // Hot-swap the ASCII tints whenever the equipped theme changes.
     if (wasTheme !== next.equippedTheme) {
       applyThemeToPass(asciiPass, next.equippedTheme);
@@ -1116,6 +1145,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         equippedTheme: next.equippedTheme,
       });
     }
+  });
+  const unsubscribeNameStyle = subscribeNameStyle((next) => {
+    localNameStyle = { ...next };
+    applyLocalNameStyle();
   });
 
   function resize(): void {
@@ -1833,6 +1866,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
     remoteAvatars.clear();
     unsubscribeIdentity();
+    unsubscribeNameStyle();
     unsubscribeMission();
     clearMissionMarkers();
     for (const te of trackedEmotes) {

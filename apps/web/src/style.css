@@ -1409,6 +1409,82 @@ dialog.panel::backdrop {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+/* ──────────── name styling presets (PR 79) ──────────── */
+/* Applied to .player-tag-name when the runner is signed in. Default
+   look (no class) stays the existing mint green. */
+.name--bold {
+  font-weight: 800;
+}
+.name--solid_mint {
+  color: #84d8a4;
+  text-shadow: 0 0 6px rgba(132, 216, 164, 0.6), 0 0 14px rgba(132, 216, 164, 0.3);
+}
+.name--solid_ember {
+  color: #ff9450;
+  text-shadow: 0 0 6px rgba(255, 148, 80, 0.6), 0 0 14px rgba(255, 148, 80, 0.3);
+}
+.name--solid_iris {
+  color: #b07cff;
+  text-shadow: 0 0 6px rgba(176, 124, 255, 0.6), 0 0 14px rgba(176, 124, 255, 0.3);
+}
+.name--gradient {
+  background: linear-gradient(90deg, #84d8a4 0%, #b07cff 60%, #ff9450 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+.name--glow {
+  color: #ffffff;
+  text-shadow: 0 0 6px #84d8a4, 0 0 12px #84d8a4, 0 0 20px rgba(132, 216, 164, 0.6);
+}
+
+/* In-modal preview pills for the name-style picker. */
+.name-style-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.name-style-pill {
+  background: transparent;
+  border: 1px solid #2a3a32;
+  border-radius: 3px;
+  padding: 2px 8px;
+  min-height: var(--ui-tap-min, 22px);
+  font: inherit;
+  color: var(--tint-dim);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.name-style-pill.is-on {
+  border-color: #84d8a4;
+  color: #c0ffd6;
+}
+
+/* Two-slot player tag layout (PR 79). The badge slot opens BadgesModal;
+   the name slot opens the identity editor. Each is its own button. */
+.player-tag-slot {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.player-tag-slot:hover {
+  filter: brightness(1.2);
+}
+.player-tag-slot--name {
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 /* ──────────── auth UI in profile panel ──────────── */
 .auth-providers {
   display: grid;
