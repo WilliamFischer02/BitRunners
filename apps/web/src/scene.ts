@@ -73,6 +73,13 @@ import {
   releaseLock,
   tickLock,
 } from './target-lock.js';
+import {
+  leaveTether,
+  setTetherSink,
+  tetherDeclined,
+  tetherEstablished,
+  tetherReceive,
+} from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
 
@@ -1453,9 +1460,32 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               const ra = remoteAvatars.get(id);
               if (ra) spawnRemoteEmote(ra.group, text);
             },
+            onTetherIncoming(peer) {
+              try {
+                window.dispatchEvent(
+                  new CustomEvent('bitrunners:tether-incoming', { detail: { peer } }),
+                );
+              } catch {
+                // non-DOM env — ignore
+              }
+            },
+            onTetherAccepted(peer) {
+              tetherEstablished(peer);
+            },
+            onTetherDeclined(_from) {
+              tetherDeclined();
+            },
+            onTetherMessage(_from, body, isEmote) {
+              tetherReceive(body, isEmote);
+            },
+            onTetherEnded(_from) {
+              leaveTether();
+            },
             onDisconnect(_code) {
               if (sceneDisposed) return;
               netSession = null;
+              setTetherSink(null);
+              leaveTether();
               clearRemoteAvatars();
               if (reconnectAttempt < RECONNECT_DELAYS.length) {
                 const delay = RECONNECT_DELAYS[reconnectAttempt] ?? 3_000;
@@ -1471,6 +1501,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         );
         reconnectAttempt = 0;
         netSession = session;
+        setTetherSink({
+          request: (target) => session.sendTetherRequest(target),
+          accept: (from) => session.sendTetherAccept(from),
+          decline: (from) => session.sendTetherDecline(from),
+          send: (target, body, isEmote) => session.sendTetherMessage(target, body, isEmote),
+          leave: (target) => session.sendTetherLeave(target),
+        });
         setNet(`net: ok · ${session.sessionId.slice(0, 6)}`, 'ok');
         try {
           window.dispatchEvent(
@@ -1507,6 +1544,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (netSession) {
       const s = netSession;
       netSession = null;
+      setTetherSink(null);
+      leaveTether();
       clearRemoteAvatars();
       // intentionalLeave inside dispose suppresses onDisconnect callback,
       // so the RECONNECT_DELAYS path does NOT fire — standby is not a

@@ -11,10 +11,10 @@
 // both be set before the cartridge becomes usable. Both ride one
 // versioned localStorage blob alongside the timestamp of acceptance.
 //
-// Network seam: tetherSend / tetherRequest currently broadcast on the
-// DOM event bus only. A follow-up PR will route these through the
-// Colyseus channel that already carries identity + emote updates.
-// The state machine and UI are agnostic to that swap.
+// Network seam (PR 87): scene.ts installs a TetherSink that routes the
+// outbound side through the live Colyseus session. Inbound events arrive
+// as direct calls to tetherEstablished / tetherDeclined / tetherReceive
+// / leaveTether — this module stays UI-agnostic and frame-agnostic.
 
 export type TetherStatus = 'idle' | 'targeting' | 'pending' | 'tethered';
 
@@ -43,8 +43,26 @@ export const TETHER_HISTORY_CAP = 40;
 const TOS_STORAGE_KEY = 'bitrunners.tether-tos.v1';
 const STATE_EVENT = 'bitrunners:tether-state-changed';
 const MESSAGE_EVENT = 'bitrunners:tether-message';
-const REQUEST_EVENT = 'bitrunners:tether-request';
-const SEND_EVENT = 'bitrunners:tether-send';
+
+export interface TetherSink {
+  request(target: string): void;
+  accept(from: string): void;
+  decline(from: string): void;
+  send(target: string, body: string, isEmote: boolean): void;
+  leave(target: string): void;
+}
+
+let sink: TetherSink | null = null;
+
+/** Scene.ts (network owner) installs this once per Colyseus session.
+ *  Returns an unbind that nulls the slot — call on session dispose so a
+ *  reconnect doesn't keep firing into the old room. */
+export function setTetherSink(next: TetherSink | null): () => void {
+  sink = next;
+  return () => {
+    if (sink === next) sink = null;
+  };
+}
 
 export interface TetherTos {
   v: 1;
@@ -117,8 +135,10 @@ export function enterTargeting(): void {
 
 /** End the current tether or leave targeting mode. */
 export function leaveTether(): void {
+  const prev = state.peer;
   state = { status: 'idle', peer: null, messages: [] };
   emit();
+  if (prev && sink) sink.leave(prev.id);
 }
 
 /** Local-side: this runner taps a remote avatar while in targeting mode. */
@@ -126,11 +146,21 @@ export function sendTetherRequest(peer: TetherPeer): void {
   if (state.status !== 'targeting') return;
   state = { ...state, status: 'pending', peer, messages: [] };
   emit();
-  try {
-    window.dispatchEvent(new CustomEvent(REQUEST_EVENT, { detail: { kind: 'outbound', peer } }));
-  } catch {
-    // non-DOM env — ignore
-  }
+  sink?.request(peer.id);
+}
+
+/** Local-side accept of an inbound request — fires the network handshake
+ *  and flips into 'tethered'. The IncomingRequestModal calls this. */
+export function acceptIncomingTether(peer: TetherPeer): void {
+  sink?.accept(peer.id);
+  tetherEstablished(peer);
+}
+
+/** Local-side decline of an inbound request. Fires the network handshake
+ *  and stays idle. */
+export function declineIncomingTether(peer: TetherPeer): void {
+  sink?.decline(peer.id);
+  tetherDeclined();
 }
 
 /** Remote runner approved our request. */
@@ -152,14 +182,9 @@ export function tetherEstablished(peer: TetherPeer): void {
 }
 
 /** Remote runner declined or the request timed out. */
-export function tetherDeclined(reason = 'declined'): void {
+export function tetherDeclined(): void {
   state = { status: 'idle', peer: null, messages: [] };
   emit();
-  try {
-    window.dispatchEvent(new CustomEvent(REQUEST_EVENT, { detail: { kind: 'declined', reason } }));
-  } catch {
-    // non-DOM env — ignore
-  }
 }
 
 function appendMessage(msg: TetherMessage): void {
@@ -175,7 +200,7 @@ function appendMessage(msg: TetherMessage): void {
 
 /** Send a text body (≤ TETHER_MAX_CHARS, profanity policy applied by server). */
 export function tetherSend(body: string): void {
-  if (state.status !== 'tethered') return;
+  if (state.status !== 'tethered' || !state.peer) return;
   const trimmed = body.slice(0, TETHER_MAX_CHARS).trim();
   if (trimmed.length === 0) return;
   appendMessage({
@@ -185,18 +210,12 @@ export function tetherSend(body: string): void {
     isEmote: false,
     ts: Date.now(),
   });
-  try {
-    window.dispatchEvent(
-      new CustomEvent(SEND_EVENT, { detail: { body: trimmed, isEmote: false } }),
-    );
-  } catch {
-    // non-DOM env — ignore
-  }
+  sink?.send(state.peer.id, trimmed, false);
 }
 
 /** Send an emote glyph — rendered as a chat bubble on the peer's side. */
 export function tetherSendEmote(glyph: string): void {
-  if (state.status !== 'tethered') return;
+  if (state.status !== 'tethered' || !state.peer) return;
   const g = glyph.slice(0, 4);
   appendMessage({
     id: Date.now(),
@@ -205,11 +224,7 @@ export function tetherSendEmote(glyph: string): void {
     isEmote: true,
     ts: Date.now(),
   });
-  try {
-    window.dispatchEvent(new CustomEvent(SEND_EVENT, { detail: { body: g, isEmote: true } }));
-  } catch {
-    // non-DOM env — ignore
-  }
+  sink?.send(state.peer.id, g, true);
 }
 
 /** Inbound — called when the network layer delivers a peer message. */
@@ -233,6 +248,4 @@ export function isTargeting(): boolean {
 export const TETHER_EVENTS = {
   state: STATE_EVENT,
   message: MESSAGE_EVENT,
-  request: REQUEST_EVENT,
-  send: SEND_EVENT,
 } as const;

@@ -4,9 +4,11 @@ import {
   EMOTE_GLYPHS,
   PLATFORM_HALF,
   PLATFORM_SIZE,
+  TETHER_RATE_LIMIT_PER_MIN,
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
+  isValidTetherBody,
   isValidThemeKey,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
@@ -63,11 +65,26 @@ interface Npc {
   emoteAt: number;
 }
 
+// Tether chat state per sphere. activeTethers maps each engaged sessionId to
+// its peer's sessionId (one entry per side, so lookups are O(1) from either
+// end). pendingRequests maps target → requester so accept/decline can
+// validate the handshake. tetherRate is a sliding window per (a,b) pair.
+interface TetherRate {
+  windowStart: number;
+  count: number;
+}
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
 export class SphereRoom extends Room<SphereState> {
   override maxClients = MAX_HUMANS;
   private lastSeen = new Map<string, number>();
   private npcs: Npc[] = [];
   private lastTickAt = Date.now();
+  private activeTethers = new Map<string, string>();
+  private pendingRequests = new Map<string, string>();
+  private tetherRate = new Map<string, TetherRate>();
 
   override onCreate(_options: unknown): void {
     this.state = new SphereState();
@@ -137,6 +154,130 @@ export class SphereRoom extends Room<SphereState> {
         }
       },
     );
+
+    // ── Tether chat (PR 87) ────────────────────────────────────────────────
+    // Server routes the 5 tether messages between exactly two consenting
+    // peers and enforces shape + rate limit. Heavy moderation (profanity,
+    // block list, audit log) is a follow-up — this is the minimum bar.
+
+    this.onMessage('tether-request', (client: Client, msg: { target?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const target = typeof msg?.target === 'string' ? msg.target : '';
+      if (!target || target === client.sessionId) return;
+      if (!this.state.players.has(target)) return;
+      // Drop if either party is already tethered or has a pending request.
+      if (this.activeTethers.has(client.sessionId)) return;
+      if (this.activeTethers.has(target)) return;
+      if (this.pendingRequests.has(target)) return;
+      this.pendingRequests.set(target, client.sessionId);
+      const me = this.state.players.get(client.sessionId);
+      const peer = this.findClient(target);
+      if (peer) {
+        peer.send('tether-incoming', {
+          from: client.sessionId,
+          name: me?.displayName ?? '',
+        });
+      }
+    });
+
+    this.onMessage('tether-accept', (client: Client, msg: { from?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const from = typeof msg?.from === 'string' ? msg.from : '';
+      const expected = this.pendingRequests.get(client.sessionId);
+      if (!from || from !== expected) return;
+      this.pendingRequests.delete(client.sessionId);
+      this.activeTethers.set(client.sessionId, from);
+      this.activeTethers.set(from, client.sessionId);
+      const me = this.state.players.get(client.sessionId);
+      const requester = this.findClient(from);
+      if (requester) {
+        requester.send('tether-accepted', {
+          from: client.sessionId,
+          name: me?.displayName ?? '',
+        });
+      }
+    });
+
+    this.onMessage('tether-decline', (client: Client, msg: { from?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const from = typeof msg?.from === 'string' ? msg.from : '';
+      const expected = this.pendingRequests.get(client.sessionId);
+      if (!from || from !== expected) return;
+      this.pendingRequests.delete(client.sessionId);
+      const requester = this.findClient(from);
+      if (requester) {
+        requester.send('tether-declined', { from: client.sessionId });
+      }
+    });
+
+    this.onMessage(
+      'tether-send',
+      (client: Client, msg: { target?: unknown; body?: unknown; isEmote?: unknown }) => {
+        this.lastSeen.set(client.sessionId, Date.now());
+        const target = typeof msg?.target === 'string' ? msg.target : '';
+        if (!target) return;
+        // Only deliver to the bound peer — drop attempts to spray messages.
+        const bound = this.activeTethers.get(client.sessionId);
+        if (!bound || bound !== target) return;
+        if (!isValidTetherBody(msg?.body)) return;
+        const isEmote = msg?.isEmote === true;
+
+        // Sliding-window rate limit per pair. Resets on each new minute boundary
+        // so a runner can't burst-flood between checks.
+        const key = pairKey(client.sessionId, target);
+        const now = Date.now();
+        const slot = this.tetherRate.get(key) ?? { windowStart: now, count: 0 };
+        if (now - slot.windowStart > 60_000) {
+          slot.windowStart = now;
+          slot.count = 0;
+        }
+        if (slot.count >= TETHER_RATE_LIMIT_PER_MIN) return;
+        slot.count++;
+        this.tetherRate.set(key, slot);
+
+        const peer = this.findClient(target);
+        if (peer) {
+          peer.send('tether-message', {
+            from: client.sessionId,
+            body: msg.body as string,
+            isEmote,
+          });
+        }
+      },
+    );
+
+    this.onMessage('tether-leave', (client: Client, msg: { target?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const target = typeof msg?.target === 'string' ? msg.target : '';
+      if (!target) return;
+      this.endTether(client.sessionId, target);
+    });
+  }
+
+  /** Look up a live Client by sessionId. Linear scan, but `clients` is small
+   *  (≤ MAX_HUMANS = 40). Returns null if the peer has already disconnected. */
+  private findClient(sessionId: string): Client | null {
+    for (const c of this.clients) {
+      if (c.sessionId === sessionId) return c;
+    }
+    return null;
+  }
+
+  /** Tear down a tether from either side. Notifies the surviving peer with
+   *  'tether-ended' so the chat overlay closes cleanly. Also wipes any
+   *  pending-request entries that referenced either side. */
+  private endTether(a: string, b: string): void {
+    const boundA = this.activeTethers.get(a);
+    const boundB = this.activeTethers.get(b);
+    if (boundA === b) this.activeTethers.delete(a);
+    if (boundB === a) this.activeTethers.delete(b);
+    this.pendingRequests.delete(a);
+    this.pendingRequests.delete(b);
+    this.tetherRate.delete(pairKey(a, b));
+    const peer = this.findClient(boundA === b ? b : a);
+    if (peer && peer.sessionId !== a) {
+      peer.send('tether-ended', { from: a });
+    }
   }
 
   override onJoin(
@@ -177,6 +318,19 @@ export class SphereRoom extends Room<SphereState> {
 
   override onLeave(client: Client): void {
     // Phase 2: snapshot to Upstash with aether TTL before removing.
+    const bound = this.activeTethers.get(client.sessionId);
+    if (bound) this.endTether(client.sessionId, bound);
+    // Also notify anyone who had a pending invite to this client, since
+    // accept/decline against a gone target would silently no-op otherwise.
+    for (const [target, requester] of this.pendingRequests) {
+      if (target === client.sessionId || requester === client.sessionId) {
+        this.pendingRequests.delete(target);
+        const survivor = this.findClient(target === client.sessionId ? requester : target);
+        if (survivor) {
+          survivor.send('tether-declined', { from: client.sessionId });
+        }
+      }
+    }
     this.state.players.delete(client.sessionId);
     this.lastSeen.delete(client.sessionId);
   }

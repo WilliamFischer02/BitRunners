@@ -20,6 +20,11 @@ export interface IdentityUpdate {
   equippedTheme?: string;
 }
 
+export interface TetherPeerSummary {
+  id: string;
+  name: string;
+}
+
 export interface NetworkCallbacks {
   onJoin?(p: RemotePlayer): void;
   onLeave?(id: string): void;
@@ -28,6 +33,14 @@ export interface NetworkCallbacks {
   onIdentity?(id: string, p: RemotePlayer): void;
   /** Fired when the server closes the connection unexpectedly (e.g. idle kick). */
   onDisconnect?(code: number): void;
+  // Tether chat (PR 87) — server routes the five message types between
+  // exactly two consenting peers. Each callback receives the originating
+  // sessionId so the client can match against the local tether state.
+  onTetherIncoming?(peer: TetherPeerSummary): void;
+  onTetherAccepted?(peer: TetherPeerSummary): void;
+  onTetherDeclined?(from: string): void;
+  onTetherMessage?(from: string, body: string, isEmote: boolean): void;
+  onTetherEnded?(from: string): void;
 }
 
 export interface JoinOptions {
@@ -44,6 +57,11 @@ export interface NetworkSession {
   sendEmote(text: string): void;
   setClass(name: string): void;
   sendIdentity(update: IdentityUpdate): void;
+  sendTetherRequest(target: string): void;
+  sendTetherAccept(from: string): void;
+  sendTetherDecline(from: string): void;
+  sendTetherMessage(target: string, body: string, isEmote: boolean): void;
+  sendTetherLeave(target: string): void;
   dispose(): Promise<void>;
 }
 
@@ -175,6 +193,29 @@ export async function joinSphere(
     });
   }
 
+  // Tether chat (PR 87) — server-routed peer-to-peer. The handlers are
+  // optional so a build without tether UI is still safe.
+  room.onMessage('tether-incoming', (msg: { from?: string; name?: string }) => {
+    if (typeof msg?.from !== 'string') return;
+    callbacks.onTetherIncoming?.({ id: msg.from, name: msg.name ?? '' });
+  });
+  room.onMessage('tether-accepted', (msg: { from?: string; name?: string }) => {
+    if (typeof msg?.from !== 'string') return;
+    callbacks.onTetherAccepted?.({ id: msg.from, name: msg.name ?? '' });
+  });
+  room.onMessage('tether-declined', (msg: { from?: string }) => {
+    if (typeof msg?.from !== 'string') return;
+    callbacks.onTetherDeclined?.(msg.from);
+  });
+  room.onMessage('tether-message', (msg: { from?: string; body?: string; isEmote?: boolean }) => {
+    if (typeof msg?.from !== 'string' || typeof msg?.body !== 'string') return;
+    callbacks.onTetherMessage?.(msg.from, msg.body, msg.isEmote === true);
+  });
+  room.onMessage('tether-ended', (msg: { from?: string }) => {
+    if (typeof msg?.from !== 'string') return;
+    callbacks.onTetherEnded?.(msg.from);
+  });
+
   let intentionalLeave = false;
   room.onLeave((code: number) => {
     if (!intentionalLeave) callbacks.onDisconnect?.(code);
@@ -202,6 +243,21 @@ export async function joinSphere(
         return;
       }
       room.send('identity', update);
+    },
+    sendTetherRequest(target) {
+      room.send('tether-request', { target });
+    },
+    sendTetherAccept(from) {
+      room.send('tether-accept', { from });
+    },
+    sendTetherDecline(from) {
+      room.send('tether-decline', { from });
+    },
+    sendTetherMessage(target, body, isEmote) {
+      room.send('tether-send', { target, body, isEmote });
+    },
+    sendTetherLeave(target) {
+      room.send('tether-leave', { target });
     },
     async dispose() {
       intentionalLeave = true;
