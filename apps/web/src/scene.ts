@@ -1449,7 +1449,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 setNet(`net: reconnecting in ${delay / 1000}s…`, 'connecting');
                 window.setTimeout(() => void connectSphere(), delay);
               } else {
-                setNet('net: disconnected · reload to reconnect', 'error');
+                setNet('net: disconnected · reload', 'error');
               }
             },
           },
@@ -1457,7 +1457,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         );
         reconnectAttempt = 0;
         netSession = session;
-        setNet(`net: connected · session ${session.sessionId.slice(0, 6)}`, 'ok');
+        setNet(`net: ok · ${session.sessionId.slice(0, 6)}`, 'ok');
         try {
           window.dispatchEvent(
             new CustomEvent('bitrunners:room-joined', { detail: { roomId: session.roomId } }),
