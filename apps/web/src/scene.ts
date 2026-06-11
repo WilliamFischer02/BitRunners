@@ -79,6 +79,7 @@ import {
   tetherDeclined,
   tetherEstablished,
   tetherReceive,
+  tetherSystemNotice,
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
@@ -1480,6 +1481,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             },
             onTetherEnded(_from) {
               leaveTether();
+            },
+            onTetherRejected(_reason) {
+              tetherSystemNotice('// channel rejected');
             },
             onDisconnect(_code) {
               if (sceneDisposed) return;

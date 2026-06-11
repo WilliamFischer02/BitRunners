@@ -3,10 +3,12 @@ import { PROTOCOL_VERSION } from '@bitrunners/shared';
 import { Server as ColyseusServer } from '@colyseus/core';
 import { WebSocketTransport } from '@colyseus/ws-transport';
 import Fastify from 'fastify';
+import { recentAudit } from './audit.js';
 import { SphereRoom } from './sphere-room.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
 const HOST = process.env.HOST ?? '0.0.0.0';
+const AUDIT_TOKEN = process.env.AUDIT_TOKEN ?? '';
 
 const fastify = Fastify({
   logger: { level: process.env.LOG_LEVEL ?? 'info' },
@@ -27,6 +29,23 @@ fastify.get('/', async () => ({
   phase: 'phase-2-scaffold',
   rooms: ['sphere'],
 }));
+
+// In-memory tether moderation audit — last 200 flagged/blocked events.
+// Token gate via the AUDIT_TOKEN env var (set in fly.toml secrets). When
+// unset, the route 404s — there's no point exposing it without the token.
+fastify.get('/audit/recent', async (req, reply) => {
+  if (!AUDIT_TOKEN) {
+    reply.code(404);
+    return { error: 'not enabled' };
+  }
+  const token = (req.query as { token?: string })?.token ?? '';
+  if (token !== AUDIT_TOKEN) {
+    reply.code(401);
+    return { error: 'invalid token' };
+  }
+  const limit = Number((req.query as { limit?: string })?.limit ?? '50');
+  return { events: recentAudit(Number.isFinite(limit) ? limit : 50) };
+});
 
 const gameServer = new ColyseusServer({
   transport: new WebSocketTransport({ server: fastify.server }),

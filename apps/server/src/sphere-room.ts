@@ -12,6 +12,8 @@ import {
   isValidThemeKey,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
+import { recordAudit } from './audit.js';
+import { classifyTetherBody } from './profanity.js';
 import { PlayerState, SphereState } from './state.js';
 
 interface MoveMessage {
@@ -221,6 +223,7 @@ export class SphereRoom extends Room<SphereState> {
         if (!bound || bound !== target) return;
         if (!isValidTetherBody(msg?.body)) return;
         const isEmote = msg?.isEmote === true;
+        const body = msg.body as string;
 
         // Sliding-window rate limit per pair. Resets on each new minute boundary
         // so a runner can't burst-flood between checks.
@@ -235,11 +238,34 @@ export class SphereRoom extends Room<SphereState> {
         slot.count++;
         this.tetherRate.set(key, slot);
 
+        // Moderation gate — classify, audit, and route per outcome.
+        // Emote glyphs short-circuit to 'clean' inside classifyTetherBody.
+        const verdict = classifyTetherBody(body, isEmote);
+        if (verdict.moderation !== 'clean') {
+          const sender = this.state.players.get(client.sessionId);
+          recordAudit({
+            ts: now,
+            roomId: this.roomId,
+            fromSessionId: client.sessionId,
+            toSessionId: target,
+            fromName: sender?.displayName ?? '',
+            body,
+            isEmote,
+            moderation: verdict.moderation,
+            match: verdict.match,
+          });
+        }
+        if (verdict.moderation === 'blocked') {
+          // Sender gets a generic notice; no leak about which word matched.
+          client.send('tether-rejected', { reason: 'moderation' });
+          return;
+        }
+
         const peer = this.findClient(target);
         if (peer) {
           peer.send('tether-message', {
             from: client.sessionId,
-            body: msg.body as string,
+            body,
             isEmote,
           });
         }
