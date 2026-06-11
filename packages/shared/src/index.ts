@@ -1,8 +1,7 @@
-// Bumped to 2: PlayerState gained displayName / equippedBadge / equippedTheme,
-// and the room gained an 'identity' message (Sub-Phase B, docs/lore/010+016).
-// Surfaced in the server /health info only — not a connection handshake gate —
-// so old clients still connect; they just don't see new identity fields.
-export const PROTOCOL_VERSION = 2;
+// Bumped to 3: tether_chat protocol added (verified-account peer chat with
+// 25-char free text + emote bubbles). Server gained tether-request / -accept /
+// -decline / -send / -leave messages with server-side rate limiting per pair.
+export const PROTOCOL_VERSION = 3;
 
 // Square play area, torus-wrapped (3x3 visible tile grid). Doubled in Phase 3
 // (devlog 0057) from 9.5 -> 19 to give room for obstacles + dwellers without
@@ -69,4 +68,37 @@ export function isValidBadgeKey(key: unknown): key is string {
 const THEME_KEY_RE = /^[a-z0-9_]{3,32}$/;
 export function isValidThemeKey(key: unknown): key is string {
   return typeof key === 'string' && THEME_KEY_RE.test(key);
+}
+
+// ── Tether chat (PR 87 — Phase-2 chat wire-up) ────────────────────────────
+//
+// 1:1 chat between two consenting runners in the same sphere. Client gates
+// the surface behind a verified account + age-confirm ToS blob; the server
+// adds shape validation, per-pair rate limit, and routing.
+//
+// Wire shapes (each is a Colyseus message payload):
+//
+//   client → server
+//     'tether-request'  { target: sessionId }
+//     'tether-accept'   { from:   sessionId }
+//     'tether-decline'  { from:   sessionId }
+//     'tether-send'     { target: sessionId, body: string, isEmote: boolean }
+//     'tether-leave'    { target: sessionId }
+//
+//   server → client (broadcast to specific peer)
+//     'tether-incoming' { from: sessionId, name: string }
+//     'tether-accepted' { from: sessionId, name: string }
+//     'tether-declined' { from: sessionId }
+//     'tether-message'  { from: sessionId, body: string, isEmote: boolean }
+//     'tether-ended'    { from: sessionId }
+
+export const TETHER_MAX_CHARS = 25;
+export const TETHER_RATE_LIMIT_PER_MIN = 30;
+
+// Free-text body — printable ASCII only, ≤ 25 chars. Rejects control chars
+// and multi-byte sequences. The full moderation stack (profanity filter,
+// block list, audit log) lands in a follow-up — this is the minimum bar.
+const TETHER_BODY_RE = /^[\x20-\x7E]{1,25}$/;
+export function isValidTetherBody(body: unknown): body is string {
+  return typeof body === 'string' && TETHER_BODY_RE.test(body);
 }

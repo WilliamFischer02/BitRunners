@@ -5,14 +5,14 @@ import {
   type TetherMessage,
   type TetherPeer,
   type TetherStatus,
+  acceptIncomingTether,
   acceptTetherTos,
+  declineIncomingTether,
   enterTargeting,
   getTetherState,
   hasAcceptedTetherTos,
   leaveTether,
   subscribeTether,
-  tetherDeclined,
-  tetherEstablished,
   tetherSend,
 } from './tether-chat.js';
 
@@ -376,11 +376,11 @@ function IncomingRequestModal(): JSX.Element | null {
   if (!req) return null;
 
   const accept = (): void => {
-    tetherEstablished(req.peer);
+    acceptIncomingTether(req.peer);
     setReq(null);
   };
   const decline = (): void => {
-    tetherDeclined();
+    declineIncomingTether(req.peer);
     setReq(null);
   };
 
