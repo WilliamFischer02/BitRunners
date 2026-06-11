@@ -1089,15 +1089,26 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     displayName: string,
     badgeKey: string,
     unacknowledged: number,
+    isSelf = false,
   ): void {
     nameSpan.textContent = displayName || 'runner';
     const meta = badgeKey ? BADGES[badgeKey] : null;
     if (meta) {
       badgeSpan.textContent = meta.glyph;
       badgeSpan.style.color = meta.tint;
+      badgeSpan.classList.remove('player-tag-badge--empty');
+      badgeSpan.style.display = '';
+    } else if (isSelf) {
+      // Local-only placeholder so the badge slot is discoverable even
+      // before any badge is earned. Tapping opens the Badges modal so
+      // the runner can see the full tier ladder.
+      badgeSpan.textContent = '◇';
+      badgeSpan.style.color = '';
+      badgeSpan.classList.add('player-tag-badge--empty');
       badgeSpan.style.display = '';
     } else {
       badgeSpan.textContent = '';
+      badgeSpan.classList.remove('player-tag-badge--empty');
       badgeSpan.style.display = 'none';
     }
     if (alertSpan) {
@@ -1120,6 +1131,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     localIdentity.displayName,
     localIdentity.equippedBadge,
     localIdentity.unacknowledged,
+    true,
   );
   applyLocalNameStyle();
   // Apply the stored theme immediately (no-ops for empty string / guest).
@@ -1139,6 +1151,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       next.displayName,
       next.equippedBadge,
       next.unacknowledged,
+      true,
     );
     // The signed-in flip changes whether name styling applies.
     if (wasSignedIn !== next.signedIn) applyLocalNameStyle();
