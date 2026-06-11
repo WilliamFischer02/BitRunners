@@ -239,6 +239,19 @@ export function tetherReceive(body: string, isEmote: boolean): void {
   });
 }
 
+/** Server signalled our outbound message was dropped (moderation). Append a
+ *  system line so the sender sees a clear notice instead of silent loss. */
+export function tetherSystemNotice(body: string): void {
+  if (state.status !== 'tethered') return;
+  appendMessage({
+    id: Date.now(),
+    from: 'system',
+    body,
+    isEmote: false,
+    ts: Date.now(),
+  });
+}
+
 /** Tap-to-tether targeting — the scene's remote-avatar click handler asks
  *  this module whether a tap should fire a tether request. */
 export function isTargeting(): boolean {

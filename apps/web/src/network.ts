@@ -41,6 +41,8 @@ export interface NetworkCallbacks {
   onTetherDeclined?(from: string): void;
   onTetherMessage?(from: string, body: string, isEmote: boolean): void;
   onTetherEnded?(from: string): void;
+  /** Fired after the server drops our outbound message during moderation. */
+  onTetherRejected?(reason: string): void;
 }
 
 export interface JoinOptions {
@@ -214,6 +216,9 @@ export async function joinSphere(
   room.onMessage('tether-ended', (msg: { from?: string }) => {
     if (typeof msg?.from !== 'string') return;
     callbacks.onTetherEnded?.(msg.from);
+  });
+  room.onMessage('tether-rejected', (msg: { reason?: string }) => {
+    callbacks.onTetherRejected?.(msg?.reason ?? 'moderation');
   });
 
   let intentionalLeave = false;
