@@ -4151,9 +4151,11 @@ dialog.panel::backdrop {
     border-radius: 19px;
   }
   .protocols-launch {
-    /* Lower + closer to the right edge. */
+    /* Lower + closer to the right edge. Sits 12 px into the bottom of
+       the profile pill (its top is 26 px below profile's top of 138;
+       profile's bottom is 176, protocols' top is 164 → 12 px overlap). */
     right: 8px;
-    top: 184px;
+    top: 164px;
   }
   .profile {
     /* Higher + nudged inward, so the pair forms a stair-step. */
