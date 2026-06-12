@@ -44,6 +44,7 @@ import {
   subscribeAppearance,
 } from './appearance.js';
 import { BADGES } from './badges.js';
+import { isBlocked } from './block-list.js';
 import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
@@ -1462,6 +1463,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               if (ra) spawnRemoteEmote(ra.group, text);
             },
             onTetherIncoming(peer) {
+              // Drop silently if the sender is on this runner's block list.
+              if (isBlocked(peer.id)) return;
               try {
                 window.dispatchEvent(
                   new CustomEvent('bitrunners:tether-incoming', { detail: { peer } }),

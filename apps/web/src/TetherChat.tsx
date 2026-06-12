@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { type BlockEntry, getBlocks, removeBlock, subscribeBlocks } from './block-list.js';
 import { getIdentity, subscribeIdentity } from './profile.js';
 import {
   TETHER_MAX_CHARS,
@@ -7,6 +8,7 @@ import {
   type TetherStatus,
   acceptIncomingTether,
   acceptTetherTos,
+  blockCurrentPeer,
   declineIncomingTether,
   enterTargeting,
   getTetherState,
@@ -35,6 +37,7 @@ export function TetherChat(): JSX.Element {
       <TetherCartridge />
       <ChatOverlay />
       <IncomingRequestModal />
+      <BlockedListPanel />
     </>
   );
 }
@@ -228,10 +231,84 @@ function TetherPanel({
         </section>
       )}
 
+      {eligible && !showTos && (
+        <section className="panel-section">
+          <div className="panel-section-title">$ block list</div>
+          <div className="panel-row">
+            <span className="panel-key">manage blocked runners</span>
+            <button
+              type="button"
+              className="panel-toggle"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent(BLOCK_LIST_OPEN_EVENT));
+                onClose();
+              }}
+            >
+              [ open ]
+            </button>
+          </div>
+        </section>
+      )}
+
       <footer className="panel-footer">
         25-char limit · emote bubbles · per-pair block list · audit log
       </footer>
     </dialog>
+  );
+}
+
+const BLOCK_LIST_OPEN_EVENT = 'bitrunners:open-block-list';
+
+function BlockedListPanel(): JSX.Element | null {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState<ReadonlyArray<BlockEntry>>(getBlocks());
+
+  useEffect(() => subscribeBlocks(setEntries), []);
+
+  useEffect(() => {
+    const onOpen = (): void => setOpen(true);
+    window.addEventListener(BLOCK_LIST_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(BLOCK_LIST_OPEN_EVENT, onOpen);
+  }, []);
+
+  if (!open) return null;
+
+  return (
+    <div className="panel-backdrop" onMouseDown={() => setOpen(false)}>
+      <dialog
+        open
+        className="panel"
+        aria-modal="true"
+        aria-labelledby="block-list-title"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="panel-header">
+          <span className="panel-title" id="block-list-title">
+            {'// block list'}
+          </span>
+          <button type="button" className="panel-close" onClick={() => setOpen(false)}>
+            ✕
+          </button>
+        </header>
+        <section className="panel-section">
+          <div className="panel-section-title">$ blocked runners</div>
+          {entries.length === 0 && <div className="panel-stub">─── nobody blocked yet.</div>}
+          {entries.map((e) => (
+            <div key={e.id} className="panel-row">
+              <span className="panel-key">{e.name}</span>
+              <button type="button" className="panel-toggle" onClick={() => removeBlock(e.id)}>
+                [ unblock ]
+              </button>
+            </div>
+          ))}
+          <div className="panel-stub">
+            ─── block list is local for now. session ids change per join, so a blocked runner can
+            return under a new id until the server-side user-uuid block ships.
+          </div>
+        </section>
+        <footer className="panel-footer">click outside or press [esc] to close</footer>
+      </dialog>
+    </div>
   );
 }
 
@@ -308,6 +385,17 @@ function ChatOverlay(): JSX.Element | null {
     <output className="tether-overlay" aria-live="polite">
       <header className="tether-overlay-head">
         <span className="tether-overlay-peer">{tether.peer.name}</span>
+        <button
+          type="button"
+          className="tether-overlay-block"
+          onClick={() => {
+            blockCurrentPeer();
+          }}
+          aria-label="block runner"
+          title="block + end"
+        >
+          ⊘
+        </button>
         <button
           type="button"
           className="tether-overlay-end"

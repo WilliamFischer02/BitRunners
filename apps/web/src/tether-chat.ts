@@ -15,6 +15,12 @@
 // outbound side through the live Colyseus session. Inbound events arrive
 // as direct calls to tetherEstablished / tetherDeclined / tetherReceive
 // / leaveTether — this module stays UI-agnostic and frame-agnostic.
+//
+// Block list (PR 90): incoming requests from blocked sessionIds are
+// dropped silently. Outbound requests to a blocked id refuse to flip
+// the state machine (caller already filtered, but defense-in-depth).
+
+import { addBlock, isBlocked } from './block-list.js';
 
 export type TetherStatus = 'idle' | 'targeting' | 'pending' | 'tethered';
 
@@ -141,12 +147,29 @@ export function leaveTether(): void {
   if (prev && sink) sink.leave(prev.id);
 }
 
-/** Local-side: this runner taps a remote avatar while in targeting mode. */
+/** Local-side: this runner taps a remote avatar while in targeting mode.
+ *  Refuses if the target is on the block list (defense-in-depth — the
+ *  caller in scene.ts already drops these, but the state machine never
+ *  trusts callers it doesn't own). */
 export function sendTetherRequest(peer: TetherPeer): void {
   if (state.status !== 'targeting') return;
+  if (isBlocked(peer.id)) {
+    state = { status: 'idle', peer: null, messages: [] };
+    emit();
+    return;
+  }
   state = { ...state, status: 'pending', peer, messages: [] };
   emit();
   sink?.request(peer.id);
+}
+
+/** Block the currently-tethered peer and end the tether. The block list is
+ *  client-only for now (server-side enforcement lands when the server gets
+ *  Supabase integration). */
+export function blockCurrentPeer(): void {
+  if (!state.peer) return;
+  addBlock(state.peer.id, state.peer.name);
+  leaveTether();
 }
 
 /** Local-side accept of an inbound request — fires the network handshake

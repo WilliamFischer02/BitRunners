@@ -1111,7 +1111,8 @@ dialog.panel::backdrop {
   color: #b07cff;
   font-weight: 700;
 }
-.tether-overlay-end {
+.tether-overlay-end,
+.tether-overlay-block {
   appearance: none;
   background: transparent;
   border: 0;
@@ -1122,6 +1123,9 @@ dialog.panel::backdrop {
 }
 .tether-overlay-end:hover {
   color: #ff9450;
+}
+.tether-overlay-block:hover {
+  color: #ff6e6e;
 }
 .tether-overlay-list {
   flex: 1;
