@@ -4126,24 +4126,77 @@ dialog.panel::backdrop {
 }
 
 @media (max-width: 540px) {
+  /* Owner-requested pill layout (devlog 0082): the 54×54 square tiles
+     truncated 'server_speaker' to 'ver_spea' and 'protocols' to
+     'rotocol'. Going wider + shorter, with a small inside-corner overlap
+     so the pair reads as a unit (matches the owner's sketch). Icon
+     shrinks to the left edge so the full class label has the entire
+     remaining width to lay out in. */
   .profile,
   .protocols-launch {
-    /* Push the launcher row below the minimap on phones. The minimap
-       uses clamp(108px, 30vw, 132px), top:8 → bottom can reach y≈140.
-       Add an 8px gutter so the buttons never crash into the map. */
-    top: 148px;
-    /* Mobile keeps a slightly smaller min so two tiles fit on narrow phones,
-       but still respects the 44px touch minimum. */
-    width: 54px;
-    height: 54px;
-    min-width: 44px;
+    /* 156-wide gives ~114 px of label budget after icon + padding, which
+       is enough for the longest current class (`terminal_runner`, 15
+       chars at 12 px monospace ≈ 108 px). */
+    width: 156px;
+    height: 46px;
+    min-width: 0;
     min-height: 44px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: 22px;
   }
   .protocols-launch {
     right: 8px;
+    /* Sits 4 px lower than the profile pill so the overlapped corners
+       interlock visibly instead of looking like a single squashed shape. */
+    top: 152px;
   }
   .profile {
-    right: 68px;
+    /* Overlap inside corners by 10 px. Math: protocols-launch left edge
+       is at 8 + 156 = 164 from right; profile's right edge sits at 154
+       from right, so its right edge crosses 10 px into the protocols
+       pill. */
+    right: 154px;
+    top: 144px;
+  }
+  .profile-box {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-width: 0;
+  }
+  .profile-box::before {
+    font-size: 14px;
+    margin-bottom: 0;
+    flex: 0 0 auto;
+  }
+  .profile-class {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    text-align: left;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .protocols-launch {
+    text-align: left;
+  }
+  .protocols-launch-glyph {
+    font-size: 16px;
+    flex: 0 0 auto;
+  }
+  .protocols-launch-cap {
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
