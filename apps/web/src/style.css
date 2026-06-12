@@ -4134,33 +4134,33 @@ dialog.panel::backdrop {
      remaining width to lay out in. */
   .profile,
   .protocols-launch {
-    /* Tighter than the first pass (was 156×46). 140×38 keeps enough room
-       for the longest current class (terminal_runner, 15 chars × ~7 px
-       at 12 px monospace ≈ 105 px) with a small breathing margin, but
-       cuts the visual heft. Content centered inside the pill so the
-       short "protocols" label doesn't leave a big empty void on the
-       right (owner feedback round 4). */
-    width: 140px;
-    height: 38px;
+    /* Round 5 (owner): still too tall + wide. Going 124×30 with 11 px
+       text. "server_speaker" (13 chars × ~6.3 px = 82 px) + icon 12 +
+       gap 4 + padding 16 = 114 px content, fits in 124 px with 10 px
+       headroom. "terminal_runner" (15 chars) truncates with ellipsis
+       — acceptable; the only currently-selectable class is
+       bit_spekter (11 chars). */
+    width: 124px;
+    height: 30px;
     min-width: 0;
-    min-height: 38px;
+    min-height: 30px;
     flex-direction: row;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    padding: 0 10px;
-    border-radius: 19px;
+    gap: 4px;
+    padding: 0 8px;
+    border-radius: 15px;
   }
   .protocols-launch {
-    right: 8px;
+    right: 6px;
     top: 150px;
   }
   .profile {
-    /* 26 px corner overlap (protocols-launch left edge sits at 8+140=148
-       from right; profile right edge at 122 from right → 26 px crosses
-       into protocols). Vertical stagger of 6 px so the corners
-       interlock visibly. */
-    right: 122px;
+    /* 30 px corner overlap (protocols-launch left edge = 6+124 = 130
+       from right; profile right edge = 100 from right → 30 px crosses
+       into protocols). Vertical stagger of 6 px so the interlock
+       reads clearly. */
+    right: 100px;
     top: 144px;
   }
   .profile-box {
@@ -4172,13 +4172,13 @@ dialog.panel::backdrop {
     min-width: 0;
   }
   .profile-box::before {
-    font-size: 13px;
+    font-size: 12px;
     margin-bottom: 0;
     flex: 0 0 auto;
   }
   .profile-class {
-    font-size: 12px;
-    letter-spacing: 0.02em;
+    font-size: 11px;
+    letter-spacing: 0;
     text-align: left;
     flex: 0 1 auto;
     min-width: 0;
@@ -4187,12 +4187,12 @@ dialog.panel::backdrop {
     text-align: left;
   }
   .protocols-launch-glyph {
-    font-size: 13px;
+    font-size: 12px;
     flex: 0 0 auto;
   }
   .protocols-launch-cap {
-    font-size: 12px;
-    letter-spacing: 0.02em;
+    font-size: 11px;
+    letter-spacing: 0;
     flex: 0 1 auto;
     min-width: 0;
     text-align: left;
