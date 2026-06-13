@@ -4151,11 +4151,13 @@ dialog.panel::backdrop {
     border-radius: 19px;
   }
   .protocols-launch {
-    /* Lower + closer to the right edge. Sits 12 px into the bottom of
-       the profile pill (its top is 26 px below profile's top of 138;
-       profile's bottom is 176, protocols' top is 164 → 12 px overlap). */
+    /* Lower + closer to the right edge. Sits 26 px into the bottom of
+       the profile pill (profile bottom is 176, protocols top is 150 →
+       26 px overlap, roughly 68 % of pill height). The horizontal
+       offset (profile right:32 vs protocols right:8) keeps the two
+       chips distinguishable. */
     right: 8px;
-    top: 164px;
+    top: 150px;
   }
   .profile {
     /* Higher + nudged inward, so the pair forms a stair-step. */
