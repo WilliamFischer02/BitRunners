@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { EMOTE_GLYPHS, type EmoteId } from './EmoteWheel.js';
 import { getLines } from './dialogue.js';
+import { playDissolve } from './transitions/dissolve.js';
 
 interface AdminDialogueProps {
   onClose(): void;
@@ -8,15 +9,42 @@ interface AdminDialogueProps {
 
 const TYPE_MS = 38;
 const POST_TYPE_HOLD_MS = 320;
+const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
 
 type Phase = 'opening' | 'prompt' | 'response' | 'closing';
 
 export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
+  const frameRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [closing, setClosing] = useState(false);
   const [phase, setPhase] = useState<Phase>('opening');
   const [lineIdx, setLineIdx] = useState(0);
   const [shownText, setShownText] = useState('');
   const [typing, setTyping] = useState(true);
   const [chosen, setChosen] = useState<EmoteId | null>(null);
+
+  // ASCII dissolve in on mount.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const anim = playDissolve(el, 'in', DISSOLVE_OPTS);
+    return () => anim.cancel();
+  }, []);
+
+  // ASCII dissolve out when closing, then call onClose.
+  useEffect(() => {
+    if (!closing) return;
+    const el = frameRef.current;
+    if (!el) {
+      onCloseRef.current();
+      return;
+    }
+    const anim = playDissolve(el, 'out', DISSOLVE_OPTS, () => onCloseRef.current());
+    return () => anim.cancel();
+  }, [closing]);
+
+  const doClose = useCallback(() => setClosing(true), []);
 
   // The line to currently reveal, computed from phase + lineIdx + chosen.
   const targetLine = (() => {
@@ -80,16 +108,16 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
       return;
     }
     if (phase === 'closing') {
-      onClose();
+      doClose();
     }
-  }, [typing, targetLine, phase, lineIdx, chosen, onClose]);
+  }, [typing, targetLine, phase, lineIdx, chosen, doClose]);
 
   // Auto-close on closing phase after a brief hold.
   useEffect(() => {
     if (phase !== 'closing') return;
-    const t = setTimeout(onClose, POST_TYPE_HOLD_MS + 240);
+    const t = setTimeout(doClose, POST_TYPE_HOLD_MS + 240);
     return () => clearTimeout(t);
-  }, [phase, onClose]);
+  }, [phase, doClose]);
 
   // Click anywhere on the dialogue advances.
   const onPanelClick = (): void => {
@@ -106,7 +134,7 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
   return (
     <div className="dialogue-root">
       <div className="dialogue-veil" aria-hidden="true" />
-      <button type="button" className="dialogue-frame" onClick={onPanelClick}>
+      <button type="button" className="dialogue-frame" ref={frameRef} onClick={onPanelClick}>
         <div className="dialogue-head">
           <span className="dialogue-name">▒▓ THE ADMIN ▓▒</span>
           <span className="dialogue-sub">{'// hostile read-access'}</span>

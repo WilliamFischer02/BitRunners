@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getLine, getLines } from './dialogue.js';
 import {
   type ActiveMissionSnap,
@@ -7,6 +7,7 @@ import {
   subscribeMissionChanges,
 } from './missions.js';
 import { type MissionFaction, completeMissionRpc } from './supabase.js';
+import { playDissolve } from './transitions/dissolve.js';
 
 // Final-checkpoint dialogue. Listens for 'bitrunners:mission-final' and opens.
 // Two-choice gameplay surface: pick BitRunner → Admin or Corporate → Company.
@@ -14,6 +15,7 @@ import { type MissionFaction, completeMissionRpc } from './supabase.js';
 // for two text buttons (curated lore lines, not free input).
 
 const TYPE_MS = 32;
+const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
 
 type Phase = 'opening' | 'prompt' | 'closing';
 
@@ -26,6 +28,10 @@ interface ToastDetail {
 export function MissionDialogue(): JSX.Element | null {
   const [snap, setSnap] = useState<ActiveMissionSnap | null>(getActiveMission());
   const [open, setOpen] = useState(false);
+  // `mounted` stays true while the out dissolve plays so Panel isn't torn
+  // down before the animation finishes (open goes false first, mounted
+  // goes false only after onExited fires).
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => subscribeMissionChanges(setSnap), []);
 
@@ -35,20 +41,45 @@ export function MissionDialogue(): JSX.Element | null {
     return () => window.removeEventListener('bitrunners:mission-final', onFinal);
   }, []);
 
-  // Mission can be cleared from underneath us (e.g. dispose). Snap a stable
-  // local copy so the dialogue can finish its closing animation even after
-  // the upstream snap goes back to null.
+  // Mount the panel when open goes true.
+  useEffect(() => {
+    if (open) setMounted(true);
+  }, [open]);
+
+  // Stable local snapshot — captured when the dialogue opens so the Panel
+  // can finish rendering even if the upstream mission snap goes null while
+  // the out dissolve is still playing.
   const [local, setLocal] = useState<ActiveMissionSnap | null>(null);
   useEffect(() => {
     if (open && snap && !local) setLocal(snap);
-    if (!open) setLocal(null);
+    // Do NOT clear local on !open — onExited clears it after the dissolve.
   }, [open, snap, local]);
 
-  if (!open || !local) return null;
-  return <Panel snap={local} onClose={() => setOpen(false)} />;
+  const onExited = useCallback(() => {
+    setMounted(false);
+    setLocal(null);
+  }, []);
+
+  if (!mounted || !local) return null;
+  return <Panel snap={local} onClose={() => setOpen(false)} onExited={onExited} />;
 }
 
-function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }): JSX.Element {
+function Panel({
+  snap,
+  onClose,
+  onExited,
+}: {
+  snap: ActiveMissionSnap;
+  onClose(): void;
+  onExited(): void;
+}): JSX.Element {
+  const frameRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  const onExitedRef = useRef(onExited);
+  onCloseRef.current = onClose;
+  onExitedRef.current = onExited;
+  const [closing, setClosing] = useState(false);
+
   const mission = snap.mission;
   const [phase, setPhase] = useState<Phase>('opening');
   const [lineIdx, setLineIdx] = useState(0);
@@ -57,6 +88,32 @@ function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }):
   const [chosen, setChosen] = useState<MissionFaction | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  // ASCII dissolve in on mount.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const anim = playDissolve(el, 'in', DISSOLVE_OPTS);
+    return () => anim.cancel();
+  }, []);
+
+  // ASCII dissolve out when closing, then unmount.
+  useEffect(() => {
+    if (!closing) return;
+    const el = frameRef.current;
+    if (!el) {
+      onCloseRef.current();
+      onExitedRef.current();
+      return;
+    }
+    const anim = playDissolve(el, 'out', DISSOLVE_OPTS, () => {
+      onCloseRef.current();
+      onExitedRef.current();
+    });
+    return () => anim.cancel();
+  }, [closing]);
+
+  const doClose = useCallback(() => setClosing(true), []);
 
   const targetLine = (() => {
     if (phase === 'opening') return getLines(mission.dialogue.opening)[lineIdx] ?? '';
@@ -122,10 +179,10 @@ function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }):
       if (lineIdx < total - 1) {
         setLineIdx((i) => i + 1);
       } else {
-        onClose();
+        doClose();
       }
     }
-  }, [typing, targetLine, phase, lineIdx, mission.dialogue, chosen, onClose]);
+  }, [typing, targetLine, phase, lineIdx, mission.dialogue, chosen, doClose]);
 
   const pick = async (faction: MissionFaction): Promise<void> => {
     if (busy) return;
@@ -166,7 +223,7 @@ function Panel({ snap, onClose }: { snap: ActiveMissionSnap; onClose(): void }):
   return (
     <div className="dialogue-root mission-dialogue">
       <div className="dialogue-veil" aria-hidden="true" />
-      <button type="button" className="dialogue-frame" onClick={onPanelClick}>
+      <button type="button" className="dialogue-frame" ref={frameRef} onClick={onPanelClick}>
         <div className="dialogue-head">
           <span className="dialogue-name">▒▓ {mission.title.toUpperCase()} ▓▒</span>
           <span className="dialogue-sub">{'// the aether speaks'}</span>
