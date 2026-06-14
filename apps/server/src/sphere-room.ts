@@ -5,6 +5,7 @@ import {
   PLATFORM_HALF,
   PLATFORM_SIZE,
   TETHER_RATE_LIMIT_PER_MIN,
+  TETHER_REQUEST_RATE_LIMIT_PER_MIN,
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
@@ -87,6 +88,14 @@ export class SphereRoom extends Room<SphereState> {
   private activeTethers = new Map<string, string>();
   private pendingRequests = new Map<string, string>();
   private tetherRate = new Map<string, TetherRate>();
+  // F1: per-sender sliding window for NEW tether-request fan-out (a flood
+  //     gate distinct from the in-tether send rate). Sessions remain in the
+  //     map until their window expires; cleared on disconnect.
+  private requestRate = new Map<string, TetherRate>();
+  // F2: sessionId → the target sessionId this sender is currently waiting
+  //     on an accept/decline from. Used to reject concurrent outgoing
+  //     requests (the double-accept race surfaced in the handoff).
+  private pendingFrom = new Map<string, string>();
 
   override onCreate(_options: unknown): void {
     this.state = new SphereState();
@@ -171,7 +180,23 @@ export class SphereRoom extends Room<SphereState> {
       if (this.activeTethers.has(client.sessionId)) return;
       if (this.activeTethers.has(target)) return;
       if (this.pendingRequests.has(target)) return;
+      // F2: reject a second outgoing invite while the first is still in
+      //     flight. Without this, two targets accepting simultaneously
+      //     could both write to activeTethers and overwrite each other.
+      if (this.pendingFrom.has(client.sessionId)) return;
+      // F1: per-sender sliding-window flood gate. Reset on each new
+      //     minute boundary so a runner can't burst-flood between checks.
+      const now = Date.now();
+      const slot = this.requestRate.get(client.sessionId) ?? { windowStart: now, count: 0 };
+      if (now - slot.windowStart > 60_000) {
+        slot.windowStart = now;
+        slot.count = 0;
+      }
+      if (slot.count >= TETHER_REQUEST_RATE_LIMIT_PER_MIN) return;
+      slot.count++;
+      this.requestRate.set(client.sessionId, slot);
       this.pendingRequests.set(target, client.sessionId);
+      this.pendingFrom.set(client.sessionId, target);
       const me = this.state.players.get(client.sessionId);
       const peer = this.findClient(target);
       if (peer) {
@@ -188,6 +213,7 @@ export class SphereRoom extends Room<SphereState> {
       const expected = this.pendingRequests.get(client.sessionId);
       if (!from || from !== expected) return;
       this.pendingRequests.delete(client.sessionId);
+      this.pendingFrom.delete(from);
       this.activeTethers.set(client.sessionId, from);
       this.activeTethers.set(from, client.sessionId);
       const me = this.state.players.get(client.sessionId);
@@ -206,6 +232,7 @@ export class SphereRoom extends Room<SphereState> {
       const expected = this.pendingRequests.get(client.sessionId);
       if (!from || from !== expected) return;
       this.pendingRequests.delete(client.sessionId);
+      this.pendingFrom.delete(from);
       const requester = this.findClient(from);
       if (requester) {
         requester.send('tether-declined', { from: client.sessionId });
@@ -299,6 +326,8 @@ export class SphereRoom extends Room<SphereState> {
     if (boundB === a) this.activeTethers.delete(b);
     this.pendingRequests.delete(a);
     this.pendingRequests.delete(b);
+    this.pendingFrom.delete(a);
+    this.pendingFrom.delete(b);
     this.tetherRate.delete(pairKey(a, b));
     const peer = this.findClient(boundA === b ? b : a);
     if (peer && peer.sessionId !== a) {
@@ -351,12 +380,15 @@ export class SphereRoom extends Room<SphereState> {
     for (const [target, requester] of this.pendingRequests) {
       if (target === client.sessionId || requester === client.sessionId) {
         this.pendingRequests.delete(target);
+        this.pendingFrom.delete(requester);
         const survivor = this.findClient(target === client.sessionId ? requester : target);
         if (survivor) {
           survivor.send('tether-declined', { from: client.sessionId });
         }
       }
     }
+    this.pendingFrom.delete(client.sessionId);
+    this.requestRate.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.lastSeen.delete(client.sessionId);
   }

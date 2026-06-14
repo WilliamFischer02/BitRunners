@@ -4151,9 +4151,12 @@ dialog.panel::backdrop {
     border-radius: 15px;
   }
   .protocols-launch {
-    /* Bottom-right chip; overlaps the profile pill by 20 px on the y axis. */
+    /* Bottom-right chip. After round 5's 6 px overlap still read as too
+       close, switching to a 6 px gap: profile bottom 168, protocols
+       top 174. Distinct rows, both text bands fully visible, but
+       still part of the same cluster. */
     right: 8px;
-    top: 148px;
+    top: 174px;
   }
   .profile {
     /* Top-left chip of the pair, nudged inward 20 px. */
