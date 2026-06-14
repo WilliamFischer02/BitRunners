@@ -94,6 +94,11 @@ export function isValidThemeKey(key: unknown): key is string {
 
 export const TETHER_MAX_CHARS = 25;
 export const TETHER_RATE_LIMIT_PER_MIN = 30;
+/** Max NEW tether requests one runner can fire per minute. Far tighter than
+ *  the in-tether send rate: a legitimate user opens at most a handful of
+ *  new conversations per minute; spammers would otherwise blast invites to
+ *  every peer in the sphere. */
+export const TETHER_REQUEST_RATE_LIMIT_PER_MIN = 6;
 
 // Free-text body — printable ASCII only, ≤ 25 chars. Rejects control chars
 // and multi-byte sequences. The full moderation stack (profanity filter,
