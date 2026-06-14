@@ -669,3 +669,100 @@ export async function completeMissionRpc(
     error: null,
   };
 }
+
+// ────────── DM moderation (migration 0012) ───────────────────────────────────
+//
+// Server-side counterparts of the client work shipped in PR 88 (tether
+// moderation V1) and PR 90 (client-side block list). The web client computes
+// the profanity verdict locally and submits it; the server re-runs the gate
+// chain (verified, age, block list, rate limit) inside dm_send_message and
+// audit-logs flagged + blocked rows. Clean messages are not persisted (see
+// docs/lore/015 §audit trail).
+
+export type DmVerdict = 'clean' | 'flagged' | 'blocked';
+
+export interface DmSendResult {
+  accepted: boolean;
+  verdict: DmVerdict;
+}
+
+export async function dmSendMessage(
+  to: string,
+  roomId: string,
+  body: string,
+  verdict: DmVerdict,
+): Promise<{ data: DmSendResult | null; error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { data: null, error: 'auth not configured' };
+  const { data, error } = await sb.rpc('dm_send_message', {
+    p_to: to,
+    p_room: roomId,
+    p_body: body,
+    p_moderation: verdict,
+  });
+  if (error) return { data: null, error: error.message };
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { data: { accepted: false, verdict: 'blocked' }, error: null };
+  const r = row as { accepted?: unknown; verdict?: unknown };
+  const v = r.verdict === 'flagged' || r.verdict === 'blocked' ? r.verdict : 'clean';
+  return {
+    data: { accepted: r.accepted === true, verdict: v as DmVerdict },
+    error: null,
+  };
+}
+
+export async function dmBlockUser(target: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('dm_block_user', { p_target: target });
+  return { error: error?.message ?? null };
+}
+
+export async function dmUnblockUser(target: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.rpc('dm_unblock_user', { p_target: target });
+  return { error: error?.message ?? null };
+}
+
+export interface BlockedRunner {
+  userId: string;
+  displayName: string | null;
+}
+
+export async function dmListBlocked(): Promise<BlockedRunner[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('dm_list_blocked');
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    userId: String(r.user_id ?? ''),
+    displayName: typeof r.display_name === 'string' ? r.display_name : null,
+  }));
+}
+
+export interface DmReport {
+  id: string;
+  roomId: string;
+  fromUser: string;
+  toUser: string;
+  body: string;
+  verdict: DmVerdict;
+  createdAt: string;
+}
+
+export async function adminListDmReports(days = 14): Promise<DmReport[] | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('admin_list_dm_reports', { p_days: days });
+  if (error || !data) return null;
+  return (data as Array<Record<string, unknown>>).map((r) => ({
+    id: String(r.id ?? ''),
+    roomId: String(r.room_id ?? ''),
+    fromUser: String(r.from_user ?? ''),
+    toUser: String(r.to_user ?? ''),
+    body: String(r.body ?? ''),
+    verdict: (r.moderation as DmVerdict) ?? 'flagged',
+    createdAt: String(r.created_at ?? ''),
+  }));
+}
