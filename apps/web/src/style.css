@@ -4130,50 +4130,50 @@ dialog.panel::backdrop {
 }
 
 @media (max-width: 540px) {
-  /* Devlog 0084: 0082's 156×46 row read as half-empty boxes that
-     stretched into the center of the screen (especially `protocols`
-     at 9 chars). Going to content-width pills with a stair-step:
-     bigger vertical stagger (~46 px between tops — about one full
-     pill height of separation) and the inboard pill nudged inward
-     so the pair reads as two staircased chips, not a row. */
+  /* Devlog 0086 — owner reported the 0084 stair-step still landed the two
+     pills with a gap (live build had top:184 — the round-3 overlap tweaks
+     never reached main before PR #91 merged). This pass:
+       * scales the pills down ~80 % (h 38 → 30, font 11 → 9, etc.)
+       * pulls protocols up so they overlap by ~20 px (≈ 67 % of new
+         height) instead of leaving a vertical gap. */
   .profile,
   .protocols-launch {
     width: auto;
-    min-width: 96px;
-    max-width: 168px;
-    height: 38px;
-    min-height: 38px;
+    min-width: 80px;
+    max-width: 136px;
+    height: 30px;
+    min-height: 30px;
     flex-direction: row;
     align-items: center;
     justify-content: flex-start;
-    gap: 6px;
-    padding: 0 12px;
-    border-radius: 19px;
+    gap: 5px;
+    padding: 0 10px;
+    border-radius: 15px;
   }
   .protocols-launch {
-    /* Lower + closer to the right edge. */
+    /* Bottom-right chip; overlaps the profile pill by 20 px on the y axis. */
     right: 8px;
-    top: 184px;
+    top: 148px;
   }
   .profile {
-    /* Higher + nudged inward, so the pair forms a stair-step. */
-    right: 32px;
+    /* Top-left chip of the pair, nudged inward 20 px. */
+    right: 28px;
     top: 138px;
   }
   .profile-box {
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: 5px;
     width: 100%;
     min-width: 0;
   }
   .profile-box::before {
-    font-size: 13px;
+    font-size: 11px;
     margin-bottom: 0;
     flex: 0 0 auto;
   }
   .profile-class {
-    font-size: 11px;
+    font-size: 9px;
     letter-spacing: 0.02em;
     text-align: left;
     flex: 0 1 auto;
@@ -4183,11 +4183,11 @@ dialog.panel::backdrop {
     text-align: left;
   }
   .protocols-launch-glyph {
-    font-size: 14px;
+    font-size: 11px;
     flex: 0 0 auto;
   }
   .protocols-launch-cap {
-    font-size: 11px;
+    font-size: 9px;
     letter-spacing: 0.02em;
     flex: 0 1 auto;
     min-width: 0;
