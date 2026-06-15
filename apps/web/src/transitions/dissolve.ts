@@ -24,6 +24,13 @@ export interface DissolveOptions {
   color?: string;
   /** Backdrop color drawn behind the glyphs. Use null for transparent. */
   background?: string | null;
+  /**
+   * Element to append the overlay canvas to. Defaults to document.body.
+   * Pass the `<dialog>` element itself when the host is a native dialog
+   * (top-layer) so the canvas is in the same top-layer stacking context
+   * and renders above the dialog's content.
+   */
+  mountTarget?: HTMLElement;
 }
 
 interface ActiveAnimation {
@@ -71,7 +78,7 @@ export function playDissolve(
   canvas.style.position = 'fixed';
   canvas.style.pointerEvents = 'none';
   canvas.style.zIndex = '1000';
-  document.body.appendChild(canvas);
+  (opts.mountTarget ?? document.body).appendChild(canvas);
 
   const rawCtx = canvas.getContext('2d');
   if (!rawCtx) {
