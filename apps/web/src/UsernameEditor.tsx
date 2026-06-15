@@ -14,6 +14,9 @@ import {
   isAuthConfigured,
   submitDisplayName,
 } from './supabase.js';
+import { playDissolve } from './transitions/dissolve.js';
+
+const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
 
 // Opens when the user taps the floating name above their character.
 // Driven by the 'bitrunners:edit-identity' event the scene dispatches on
@@ -48,24 +51,43 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [tab, setTab] = useState<'pick' | 'custom'>('pick');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => subscribeIdentity(setId), []);
 
+  // Open as a true modal: native focus trap + Escape via cancel event + dissolve in.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
     dialog.showModal();
+    const inAnim = playDissolve(dialog, 'in', { ...DISSOLVE_OPTS, mountTarget: dialog });
     const onCancel = (e: Event): void => {
       e.preventDefault();
-      onCloseRef.current();
+      setClosing(true);
     };
     dialog.addEventListener('cancel', onCancel);
     return () => {
+      inAnim.cancel();
       dialog.removeEventListener('cancel', onCancel);
       trigger?.focus();
     };
   }, []);
+
+  // Dissolve out when closing, then call onClose.
+  useEffect(() => {
+    if (!closing) return;
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      onCloseRef.current();
+      return;
+    }
+    const anim = playDissolve(dialog, 'out', { ...DISSOLVE_OPTS, mountTarget: dialog }, () => {
+      dialog.close();
+      onCloseRef.current();
+    });
+    return () => anim.cancel();
+  }, [closing]);
 
   useEffect(() => {
     if (!id.signedIn) return;
@@ -105,14 +127,14 @@ function EditorPanel({ onClose }: { onClose(): void }): JSX.Element {
       aria-modal="true"
       aria-labelledby="username-dialog-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) setClosing(true);
       }}
     >
       <header className="panel-header">
         <span className="panel-title" id="username-dialog-title">
           {'// runner identity'}
         </span>
-        <button type="button" className="panel-close" onClick={onClose}>
+        <button type="button" className="panel-close" onClick={() => setClosing(true)}>
           ✕
         </button>
       </header>

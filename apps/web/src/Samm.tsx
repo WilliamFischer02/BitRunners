@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { getLine } from './dialogue.js';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 import { type BetCurrency, type GambleResult, betTiers, canBet, gamble, minBet } from './samm.js';
+import { playDissolve } from './transitions/dissolve.js';
+
+const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -47,6 +50,7 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [msg, setMsg] = useState<string>(getLine('samm.greeting'));
   const spinRef = useRef<number | null>(null);
   const timers = useRef<number[]>([]);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
 
@@ -63,22 +67,39 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Open as a true modal: native focus trap + Escape via cancel event.
+  // Open as a true modal: native focus trap + Escape via cancel event + dissolve in.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
     dialog.showModal();
+    const inAnim = playDissolve(dialog, 'in', { ...DISSOLVE_OPTS, mountTarget: dialog });
     const onCancel = (e: Event): void => {
       e.preventDefault();
-      onCloseRef.current();
+      setClosing(true);
     };
     dialog.addEventListener('cancel', onCancel);
     return () => {
+      inAnim.cancel();
       dialog.removeEventListener('cancel', onCancel);
       trigger?.focus();
     };
   }, []);
+
+  // Dissolve out when closing, then call onClose.
+  useEffect(() => {
+    if (!closing) return;
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      onCloseRef.current();
+      return;
+    }
+    const anim = playDissolve(dialog, 'out', { ...DISSOLVE_OPTS, mountTarget: dialog }, () => {
+      dialog.close();
+      onCloseRef.current();
+    });
+    return () => anim.cancel();
+  }, [closing]);
 
   const onPull = (): void => {
     if (spinning) return;
@@ -127,14 +148,14 @@ function SammPanel({ onClose }: { onClose(): void }): JSX.Element {
       aria-modal="true"
       aria-labelledby="samm-dialog-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) setClosing(true);
       }}
     >
       <header className="panel-header">
         <span className="panel-title" id="samm-dialog-title">
           {'// SAMM'}
         </span>
-        <button type="button" className="panel-close" onClick={onClose}>
+        <button type="button" className="panel-close" onClick={() => setClosing(true)}>
           ✕
         </button>
       </header>

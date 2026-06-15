@@ -24,6 +24,9 @@ import {
   setUnderConstruction,
   subscribeAuth,
 } from './supabase.js';
+import { playDissolve } from './transitions/dissolve.js';
+
+const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
 
 // Owner-only console. The launcher renders only for admins; every action it
 // exposes is also server-enforced (RLS), so the client gate is convenience,
@@ -61,27 +64,45 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
   const [construction, setConstruction] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  // Open as a true modal: native focus trap + Escape via cancel event.
+  // Open as a true modal: native focus trap + Escape via cancel event + dissolve in.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     const trigger = document.activeElement as HTMLElement | null;
     dialog.showModal();
+    const inAnim = playDissolve(dialog, 'in', { ...DISSOLVE_OPTS, mountTarget: dialog });
     const onCancel = (e: Event): void => {
       e.preventDefault();
-      onCloseRef.current();
+      setClosing(true);
     };
     dialog.addEventListener('cancel', onCancel);
     return () => {
+      inAnim.cancel();
       dialog.removeEventListener('cancel', onCancel);
       trigger?.focus();
     };
   }, []);
+
+  // Dissolve out when closing, then call onClose.
+  useEffect(() => {
+    if (!closing) return;
+    const dialog = dialogRef.current;
+    if (!dialog) {
+      onCloseRef.current();
+      return;
+    }
+    const anim = playDissolve(dialog, 'out', { ...DISSOLVE_OPTS, mountTarget: dialog }, () => {
+      dialog.close();
+      onCloseRef.current();
+    });
+    return () => anim.cancel();
+  }, [closing]);
 
   useEffect(() => {
     void fetchUnderConstruction().then(setConstruction);
@@ -106,14 +127,14 @@ function AdminPanel({ onClose }: { onClose(): void }): JSX.Element {
       aria-modal="true"
       aria-labelledby="admin-dialog-title"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) setClosing(true);
       }}
     >
       <header className="panel-header">
         <span className="panel-title" id="admin-dialog-title">
           {'// admin console'}
         </span>
-        <button type="button" className="panel-close" onClick={onClose}>
+        <button type="button" className="panel-close" onClick={() => setClosing(true)}>
           ✕
         </button>
       </header>
