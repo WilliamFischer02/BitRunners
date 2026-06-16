@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
-import { getJoinedRoomId } from './network.js';
+import { getJoinedRoomId, getServerUrl } from './network.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
 import {
   type AuthSnapshot,
@@ -95,10 +95,30 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
   useEffect(() => subscribeAuth(setAuth), []);
   useEffect(() => subscribeIdentity(setIdentity), []);
 
+  const [roomId, setRoomId] = useState<string>(() => getJoinedRoomId());
+
   const sessionLabel =
     auth.status === 'authenticated' && auth.user?.id
       ? `${auth.user.id.slice(0, 8)} · signed in`
       : 'guest · offline';
+  const uuidShort = auth.user?.id ? auth.user.id.slice(0, 8) : '─';
+  const serverRegion = (() => {
+    try {
+      const u = getServerUrl();
+      return u ? new URL(u).host : 'offline';
+    } catch {
+      return 'offline';
+    }
+  })();
+
+  useEffect(() => {
+    const onJoined = (e: Event): void => {
+      const id = (e as CustomEvent<{ roomId?: string }>).detail?.roomId;
+      if (id) setRoomId(id);
+    };
+    window.addEventListener('bitrunners:room-joined', onJoined);
+    return () => window.removeEventListener('bitrunners:room-joined', onJoined);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -127,7 +147,7 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
         </header>
 
         <section className="panel-section">
-          <div className="panel-section-title">$ stack</div>
+          <div className="panel-section-title">$ identity</div>
           <div className="panel-row">
             <span className="panel-key">handle</span>
             <span className="panel-val">{identity.displayName}</span>
@@ -135,6 +155,14 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
           <div className="panel-row">
             <span className="panel-key">class</span>
             <span className="panel-val">{className}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">badge</span>
+            <span className="panel-val">{identity.equippedBadge || '─'}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">theme</span>
+            <span className="panel-val">{identity.equippedTheme || 'default'}</span>
           </div>
           <div className="panel-row">
             <span className="panel-key">change runner</span>
@@ -149,9 +177,17 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
               [ switch ]
             </button>
           </div>
+        </section>
+
+        <section className="panel-section">
+          <div className="panel-section-title">$ samaritan</div>
           <div className="panel-row">
-            <span className="panel-key">session</span>
-            <span className="panel-val">{sessionLabel}</span>
+            <span className="panel-key">corporate</span>
+            <span className="panel-val">{eco.repCorporate}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">bitrunner</span>
+            <span className="panel-val">{eco.repBitrunner}</span>
           </div>
         </section>
 
@@ -174,24 +210,30 @@ function ProfilePanel({ className, onClose }: ProfilePanelProps): JSX.Element {
           <div className="panel-stub">─── full inventory + shop in the data scrape panel.</div>
         </section>
 
-        <section className="panel-section">
-          <div className="panel-section-title">$ samaritan status</div>
-          <div className="panel-row">
-            <span className="panel-key">corporate</span>
-            <span className="panel-val">{eco.repCorporate}</span>
-          </div>
-          <div className="panel-row">
-            <span className="panel-key">bitrunner</span>
-            <span className="panel-val">{eco.repBitrunner}</span>
-          </div>
-        </section>
-
         <SettingsSection />
         <RoomSection />
 
-        <footer className="panel-footer">
-          press [esc] or click outside to close · placeholder until account system lands
-        </footer>
+        <section className="panel-section">
+          <div className="panel-section-title">$ debug</div>
+          <div className="panel-row">
+            <span className="panel-key">user id</span>
+            <span className="panel-val">{uuidShort}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">session</span>
+            <span className="panel-val">{sessionLabel}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">room id</span>
+            <span className="panel-val">{roomId || '─'}</span>
+          </div>
+          <div className="panel-row">
+            <span className="panel-key">server</span>
+            <span className="panel-val">{serverRegion}</span>
+          </div>
+        </section>
+
+        <footer className="panel-footer">press [esc] or click outside to close</footer>
       </dialog>
     </div>
   );
