@@ -24,6 +24,7 @@ import { startLevel } from './level.js';
 import { startMissionServerLoad } from './mission-server-load.js';
 import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
+import { FREQ_LOCK_OPEN_EVENT } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
@@ -43,6 +44,8 @@ startMissionSync();
 startMissionServerLoad();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
+// freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
+const FreqLock = lazy(() => import('./FreqLock.js'));
 
 const BOARD_HASH_PREFIX = '#board/';
 const AUTH_VERIFIED_HASH = '#auth/verified';
@@ -157,7 +160,14 @@ function Game({ className }: GameProps): JSX.Element {
   const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
   const [sammInRange, setSammInRange] = useState(false);
   const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
+  const [freqLockOpen, setFreqLockOpen] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onOpen = (): void => setFreqLockOpen(true);
+    window.addEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -208,6 +218,11 @@ function Game({ className }: GameProps): JSX.Element {
       <ShopInventoryModal />
       <Objectives />
       <EmoteWheel onEmote={onEmote} onInventory={() => openShopInventory('inventory')} />
+      {freqLockOpen && (
+        <Suspense fallback={null}>
+          <FreqLock onClose={() => setFreqLockOpen(false)} />
+        </Suspense>
+      )}
       <Samm inRange={sammInRange} />
       <Tutorial />
       <Starmap />
