@@ -7,6 +7,12 @@
 # launch-prompt.md as the initial message.
 
 $ErrorActionPreference = "Stop"
+# PowerShell treats native-command stderr as a script-terminating error
+# when $ErrorActionPreference = "Stop" on PS 7.4+ (with PSNativeCommandUseErrorActionPreference).
+# Git writes a lot of informational text to stderr ("Switched to a new branch",
+# etc.) that is NOT an actual error. Disable that interception so we can
+# control flow via $LASTEXITCODE explicitly.
+$PSNativeCommandUseErrorActionPreference = $false
 
 # ── 1. Set repo path ────────────────────────────────────────────────────────
 Set-Location "C:\dev\BitRunners"   # ← EDIT THIS to your local clone
@@ -28,10 +34,17 @@ git checkout main
 git pull --ff-only origin main
 
 $branch = "claude/mega-batch-$(Get-Date -Format yyyy-MM-dd)"
-git checkout -b $branch 2>$null
+# Merge stderr → stdout and pipe to Out-Null. Git's "Switched to a new branch"
+# message goes to stderr; we want the visible output suppressed but the exit
+# code preserved.
+git checkout -b $branch 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    # Branch already exists from an earlier run today — switch to it
-    git checkout $branch
+    # Branch already exists from an earlier run today — switch to it.
+    git checkout $branch 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Could not check out branch $branch"
+        exit 1
+    }
 }
 
 # ── 4. Sanity-check toolchain (project requires these exact majors) ─────────
