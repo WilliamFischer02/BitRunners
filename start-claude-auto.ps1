@@ -110,5 +110,8 @@ if (-not (Test-Path .\launch-prompt.md)) {
 # every edit", NOT "ignore the safety rails".
 Write-Host ""
 Write-Host "🚀 Launching Claude Code in autonomous mode…" -ForegroundColor Cyan
+# Claude Code takes the initial prompt as a positional arg, not a flag.
+# (`--print` exists but is for non-interactive one-shot; we want an
+# interactive session that opens with the prompt as the first message.)
 $prompt = Get-Content .\launch-prompt.md -Raw
-claude --permission-mode bypassPermissions --prompt $prompt
+claude --permission-mode bypassPermissions $prompt
