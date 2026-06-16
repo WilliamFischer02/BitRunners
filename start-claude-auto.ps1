@@ -9,7 +9,7 @@
 $ErrorActionPreference = "Stop"
 
 # ── 1. Set repo path ────────────────────────────────────────────────────────
-Set-Location "C:\path\to\BitRunners"   # ← EDIT THIS to your local clone
+Set-Location "C:\dev\BitRunners"   # ← EDIT THIS to your local clone
 
 # ── 2. Refuse to run from a dirty tree ──────────────────────────────────────
 if (git status --porcelain) {
