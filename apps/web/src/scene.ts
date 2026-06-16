@@ -740,6 +740,21 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   };
   const paletteHex = (name: string): number => PALETTE[name] ?? DEFAULT_HEX;
 
+  // Equipped cosmetics read flat/washed once the scene passes through the
+  // grayscale ASCII post-process. Push the clothing/pet palette ~20% more
+  // saturated at the material level so the hue survives the luminance ramp
+  // and the per-theme tint (mega-batch 4.7). Tuned in HSL so lightness is
+  // preserved — only chroma rises.
+  const CLOTHING_SAT_BOOST = 1.2;
+  const _satHsl = { h: 0, s: 0, l: 0 };
+  const _satColor = new Color();
+  const setSaturated = (c: Color, hex: number): void => {
+    _satColor.setHex(hex);
+    _satColor.getHSL(_satHsl);
+    _satColor.setHSL(_satHsl.h, Math.min(1, _satHsl.s * CLOTHING_SAT_BOOST), _satHsl.l);
+    c.copy(_satColor);
+  };
+
   function applySkin(t: SkinTarget, slot: SlotAppearance | null): void {
     if (!slot) {
       t.mat.color.setHex(t.baseColor);
@@ -747,11 +762,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       t.mat.emissiveIntensity = t.baseEmissiveIntensity;
       return;
     }
-    t.mat.color.setHex(paletteHex(slot.palette));
+    setSaturated(t.mat.color, paletteHex(slot.palette));
     // rarity escalates the glow: normal = recolour only; rare (effect) glows;
     // ultra (texture) glows hardest.
     if (slot.effect) {
-      t.mat.emissive.setHex(paletteHex(slot.palette));
+      setSaturated(t.mat.emissive, paletteHex(slot.palette));
       t.mat.emissiveIntensity = slot.texture ? 1.9 : 1.1;
     } else {
       t.mat.emissive.setHex(t.baseEmissive);
@@ -793,8 +808,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         petId = a.pet.itemId;
       }
       if (petMat) {
-        petMat.color.setHex(paletteHex(a.pet.palette));
-        petMat.emissive.setHex(paletteHex(a.pet.palette));
+        setSaturated(petMat.color, paletteHex(a.pet.palette));
+        setSaturated(petMat.emissive, paletteHex(a.pet.palette));
         petMat.emissiveIntensity = a.pet.texture ? 1.8 : 1.1;
       }
     } else if (petMesh) {

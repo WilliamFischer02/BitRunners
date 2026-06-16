@@ -2656,6 +2656,38 @@ dialog.panel::backdrop {
   padding: 0 3px;
   border-radius: 2px;
 }
+/* mega-batch 4.7 — icon glyph + name stacked inside each filled slot. */
+.inv-slot.is-filled {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.inv-slot-glyph {
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+}
+.inv-slot.rar-rare .inv-slot-glyph {
+  color: #7ef0c8;
+}
+.inv-slot.rar-ultra .inv-slot-glyph {
+  color: #c8a0ff;
+}
+.inv-slot-name {
+  font-size: 8px;
+  text-align: center;
+  line-height: 1.1;
+}
+.inv-equip-glyph {
+  color: #93e0b1;
+}
+.shop-item-glyph {
+  display: inline-block;
+  margin-right: 5px;
+  color: #93e0b1;
+}
 .inv-equip {
   display: flex;
   flex-direction: column;

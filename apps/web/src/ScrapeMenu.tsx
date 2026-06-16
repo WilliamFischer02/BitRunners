@@ -50,6 +50,7 @@ import {
   currencyOf,
   evaluate,
   getShopItem,
+  glyphFor,
   isOwned,
   priceOf,
 } from './shop.js';
@@ -205,6 +206,9 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
     <div className={`shop-item ${rarityClass(item)} ${owned ? 'is-owned' : ''}`}>
       <div className="shop-item-main">
         <span className="shop-item-name">
+          <span className="shop-item-glyph" aria-hidden="true">
+            {glyphFor(item)}
+          </span>
           {item.rarity && <span className={`rar-badge ${rarityClass(item)}`}>{item.rarity}</span>}
           {item.name}
         </span>
@@ -381,7 +385,16 @@ export function InventoryView(): JSX.Element {
               title={item ? item.name : 'empty'}
               onClick={() => onSlotClick(cell)}
             >
-              {item ? item.name.slice(0, 10) : '·'}
+              {item ? (
+                <>
+                  <span className="inv-slot-glyph" aria-hidden="true">
+                    {glyphFor(item)}
+                  </span>
+                  <span className="inv-slot-name">{item.name.slice(0, 10)}</span>
+                </>
+              ) : (
+                '·'
+              )}
               {isEq && <span className="inv-eq">E</span>}
             </button>
           );
@@ -390,10 +403,18 @@ export function InventoryView(): JSX.Element {
       <div className="inv-equip">
         {EQUIP_SLOTS.map((s) => {
           const eid = equipped[s];
+          const eitem = eid ? getShopItem(eid) : undefined;
           return (
             <div className="inv-equip-row" key={s}>
               <span className="panel-key">{s}</span>
-              <span className="panel-val">{eid ? (getShopItem(eid)?.name ?? eid) : '─'}</span>
+              <span className="panel-val">
+                {eitem && (
+                  <span className="inv-equip-glyph" aria-hidden="true">
+                    {glyphFor(eitem)}{' '}
+                  </span>
+                )}
+                {eid ? (eitem?.name ?? eid) : '─'}
+              </span>
               <button
                 type="button"
                 className={eid ? 'scrape-mini is-ready' : 'scrape-mini'}
