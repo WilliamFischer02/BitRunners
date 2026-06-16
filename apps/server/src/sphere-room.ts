@@ -43,6 +43,55 @@ const NPC_COUNT = 4;
 const NPC_SPEED = 2.2; // units / second
 const NPC_GLYPHS = Object.values(EMOTE_GLYPHS);
 
+// Bot tether dialogue (mega-batch 4.11). Dwellers accept tether requests and
+// chatter so the tether system can be smoke-tested without a second human.
+// Lines are lore-safe, ASCII, and ≤ TETHER_MAX_CHARS so isValidTetherBody
+// passes. Each archetype has its own voice (robot = clipped/system-y,
+// husk = corroded/fragmentary, spirit = drifting/cryptic).
+const BOT_LINES: Record<string, readonly string[]> = {
+  'dweller.robot': [
+    'PING. node online.',
+    'status: nominal',
+    'ack. signal clear.',
+    'runtime stable.',
+    'query received.',
+    '// end transmission',
+  ],
+  'dweller.husk': [
+    'co..corrupted..',
+    'i was.. a runner',
+    'bits.. rotting',
+    'static.. so cold',
+    'memory.. gone',
+    '..who are you..',
+  ],
+  'dweller.spirit': [
+    'the cloud hums',
+    'do you hear it?',
+    'we drift, friend',
+    'tokens whisper',
+    'i recall light..',
+    'the space sings',
+  ],
+};
+const BOT_ACCEPT_MIN_MS = 1500;
+const BOT_ACCEPT_MAX_MS = 3000;
+const BOT_SAY_MIN_MS = 8000;
+const BOT_SAY_MAX_MS = 15000;
+
+function isNpcId(id: string): boolean {
+  return id.startsWith('npc:');
+}
+function botLinesFor(className: string): readonly string[] {
+  return BOT_LINES[className] ?? BOT_LINES['dweller.robot'] ?? [];
+}
+function botName(className: string): string {
+  return className.replace('dweller.', '');
+}
+function randMs(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min));
+}
+
 function wrapAxis(v: number): number {
   if (v > PLATFORM_HALF) return v - PLATFORM_SIZE;
   if (v < -PLATFORM_HALF) return v + PLATFORM_SIZE;
@@ -104,6 +153,9 @@ export class SphereRoom extends Room<SphereState> {
   private pendingFrom = new Map<string, string>();
   // sessionId → authenticated user id, for the single-live-session registry.
   private userIdBySession = new Map<string, string>();
+  // npcId → its pending auto-accept / active chatter timer (one per NPC, since
+  // an NPC tethers at most one peer at a time). Cleared on tether end + dispose.
+  private botTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   override onCreate(_options: unknown): void {
     this.state = new SphereState();
@@ -225,6 +277,14 @@ export class SphereRoom extends Room<SphereState> {
       this.requestRate.set(client.sessionId, slot);
       this.pendingRequests.set(target, client.sessionId);
       this.pendingFrom.set(client.sessionId, target);
+      // Dweller NPC target: no Client to notify — the server auto-accepts on
+      // its behalf after a short randomized delay, then starts chattering.
+      if (isNpcId(target)) {
+        this.scheduleBot(target, randMs(BOT_ACCEPT_MIN_MS, BOT_ACCEPT_MAX_MS), () =>
+          this.botAccept(target, client.sessionId),
+        );
+        return;
+      }
       const me = this.state.players.get(client.sessionId);
       const peer = this.findClient(target);
       if (peer) {
@@ -361,6 +421,76 @@ export class SphereRoom extends Room<SphereState> {
     if (peer && peer.sessionId !== a) {
       peer.send('tether-ended', { from: a });
     }
+    // Stop any dweller chatter loop on either side.
+    this.clearBot(a);
+    this.clearBot(b);
+  }
+
+  // ── Bot tether dialogue (mega-batch 4.11) ─────────────────────────────────
+  private scheduleBot(npcId: string, ms: number, fn: () => void): void {
+    this.clearBot(npcId);
+    this.botTimers.set(
+      npcId,
+      setTimeout(() => {
+        this.botTimers.delete(npcId);
+        fn();
+      }, ms),
+    );
+  }
+
+  private clearBot(npcId: string): void {
+    const t = this.botTimers.get(npcId);
+    if (t) {
+      clearTimeout(t);
+      this.botTimers.delete(npcId);
+    }
+  }
+
+  /** Server-side accept on behalf of an NPC. Re-checks the handshake is still
+   *  valid (the requester may have cancelled / left in the meantime). */
+  private botAccept(npcId: string, requesterId: string): void {
+    if (this.pendingRequests.get(npcId) !== requesterId) return; // cancelled
+    if (!this.state.players.has(npcId)) return; // npc gone
+    const requester = this.findClient(requesterId);
+    if (!requester) {
+      // requester left before we accepted — drop the pending handshake
+      this.pendingRequests.delete(npcId);
+      this.pendingFrom.delete(requesterId);
+      return;
+    }
+    this.pendingRequests.delete(npcId);
+    this.pendingFrom.delete(requesterId);
+    this.activeTethers.set(npcId, requesterId);
+    this.activeTethers.set(requesterId, npcId);
+    const npc = this.state.players.get(npcId);
+    requester.send('tether-accepted', {
+      from: npcId,
+      name: botName(npc?.className ?? 'dweller.robot'),
+    });
+    // Start the chatter loop.
+    this.scheduleBot(npcId, randMs(BOT_SAY_MIN_MS, BOT_SAY_MAX_MS), () =>
+      this.botSay(npcId, requesterId),
+    );
+  }
+
+  /** Emit one lore-safe line from the NPC, then reschedule. Stops when the
+   *  tether is gone or the peer has left. */
+  private botSay(npcId: string, requesterId: string): void {
+    if (this.activeTethers.get(npcId) !== requesterId) return; // tether ended
+    const requester = this.findClient(requesterId);
+    if (!requester) {
+      this.endTether(npcId, requesterId);
+      return;
+    }
+    const npc = this.state.players.get(npcId);
+    const pool = botLinesFor(npc?.className ?? 'dweller.robot');
+    const body = pool[Math.floor(Math.random() * pool.length)];
+    if (body && isValidTetherBody(body)) {
+      requester.send('tether-message', { from: npcId, body, isEmote: false });
+    }
+    this.scheduleBot(npcId, randMs(BOT_SAY_MIN_MS, BOT_SAY_MAX_MS), () =>
+      this.botSay(npcId, requesterId),
+    );
   }
 
   /** Kick a stale client whose account just connected from a newer tab.
@@ -451,6 +581,8 @@ export class SphereRoom extends Room<SphereState> {
       if (target === client.sessionId || requester === client.sessionId) {
         this.pendingRequests.delete(target);
         this.pendingFrom.delete(requester);
+        // Cancel a pending NPC auto-accept whose requester just left.
+        if (isNpcId(target)) this.clearBot(target);
         const survivor = this.findClient(target === client.sessionId ? requester : target);
         if (survivor) {
           survivor.send('tether-declined', { from: client.sessionId });
@@ -469,6 +601,13 @@ export class SphereRoom extends Room<SphereState> {
       this.userIdBySession.delete(client.sessionId);
       unregisterSession(userId, client.sessionId);
     }
+  }
+
+  override onDispose(): void {
+    // Clear any outstanding dweller-chatter timers so a disposed room leaves
+    // no dangling callbacks.
+    for (const t of this.botTimers.values()) clearTimeout(t);
+    this.botTimers.clear();
   }
 
   private spawnNpcs(): void {

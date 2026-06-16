@@ -77,7 +77,9 @@ import {
   tickLock,
 } from './target-lock.js';
 import {
+  isTargeting,
   leaveTether,
+  sendTetherRequest,
   setTetherSink,
   tetherDeclined,
   tetherEstablished,
@@ -1335,6 +1337,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const ndcY = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     const hit = pickAvatar(tapRaycaster, camera, ndcX, ndcY, remoteAvatars);
     if (!hit) return; // tap on background — keep current lock as-is
+    // In tether targeting mode a tap offers a tether to the tapped runner
+    // (or dweller NPC) instead of locking the camera. The NPC bots
+    // auto-accept and chatter (server-side) so this is testable solo.
+    if (isTargeting()) {
+      const tapped = remoteAvatars.get(hit.id);
+      const name = tapped?.tagName.textContent || 'runner';
+      sendTetherRequest({ id: hit.id, name });
+      return;
+    }
     if (lockedTarget?.id === hit.id) {
       releaseLock(lockedTarget);
       lockedTarget = null;
