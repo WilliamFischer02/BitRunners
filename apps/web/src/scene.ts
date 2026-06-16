@@ -1219,7 +1219,26 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const unsubscribeNameStyle = subscribeNameStyle((next) => {
     localNameStyle = { ...next };
     applyLocalNameStyle();
+    // Broadcast styling so other clients render it (account-only).
+    if (netSession && localIdentity.signedIn) {
+      netSession.sendIdentity({ nameWeight: next.weight, nameTint: next.tint });
+    }
   });
+
+  // Class string for a REMOTE runner's styled name from the wire values.
+  // Remotes that send a non-default style are signed in by construction, so we
+  // pass signedIn=true; guests transmit empty strings → no class.
+  function remoteNameClass(weight: string, tint: string): string {
+    const cls = nameStyleClass(
+      {
+        v: 1,
+        weight: weight === 'bold' ? 'bold' : 'regular',
+        tint: (tint || 'none') as NameStyle['tint'],
+      },
+      true,
+    );
+    return `player-tag-name${cls ? ` ${cls}` : ''}`;
+  }
 
   function resize(): void {
     const w = host.clientWidth || 1;
@@ -1414,6 +1433,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             displayName: localIdentity.displayName,
             equippedBadge: localIdentity.equippedBadge,
             equippedTheme: localIdentity.equippedTheme,
+            // Name styling is account-only — only broadcast when signed in.
+            nameWeight: localIdentity.signedIn ? localNameStyle.weight : undefined,
+            nameTint: localIdentity.signedIn ? localNameStyle.tint : undefined,
             userId,
           },
           {
@@ -1449,6 +1471,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 p.equippedBadge,
                 0,
               );
+              if (!p.id.startsWith('npc:')) {
+                ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
+              }
               // NPCs don't need a name tag — keep it but show the className.
               if (p.id.startsWith('npc:')) {
                 ra.tagName.textContent = `${p.className.replace('dweller.', '')}`;
@@ -1495,6 +1520,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 p.equippedBadge,
                 0,
               );
+              ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);

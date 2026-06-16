@@ -13,12 +13,16 @@ export interface RemotePlayer {
   displayName: string;
   equippedBadge: string;
   equippedTheme: string;
+  nameWeight: string;
+  nameTint: string;
 }
 
 export interface IdentityUpdate {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
 }
 
 export interface TetherPeerSummary {
@@ -54,6 +58,8 @@ export interface JoinOptions {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
   /** Supabase auth uid — lets the server enforce one live session per account. */
   userId?: string;
 }
@@ -91,6 +97,8 @@ interface PlayerSchema {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -106,6 +114,8 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     displayName: p.displayName ?? '',
     equippedBadge: p.equippedBadge ?? '',
     equippedTheme: p.equippedTheme ?? '',
+    nameWeight: p.nameWeight ?? '',
+    nameTint: p.nameTint ?? '',
   };
 }
 
@@ -127,6 +137,8 @@ export async function joinSphere(
   if (joinOpts.displayName) opts.displayName = joinOpts.displayName;
   if (joinOpts.equippedBadge) opts.equippedBadge = joinOpts.equippedBadge;
   if (joinOpts.equippedTheme) opts.equippedTheme = joinOpts.equippedTheme;
+  if (joinOpts.nameWeight) opts.nameWeight = joinOpts.nameWeight;
+  if (joinOpts.nameTint) opts.nameTint = joinOpts.nameTint;
   if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
@@ -187,6 +199,8 @@ export async function joinSphere(
         playerCb.listen('displayName', fireIdentity);
         playerCb.listen('equippedBadge', fireIdentity);
         playerCb.listen('equippedTheme', fireIdentity);
+        playerCb.listen('nameWeight', fireIdentity);
+        playerCb.listen('nameTint', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
@@ -265,7 +279,9 @@ export async function joinSphere(
       if (
         update.displayName === undefined &&
         update.equippedBadge === undefined &&
-        update.equippedTheme === undefined
+        update.equippedTheme === undefined &&
+        update.nameWeight === undefined &&
+        update.nameTint === undefined
       ) {
         return;
       }

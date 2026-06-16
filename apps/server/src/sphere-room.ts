@@ -10,6 +10,8 @@ import {
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
+  isValidNameTint,
+  isValidNameWeight,
   isValidTetherBody,
   isValidThemeKey,
   isValidUserId,
@@ -148,7 +150,13 @@ export class SphereRoom extends Room<SphereState> {
       'identity',
       (
         client: Client,
-        msg: { displayName?: unknown; equippedBadge?: unknown; equippedTheme?: unknown },
+        msg: {
+          displayName?: unknown;
+          equippedBadge?: unknown;
+          equippedTheme?: unknown;
+          nameWeight?: unknown;
+          nameTint?: unknown;
+        },
       ) => {
         this.lastSeen.set(client.sessionId, Date.now());
         const p = this.state.players.get(client.sessionId);
@@ -166,6 +174,16 @@ export class SphereRoom extends Room<SphereState> {
         if (msg?.equippedTheme !== undefined) {
           if (msg.equippedTheme === '' || isValidThemeKey(msg.equippedTheme)) {
             p.equippedTheme = msg.equippedTheme as string;
+          }
+        }
+        if (msg?.nameWeight !== undefined) {
+          if (msg.nameWeight === '' || isValidNameWeight(msg.nameWeight)) {
+            p.nameWeight = msg.nameWeight as string;
+          }
+        }
+        if (msg?.nameTint !== undefined) {
+          if (msg.nameTint === '' || isValidNameTint(msg.nameTint)) {
+            p.nameTint = msg.nameTint as string;
           }
         }
       },
@@ -364,6 +382,8 @@ export class SphereRoom extends Room<SphereState> {
           displayName?: string;
           equippedBadge?: string;
           equippedTheme?: string;
+          nameWeight?: string;
+          nameTint?: string;
           userId?: string;
         }
       | undefined,
@@ -394,6 +414,12 @@ export class SphereRoom extends Room<SphereState> {
     }
     if (options?.equippedTheme && isValidThemeKey(options.equippedTheme)) {
       p.equippedTheme = options.equippedTheme;
+    }
+    if (options?.nameWeight && isValidNameWeight(options.nameWeight)) {
+      p.nameWeight = options.nameWeight;
+    }
+    if (options?.nameTint && isValidNameTint(options.nameTint)) {
+      p.nameTint = options.nameTint;
     }
     // Scatter spawn coords so newcomers don't all stack at (0,0). The
     // PlayerState schema defaults x/z to 0; without this every avatar

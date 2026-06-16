@@ -18,6 +18,10 @@ export class PlayerState extends Schema {
   @type('string') displayName = '';
   @type('string') equippedBadge = '';
   @type('string') equippedTheme = '';
+  // Name-tag styling so other clients render a runner's styled name (used to
+  // be local-only). Shape-validated on the 'identity' message.
+  @type('string') nameWeight = '';
+  @type('string') nameTint = '';
   // Reserved fields for Phase 3 (per docs/devlog/0004 schema-reservation principle).
   // Pre-allocating now avoids breaking schema migrations later.
   @type('number') samaritanCorporate = 0;

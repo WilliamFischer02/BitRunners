@@ -70,6 +70,27 @@ export function isValidThemeKey(key: unknown): key is string {
   return typeof key === 'string' && THEME_KEY_RE.test(key);
 }
 
+// Name-tag styling (weight + tint). Mirrors the curated vocabulary in
+// apps/web/src/name-style.ts; kept here so the server can shape-validate the
+// 'identity' wire and other clients can render a remote runner's styled name
+// (the styling used to be local-only). The server can't import the web
+// catalog (separate package), so the lists are duplicated as a shape gate.
+export const NAME_WEIGHTS = ['regular', 'bold'] as const;
+export const NAME_TINTS = [
+  'none',
+  'solid_mint',
+  'solid_ember',
+  'solid_iris',
+  'gradient',
+  'glow',
+] as const;
+export function isValidNameWeight(w: unknown): w is string {
+  return typeof w === 'string' && (NAME_WEIGHTS as readonly string[]).includes(w);
+}
+export function isValidNameTint(t: unknown): t is string {
+  return typeof t === 'string' && (NAME_TINTS as readonly string[]).includes(t);
+}
+
 // Supabase auth user id (UUID). Sent on join so the server can enforce a
 // single live Colyseus connection per account (kills AFK self-ghosts left by
 // stale tabs).
