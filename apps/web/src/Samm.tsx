@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { getLine } from './dialogue.js';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
-import { type BetCurrency, type GambleResult, betTiers, canBet, gamble, minBet } from './samm.js';
+import {
+  type BetCurrency,
+  type GambleResult,
+  betTiers,
+  canBet,
+  gamble,
+  minBet,
+} from './samm-machine.js';
 import { playDissolve } from './transitions/dissolve.js';
 
 const DISSOLVE_OPTS = { durationMs: 280, cell: 8, color: '#c0ffd6' } as const;
