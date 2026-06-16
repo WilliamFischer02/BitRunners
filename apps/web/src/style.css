@@ -138,21 +138,38 @@ body,
 }
 .starmap-expanded-close {
   appearance: none;
-  background: transparent;
-  border: 0;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid #355042;
+  border-radius: 4px;
   color: var(--tint-dim);
   cursor: pointer;
-  font-size: 14px;
-  padding: 4px 8px;
+  font-size: 18px;
+  line-height: 1;
+  /* ≥44px touch target — ESC is only a fallback; on touch the ✕ is the
+     primary exit (mega-batch 4.5). */
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.starmap-expanded-close:hover {
+.starmap-expanded-close:hover,
+.starmap-expanded-close:focus-visible {
   color: #ff9450;
+  border-color: #ff9450;
 }
 .starmap-expanded-canvas {
   display: block;
+  /* Always a square, sized to the SMALLER of available width and height so
+     it never distorts or clips in portrait or landscape — letterboxed via
+     the auto margins when one axis is tighter. */
   width: 100%;
+  max-width: min(92vw, 62vh);
   height: auto;
   aspect-ratio: 1 / 1;
+  margin: 0 auto;
   border: 1px solid #355042;
   border-radius: 3px;
   background: rgba(8, 12, 14, 0.6);
