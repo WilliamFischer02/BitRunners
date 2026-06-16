@@ -70,6 +70,20 @@ export function isValidThemeKey(key: unknown): key is string {
   return typeof key === 'string' && THEME_KEY_RE.test(key);
 }
 
+// Supabase auth user id (UUID). Sent on join so the server can enforce a
+// single live Colyseus connection per account (kills AFK self-ghosts left by
+// stale tabs).
+const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isValidUserId(id: unknown): id is string {
+  return typeof id === 'string' && USER_ID_RE.test(id);
+}
+
+// WebSocket close code the server uses when a newer tab/connection for the
+// same account supersedes an older one. The stale client shows a
+// "session moved" overlay and must NOT auto-reconnect (it would ping-pong
+// with the live tab). 4000-4999 is the application-private range.
+export const WS_CLOSE_SESSION_SUPERSEDED = 4001;
+
 // ── Tether chat (PR 87 — Phase-2 chat wire-up) ────────────────────────────
 //
 // 1:1 chat between two consenting runners in the same sphere. Client gates

@@ -66,6 +66,7 @@ import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
 import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
+import { getCurrentUserId } from './supabase.js';
 import {
   type LockedTarget,
   applyLock,
@@ -133,6 +134,24 @@ const COLLIDERS: readonly BoxCollider[] = [
 // local player or they vanish across the seam (devlog 0031).
 function wrapDelta(d: number): number {
   return ((((d + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) - PLATFORM_HALF;
+}
+
+// Shown when a newer tab for the same account supersedes this connection.
+// Persistent (no auto-dismiss) — the stale tab is intentionally dead so it
+// stops haunting the sphere; the runner continues in the other tab.
+function showSupersededOverlay(host: HTMLElement): void {
+  if (host.querySelector('.session-superseded')) return;
+  const el = document.createElement('div');
+  el.className = 'session-superseded';
+  el.innerHTML =
+    '<div class="session-superseded-box">' +
+    '<div class="session-superseded-title">// session moved to another tab</div>' +
+    '<div class="session-superseded-sub">this runner is now active in a newer tab or window.</div>' +
+    '<button type="button" class="session-superseded-btn">reconnect here</button>' +
+    '</div>';
+  const btn = el.querySelector('.session-superseded-btn');
+  btn?.addEventListener('click', () => window.location.reload());
+  host.appendChild(el);
 }
 // Exponential-smoothing rate for remote avatars (frame-rate independent).
 const REMOTE_LERP_K = 14;
@@ -1368,6 +1387,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const connectSphere = async (): Promise<void> => {
       if (sceneDisposed) return;
       setNet(`net: connecting · ${serverUrl}`, 'connecting');
+      // The auth uid lets the server enforce one live session per account, so
+      // a second tab kicks the first instead of leaving an AFK ghost.
+      const userId = (await getCurrentUserId()) ?? undefined;
+      if (sceneDisposed) return;
       try {
         const session = await joinSphere(
           serverUrl,
@@ -1376,6 +1399,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             displayName: localIdentity.displayName,
             equippedBadge: localIdentity.equippedBadge,
             equippedTheme: localIdentity.equippedTheme,
+            userId,
           },
           {
             onJoin(p) {
@@ -1502,6 +1526,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               } else {
                 setNet('net: disconnected · reload', 'error');
               }
+            },
+            onSuperseded() {
+              if (sceneDisposed) return;
+              // A newer tab for this account took over. Do NOT reconnect —
+              // that would ping-pong with the live tab. Tear down quietly and
+              // show a persistent overlay instead.
+              netSession = null;
+              setTetherSink(null);
+              leaveTether();
+              clearRemoteAvatars();
+              reconnectAttempt = RECONNECT_DELAYS.length;
+              setNet('net: session moved to another tab', 'error');
+              showSupersededOverlay(host);
             },
           },
           roomCode || undefined,

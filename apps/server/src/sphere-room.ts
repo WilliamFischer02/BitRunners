@@ -6,15 +6,18 @@ import {
   PLATFORM_SIZE,
   TETHER_RATE_LIMIT_PER_MIN,
   TETHER_REQUEST_RATE_LIMIT_PER_MIN,
+  WS_CLOSE_SESSION_SUPERSEDED,
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
   isValidTetherBody,
   isValidThemeKey,
+  isValidUserId,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { recordAudit } from './audit.js';
 import { classifyTetherBody } from './profanity.js';
+import { registerSession, unregisterSession } from './session-registry.js';
 import { PlayerState, SphereState } from './state.js';
 
 interface MoveMessage {
@@ -96,6 +99,8 @@ export class SphereRoom extends Room<SphereState> {
   //     on an accept/decline from. Used to reject concurrent outgoing
   //     requests (the double-accept race surfaced in the handoff).
   private pendingFrom = new Map<string, string>();
+  // sessionId → authenticated user id, for the single-live-session registry.
+  private userIdBySession = new Map<string, string>();
 
   override onCreate(_options: unknown): void {
     this.state = new SphereState();
@@ -335,6 +340,22 @@ export class SphereRoom extends Room<SphereState> {
     }
   }
 
+  /** Kick a stale client whose account just connected from a newer tab.
+   *  Sends a notice first so the client can show a "session moved" overlay and
+   *  suppress its auto-reconnect, then closes with the superseded code. */
+  private supersedeClient(client: Client): void {
+    try {
+      client.send('session-superseded', {});
+    } catch {
+      // socket may already be closing — the close code below still informs it
+    }
+    try {
+      client.leave(WS_CLOSE_SESSION_SUPERSEDED);
+    } catch {
+      // already gone
+    }
+  }
+
   override onJoin(
     client: Client,
     options:
@@ -343,9 +364,23 @@ export class SphereRoom extends Room<SphereState> {
           displayName?: string;
           equippedBadge?: string;
           equippedTheme?: string;
+          userId?: string;
         }
       | undefined,
   ): void {
+    // Single live session per account: if this user already has a live
+    // connection (this or another sphere), supersede the older one so it
+    // stops haunting its room as an AFK ghost.
+    if (isValidUserId(options?.userId)) {
+      const userId = options.userId;
+      this.userIdBySession.set(client.sessionId, userId);
+      const previous = registerSession(userId, {
+        sessionId: client.sessionId,
+        supersede: () => this.supersedeClient(client),
+      });
+      if (previous) previous.supersede();
+    }
+
     const p = new PlayerState();
     p.id = client.sessionId;
     if (options?.className && options.className.length <= 32) {
@@ -391,6 +426,14 @@ export class SphereRoom extends Room<SphereState> {
     this.requestRate.delete(client.sessionId);
     this.state.players.delete(client.sessionId);
     this.lastSeen.delete(client.sessionId);
+    // Release the single-session registry slot — but only if this client is
+    // still the live one (a session that was superseded must not evict the
+    // newer connection when it finally closes).
+    const userId = this.userIdBySession.get(client.sessionId);
+    if (userId) {
+      this.userIdBySession.delete(client.sessionId);
+      unregisterSession(userId, client.sessionId);
+    }
   }
 
   private spawnNpcs(): void {

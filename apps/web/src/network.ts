@@ -1,3 +1,4 @@
+import { WS_CLOSE_SESSION_SUPERSEDED } from '@bitrunners/shared';
 import { Client, type Room, getStateCallbacks } from 'colyseus.js';
 
 export interface RemotePlayer {
@@ -33,6 +34,9 @@ export interface NetworkCallbacks {
   onIdentity?(id: string, p: RemotePlayer): void;
   /** Fired when the server closes the connection unexpectedly (e.g. idle kick). */
   onDisconnect?(code: number): void;
+  /** Fired when a newer tab/connection for the same account superseded this
+   *  one. The client should show a "session moved" overlay and NOT reconnect. */
+  onSuperseded?(): void;
   // Tether chat (PR 87) — server routes the five message types between
   // exactly two consenting peers. Each callback receives the originating
   // sessionId so the client can match against the local tether state.
@@ -50,6 +54,8 @@ export interface JoinOptions {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  /** Supabase auth uid — lets the server enforce one live session per account. */
+  userId?: string;
 }
 
 export interface NetworkSession {
@@ -121,6 +127,7 @@ export async function joinSphere(
   if (joinOpts.displayName) opts.displayName = joinOpts.displayName;
   if (joinOpts.equippedBadge) opts.equippedBadge = joinOpts.equippedBadge;
   if (joinOpts.equippedTheme) opts.equippedTheme = joinOpts.equippedTheme;
+  if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
   let room: Room;
@@ -221,9 +228,24 @@ export async function joinSphere(
     callbacks.onTetherRejected?.(msg?.reason ?? 'moderation');
   });
 
+  // A newer tab for the same account just connected — the server is closing
+  // this socket. Flag it so the close below doesn't trigger a reconnect loop.
+  let superseded = false;
+  room.onMessage('session-superseded', () => {
+    superseded = true;
+    callbacks.onSuperseded?.();
+  });
+
   let intentionalLeave = false;
   room.onLeave((code: number) => {
-    if (!intentionalLeave) callbacks.onDisconnect?.(code);
+    if (intentionalLeave) return;
+    if (superseded) return; // already handled by the session-superseded message
+    // The close code is the reliable signal if the message frame didn't flush.
+    if (code === WS_CLOSE_SESSION_SUPERSEDED) {
+      callbacks.onSuperseded?.();
+      return;
+    }
+    callbacks.onDisconnect?.(code);
   });
 
   return {

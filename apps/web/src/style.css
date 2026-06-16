@@ -1068,6 +1068,57 @@ dialog.panel::backdrop {
   text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
 }
 
+/* ──────────── session superseded (single live session per account) ──────────── */
+.session-superseded {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 8, 0.92);
+  z-index: 120;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.session-superseded-box {
+  max-width: 88vw;
+  padding: 22px 26px;
+  border: 1px solid #6a3a30;
+  border-radius: 4px;
+  background: rgba(10, 14, 16, 0.9);
+  text-align: center;
+}
+.session-superseded-title {
+  color: #ff9b8b;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
+}
+.session-superseded-sub {
+  margin-top: 10px;
+  color: #8aa597;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.session-superseded-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  min-height: 44px;
+  border: 1px solid #3a6850;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  color: #a8f0c0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.session-superseded-btn:hover {
+  border-color: #5a9878;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;
