@@ -67,13 +67,18 @@ if ($LASTEXITCODE -ne 0) {
 }
 Write-Host "✅ On branch $branch" -ForegroundColor Green
 
-# ── 4. Sanity-check toolchain (project requires these exact majors) ─────────
+# ── 4. Sanity-check toolchain ───────────────────────────────────────────────
+# Project is tested on Node 22 (CI pin) but the build is fine on any modern
+# major. Accept v22+ so a host with v24/v26 installed isn't blocked. Below
+# v22 (v20/v18) is too old — esbuild + Vite features the repo uses won't
+# work there.
 $node = (node --version)
 $pnpm = (pnpm --version)
-Write-Host "Node: $node  (need v22.x)"
+Write-Host "Node: $node  (need v22 or newer)"
 Write-Host "pnpm: $pnpm  (need 10.33.0)"
-if (-not $node.StartsWith("v22.")) {
-    Write-Host "❌ Wrong Node version" -ForegroundColor Red
+$nodeMajor = [int]($node -replace '^v(\d+)\..*$', '$1')
+if ($nodeMajor -lt 22) {
+    Write-Host "❌ Node $node is too old — need v22 or newer." -ForegroundColor Red
     exit 1
 }
 if ($pnpm -ne "10.33.0") {
