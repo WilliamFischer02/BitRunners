@@ -12,8 +12,13 @@ $ErrorActionPreference = "Stop"
 Set-Location "C:\dev\BitRunners"   # ← EDIT THIS to your local clone
 
 # ── 2. Refuse to run from a dirty tree ──────────────────────────────────────
-if (git status --porcelain) {
-    Write-Error "Working tree dirty — commit or stash before launching."
+# Exclude the two launcher files themselves — the user is expected to edit
+# the repo path in this script and may iterate on the prompt locally; those
+# edits shouldn't block the launcher from running.
+$dirty = git status --porcelain |
+    Where-Object { $_ -notmatch '\s(start-claude-auto\.ps1|launch-prompt\.md)$' }
+if ($dirty) {
+    Write-Error "Working tree dirty (outside the launcher files) — commit or stash before launching:`n$dirty"
     exit 1
 }
 
