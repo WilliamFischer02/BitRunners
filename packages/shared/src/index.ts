@@ -33,7 +33,30 @@ export const EMOTE_GLYPHS: Record<EmoteId, string> = {
   bad: '[x]',
 };
 
-const EMOTE_VALUES: ReadonlySet<string> = new Set(Object.values(EMOTE_GLYPHS));
+// Additional emote glyphs unlockable via the emote loadout (mega-batch 4.12).
+// Two more "base" glyphs (salute, heart) round the free set to 10, plus a
+// 10-glyph premium "cooler" pack. The full client catalog (ids/labels/price)
+// lives in apps/web/src/emotes.ts; the glyphs live here so the server's
+// allowlist accepts an equipped emote. All ASCII, no free text.
+export const EXTRA_EMOTE_GLYPHS = [
+  'o7',
+  '<3',
+  '>:)',
+  '8)',
+  'xD',
+  ':3',
+  '\\m/',
+  '*_*',
+  'T_T',
+  'B)',
+  '~_~',
+  'O_O',
+] as const;
+
+const EMOTE_VALUES: ReadonlySet<string> = new Set([
+  ...Object.values(EMOTE_GLYPHS),
+  ...EXTRA_EMOTE_GLYPHS,
+]);
 
 export function isValidEmote(text: unknown): text is string {
   return typeof text === 'string' && EMOTE_VALUES.has(text);

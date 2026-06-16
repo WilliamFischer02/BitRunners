@@ -4,6 +4,7 @@ import { ThemeView } from './ThemeShop.js';
 import {
   BOT_TICK_MS,
   CREDITS_PER_TOKEN,
+  EMOTE_LOADOUT_SLOTS,
   EQUIP_SLOTS,
   type EconomyState,
   type Faction,
@@ -21,7 +22,9 @@ import {
   equip,
   exchangeCreditsForTokens,
   getEconomy,
+  getEmoteLoadout,
   getEquipped,
+  getOwnedEmotes,
   hasAutoScrape,
   hasBotBitsTab,
   hasBotPasscodesTab,
@@ -32,17 +35,21 @@ import {
   isAppearanceHidden,
   isPrestigeUnlocked,
   isTreeUnlocked,
+  ownsPremiumEmote,
   prestigeReset,
   prestigeTokenPayout,
+  purchaseEmote,
   scrape,
   scrapeYield,
   setAppearanceHidden,
+  setEmoteSlot,
   subscribeEconomy,
   tabulate,
   tabulateAll,
   tabulateAura,
   tabulateReach,
 } from './economy.js';
+import { BASE_EMOTE_IDS, PREMIUM_EMOTES, getEmote } from './emotes.js';
 import {
   SHOP_CATALOG,
   type ShopItem,
@@ -303,13 +310,43 @@ function OutfitsTab({ eco }: { eco: EconomyState }): JSX.Element {
   );
 }
 
-function EmotesTab(): JSX.Element {
+function EmotesTab({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section">
-      <div className="panel-section-title">$ emotes</div>
+      <div className="panel-section-title">$ emotes · cooler pack</div>
+      <div className="shop-credits">credits · {eco.credits}</div>
+      <div className="shop-list">
+        {PREMIUM_EMOTES.map((e) => {
+          const owned = ownsPremiumEmote(e.id);
+          const canBuy = !owned && eco.credits >= e.price;
+          return (
+            <div className={`shop-item ${owned ? 'is-owned' : ''}`} key={e.id}>
+              <div className="shop-item-main">
+                <span className="shop-item-name">
+                  <span className="shop-item-glyph" aria-hidden="true">
+                    {e.glyph}
+                  </span>
+                  {e.label}
+                </span>
+                <span className="shop-item-blurb">emote · {e.glyph}</span>
+              </div>
+              <button
+                type="button"
+                className={canBuy ? 'shop-buy is-ready' : 'shop-buy'}
+                disabled={!canBuy}
+                onClick={() => {
+                  purchaseEmote(e.id, e.price);
+                }}
+              >
+                {owned ? '[ owned ]' : `[ ${e.price} cr ]`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
       <div className="panel-stub">
-        ─── equip your loadout from the emote-slots section in the inventory. a premium emote pack
-        is coming to this tab.
+        ─── equip purchased emotes in the inventory's $ emote slots. price is a placeholder pending
+        owner tuning.
       </div>
     </section>
   );
@@ -344,7 +381,7 @@ export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
         ))}
       </div>
       {tab === 'outfits' && <OutfitsTab eco={eco} />}
-      {tab === 'emotes' && <EmotesTab />}
+      {tab === 'emotes' && <EmotesTab eco={eco} />}
       {tab === 'themes' && <ThemeView />}
       {tab === 'upgrades' && <TreeView eco={eco} />}
     </>
@@ -410,6 +447,77 @@ function TreeView({ eco }: { eco: EconomyState }): JSX.Element {
       </div>
       <div className="panel-stub">
         ─── passcodes also trade to Credits via the Admin/Company. balance is first-pass + tunable.
+      </div>
+    </section>
+  );
+}
+
+function EmoteSlotsSection(): JSX.Element {
+  const [, force] = useState(0);
+  useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
+  const [picker, setPicker] = useState<number | null>(null);
+  const loadout = getEmoteLoadout();
+  const ownedIds = [...BASE_EMOTE_IDS, ...getOwnedEmotes()];
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ emote slots</div>
+      <div className="emote-slots">
+        {Array.from({ length: EMOTE_LOADOUT_SLOTS }, (_, i) => i).map((i) => {
+          const id = loadout[i];
+          const def = id ? getEmote(id) : undefined;
+          return (
+            <button
+              type="button"
+              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length loadout
+              key={`eslot-${i}`}
+              className={`emote-slot ${picker === i ? 'is-active' : ''}`}
+              onClick={() => setPicker(picker === i ? null : i)}
+            >
+              <span className="emote-slot-glyph">{def?.glyph ?? '·'}</span>
+              <span className="emote-slot-label">{def?.label ?? 'empty'}</span>
+            </button>
+          );
+        })}
+      </div>
+      {picker !== null && (
+        <div className="emote-picker">
+          <div className="panel-stub">─── pick an emote for slot {picker + 1}</div>
+          <div className="emote-picker-grid">
+            <button
+              type="button"
+              className="emote-pick"
+              onClick={() => {
+                setEmoteSlot(picker, null);
+                setPicker(null);
+              }}
+            >
+              <span className="emote-slot-glyph">·</span>
+              <span className="emote-slot-label">clear</span>
+            </button>
+            {ownedIds.map((id) => {
+              const def = getEmote(id);
+              if (!def) return null;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  className="emote-pick"
+                  onClick={() => {
+                    setEmoteSlot(picker, id);
+                    setPicker(null);
+                  }}
+                >
+                  <span className="emote-slot-glyph">{def.glyph}</span>
+                  <span className="emote-slot-label">{def.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="panel-stub">
+        ─── these 4 emotes fill the wheel's main directions. buy more in the shop's // emotes tab.
       </div>
     </section>
   );
@@ -508,6 +616,7 @@ export function InventoryView(): JSX.Element {
       <div className="panel-stub">
         ─── tap a slot to equip it. equipped clothing + pets appear on your runner in the 3D scene.
       </div>
+      <EmoteSlotsSection />
     </section>
   );
 }

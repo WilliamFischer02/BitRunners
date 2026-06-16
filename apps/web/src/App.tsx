@@ -7,7 +7,7 @@ import { BadgesModal } from './BadgesModal.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { CreditsHud } from './CreditsHud.js';
-import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
+import { EmoteWheel } from './EmoteWheel.js';
 import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
@@ -194,8 +194,8 @@ function Game({ className }: GameProps): JSX.Element {
     return () => window.removeEventListener('bitrunners:grant-received', onGrant);
   }, []);
 
-  const onEmote = useCallback((id: EmoteId) => {
-    controlsRef.current?.triggerEmote(EMOTE_GLYPHS[id]);
+  const onEmote = useCallback((glyph: string) => {
+    controlsRef.current?.triggerEmote(glyph);
   }, []);
 
   return (
