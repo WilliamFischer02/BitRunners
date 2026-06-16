@@ -20,6 +20,7 @@ import { TetherChat } from './TetherChat.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
+import { startMissionServerLoad } from './mission-server-load.js';
 import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
 import { type SceneControls, startScene } from './scene.js';
@@ -34,6 +35,10 @@ startBadgeMonitor();
 startVisibilityWatcher();
 startSignupGrant();
 startMissionSync();
+// Reads server-side mission progress on sign-in and rebuilds local state
+// from it (server is the source of truth — must start after mission-sync so
+// the local write path is already listening).
+startMissionServerLoad();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 

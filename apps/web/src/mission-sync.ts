@@ -22,11 +22,26 @@ import {
   setActiveMission,
   subscribeMissionChanges,
 } from './missions.js';
+import { advanceCheckpoint, startMission } from './supabase.js';
 
 let started = false;
 let lastKey: string | null = null;
 let lastIdx = -1;
 let lastState = '';
+
+// Fire-and-forget server writes. On a guest / unconfigured Supabase the
+// wrappers return { error: 'auth not configured' } and no-op, so it is safe
+// to call these on every transition without an auth check here.
+function pushStart(key: string): void {
+  void startMission(key).catch(() => {
+    /* non-critical; local store remains the offline fallback */
+  });
+}
+function pushAdvance(key: string, idx: number, final: boolean): void {
+  void advanceCheckpoint(key, idx, final).catch(() => {
+    /* non-critical; local store remains the offline fallback */
+  });
+}
 
 export function startMissionSync(): void {
   if (started) return;
@@ -47,7 +62,10 @@ export function startMissionSync(): void {
     lastState = state;
 
     if (state === 'complete') {
-      markCompleted(key);
+      // The completion RPC already ran in MissionDialogue (server is the
+      // source of truth for the award). Here we only mirror it locally,
+      // recording the faction so the objectives panel can label it later.
+      markCompleted(key, snap.factionChoice ?? undefined);
       // Queue the next chain mission as the new active one (if any
       // remain). Drops to null when the runner has cleared the chain.
       const progress = getProgress();
@@ -62,6 +80,9 @@ export function startMissionSync(): void {
             state: 'active',
             factionChoice: null,
           });
+          // setActiveMission re-enters this subscriber with the new active
+          // mission, which issues the start_mission write — so no explicit
+          // pushStart here.
         }
       } else {
         setActive(null, 0, 'inactive');
@@ -74,11 +95,16 @@ export function startMissionSync(): void {
       // If this is a different mission than the previous persisted one,
       // setActive resets nextIdx; otherwise advance only the idx.
       const progress = getProgress();
+      const isNewMission = progress.active !== key;
       if (progress.active === key) {
         advanceActiveIdx(idx, state);
       } else {
         setActive(key, idx, state);
       }
+      // Mirror to the server. start_mission is idempotent (ON CONFLICT DO
+      // NOTHING); advance_checkpoint only ever moves last_checkpoint forward.
+      if (isNewMission) pushStart(key);
+      pushAdvance(key, idx, state === 'final');
     }
   });
 }

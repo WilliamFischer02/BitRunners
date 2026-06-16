@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  type MissionProgressLocal,
+  getProgress,
+  subscribeProgress,
+} from './mission-progress-local.js';
+import {
   type ActiveMissionSnap,
   MISSIONS,
   getActiveMission,
@@ -8,8 +13,10 @@ import {
 import { OBJECTIVES_OPEN_EVENT } from './protocols-registry.js';
 
 // Objectives cartridge content panel. Lists active and completed missions
-// from missions.ts. For the first physical mission (aether_recovery_01)
-// shows checkpoint progress and the faction choice if complete.
+// from missions.ts. Completed missions are read from the persistent
+// progress store (mission-progress-local), which the server reconciles on
+// sign-in — so a completed objective stays marked complete forever and is
+// never re-locked when a new objective becomes active.
 //
 // V1 is read-only — abandoning / restarting a mission is a future RPC.
 
@@ -17,6 +24,7 @@ export function Objectives(): JSX.Element | null {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [snap, setSnap] = useState<ActiveMissionSnap | null>(getActiveMission());
+  const [progress, setProgressState] = useState<Readonly<MissionProgressLocal>>(getProgress());
 
   useEffect(() => {
     const onOpen = (): void => setOpen(true);
@@ -25,6 +33,7 @@ export function Objectives(): JSX.Element | null {
   }, []);
 
   useEffect(() => subscribeMissionChanges(setSnap), []);
+  useEffect(() => subscribeProgress(setProgressState), []);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -68,11 +77,22 @@ export function Objectives(): JSX.Element | null {
       <section className="panel-section">
         <div className="panel-section-title">$ active routes</div>
         {MISSIONS.map((m) => {
-          const isActive = m.key === activeKey;
-          const state = isActive ? snap?.state : 'inactive';
-          const next = isActive ? (snap?.nextIdx ?? 0) : 0;
           const total = m.checkpoints.length;
-          const choice = isActive ? (snap?.factionChoice ?? null) : null;
+          const isCompleted = progress.completed.includes(m.key);
+          const isActive = !isCompleted && m.key === activeKey;
+          // Completed missions persist as complete regardless of which
+          // mission is currently active — that is the whole bug fix.
+          const state = isCompleted
+            ? 'complete'
+            : isActive
+              ? (snap?.state ?? 'inactive')
+              : 'inactive';
+          const next = isCompleted ? total : isActive ? (snap?.nextIdx ?? 0) : 0;
+          const choice = isCompleted
+            ? (progress.factions[m.key] ?? null)
+            : isActive
+              ? (snap?.factionChoice ?? null)
+              : null;
           const cls = `objective-card${isActive ? ' is-active' : ''}${
             state === 'complete' ? ' is-complete' : ''
           }`;
@@ -110,9 +130,11 @@ export function Objectives(): JSX.Element | null {
                   ? `route logged to the admin. // bitrunner samaritan +${m.reward}`
                   : state === 'complete' && choice === 'corporate'
                     ? `transaction filed with the company. // corp samaritan +${m.reward}`
-                    : isActive
-                      ? 'walk the next pin on the minimap.'
-                      : 'available after current route resolves.'}
+                    : state === 'complete'
+                      ? 'route resolved.'
+                      : isActive
+                        ? 'walk the next pin on the minimap.'
+                        : 'available after current route resolves.'}
               </div>
             </div>
           );
