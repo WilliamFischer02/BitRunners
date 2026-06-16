@@ -4252,6 +4252,35 @@ dialog.panel::backdrop {
   }
 }
 
+/* ════════ Desktop / tablet launcher pills (mega-batch 4.4) ════════
+   The global .profile (top ~10px) and .protocols-launch (top:156px) rules
+   above placed the launcher tiles in the top-right column — directly over
+   the minimap (.starmap: top:12px right:12px, height clamp(120,18vw,156)).
+   On anything wider than the mobile breakpoint, drop BOTH tiles into the
+   right column BELOW the minimap, stair-stepped (upper nudged inward, lower
+   flush right), keeping a ≥44px short axis. */
+@media (min-width: 541px) {
+  .profile,
+  .protocols-launch {
+    /* 12px (minimap top) + minimap height + 10px gutter */
+    top: calc(12px + clamp(120px, 18vw, 156px) + 10px);
+    height: clamp(56px, 8.4vw, 72px);
+    min-height: 44px;
+  }
+  .profile {
+    /* upper tile — nudged inward for the stair-step */
+    right: 24px;
+    min-width: 120px;
+    max-width: 168px;
+    width: auto;
+  }
+  .protocols-launch {
+    /* lower tile — flush right, one tile-height + gap below the profile */
+    right: 12px;
+    top: calc(12px + clamp(120px, 18vw, 156px) + 10px + clamp(56px, 8.4vw, 72px) + 8px);
+  }
+}
+
 /* ════════ Standby ribbon (Phase 2 — devlog 0066) ════════
    Faint band drawn at the top of the canvas-host when the tab is hidden /
    the visibility watcher has put us in standby. The scene disconnects from
