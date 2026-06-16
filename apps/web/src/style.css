@@ -2374,6 +2374,16 @@ dialog.panel::backdrop {
   gap: 6px;
   align-items: center;
 }
+/* mega-batch 4.8 — shop section tabs (outfits/emotes/themes/upgrades) */
+.shop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #1c2a22;
+}
 .shopinv-tab {
   appearance: none;
   background: rgba(20, 28, 24, 0.7);

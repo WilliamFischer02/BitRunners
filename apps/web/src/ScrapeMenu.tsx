@@ -229,10 +229,32 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
   );
 }
 
-export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
+// Shop is a tabbed hub (mega-batch 4.8): outfits / emotes / themes /
+// upgrades. The selected tab persists to sessionStorage so re-opening the
+// shop lands on the same section.
+export type ShopTab = 'outfits' | 'emotes' | 'themes' | 'upgrades';
+const SHOP_TAB_KEY = 'bitrunners.shop.tab';
+const SHOP_TABS: { id: ShopTab; label: string }[] = [
+  { id: 'outfits', label: '// outfits' },
+  { id: 'emotes', label: '// emotes' },
+  { id: 'themes', label: '// themes' },
+  { id: 'upgrades', label: '// upgrades' },
+];
+
+function readShopTab(): ShopTab {
+  try {
+    const v = sessionStorage.getItem(SHOP_TAB_KEY);
+    if (v === 'outfits' || v === 'emotes' || v === 'themes' || v === 'upgrades') return v;
+  } catch {
+    // sessionStorage unavailable — fall through to default
+  }
+  return 'outfits';
+}
+
+function OutfitsTab({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section">
-      <div className="panel-section-title">$ shop · credits &amp; tokens</div>
+      <div className="panel-section-title">$ outfits · credits &amp; tokens</div>
       <div className="shop-credits">
         credits · {eco.credits} · tokens · {eco.tokens}
       </div>
@@ -277,11 +299,55 @@ export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+function EmotesTab(): JSX.Element {
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ emotes</div>
       <div className="panel-stub">
-        ─── power-ups moved to the skill tree. shop is cosmetics only · real rewards + lore pending
-        owner Q&amp;A.
+        ─── equip your loadout from the emote-slots section in the inventory. a premium emote pack
+        is coming to this tab.
       </div>
     </section>
+  );
+}
+
+export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
+  const [tab, setTab] = useState<ShopTab>(readShopTab);
+
+  const pick = (t: ShopTab): void => {
+    setTab(t);
+    try {
+      sessionStorage.setItem(SHOP_TAB_KEY, t);
+    } catch {
+      // sessionStorage unavailable — selection just won't persist
+    }
+  };
+
+  return (
+    <>
+      <div className="shop-tabs" role="tablist" aria-label="shop sections">
+        {SHOP_TABS.map((t) => (
+          <button
+            type="button"
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={tab === t.id ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+            onClick={() => pick(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'outfits' && <OutfitsTab eco={eco} />}
+      {tab === 'emotes' && <EmotesTab />}
+      {tab === 'themes' && <ThemeView />}
+      {tab === 'upgrades' && <TreeView eco={eco} />}
+    </>
   );
 }
 
