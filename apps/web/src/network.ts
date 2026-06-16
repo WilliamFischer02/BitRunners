@@ -15,6 +15,7 @@ export interface RemotePlayer {
   equippedTheme: string;
   nameWeight: string;
   nameTint: string;
+  level: number;
 }
 
 export interface IdentityUpdate {
@@ -23,6 +24,7 @@ export interface IdentityUpdate {
   equippedTheme?: string;
   nameWeight?: string;
   nameTint?: string;
+  level?: number;
 }
 
 export interface TetherPeerSummary {
@@ -60,6 +62,7 @@ export interface JoinOptions {
   equippedTheme?: string;
   nameWeight?: string;
   nameTint?: string;
+  level?: number;
   /** Supabase auth uid — lets the server enforce one live session per account. */
   userId?: string;
 }
@@ -99,6 +102,7 @@ interface PlayerSchema {
   equippedTheme?: string;
   nameWeight?: string;
   nameTint?: string;
+  level?: number;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -116,6 +120,7 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     equippedTheme: p.equippedTheme ?? '',
     nameWeight: p.nameWeight ?? '',
     nameTint: p.nameTint ?? '',
+    level: p.level ?? 0,
   };
 }
 
@@ -133,12 +138,13 @@ export async function joinSphere(
   const client = new Client(serverUrl);
   // Build the join payload — strip undefined keys so legacy servers see the
   // same shape they used to (className only) when identity fields are absent.
-  const opts: Record<string, string> = { className: joinOpts.className };
+  const opts: Record<string, string | number> = { className: joinOpts.className };
   if (joinOpts.displayName) opts.displayName = joinOpts.displayName;
   if (joinOpts.equippedBadge) opts.equippedBadge = joinOpts.equippedBadge;
   if (joinOpts.equippedTheme) opts.equippedTheme = joinOpts.equippedTheme;
   if (joinOpts.nameWeight) opts.nameWeight = joinOpts.nameWeight;
   if (joinOpts.nameTint) opts.nameTint = joinOpts.nameTint;
+  if (joinOpts.level) opts.level = joinOpts.level;
   if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
@@ -201,6 +207,7 @@ export async function joinSphere(
         playerCb.listen('equippedTheme', fireIdentity);
         playerCb.listen('nameWeight', fireIdentity);
         playerCb.listen('nameTint', fireIdentity);
+        playerCb.listen('level', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
@@ -281,7 +288,8 @@ export async function joinSphere(
         update.equippedBadge === undefined &&
         update.equippedTheme === undefined &&
         update.nameWeight === undefined &&
-        update.nameTint === undefined
+        update.nameTint === undefined &&
+        update.level === undefined
       ) {
         return;
       }

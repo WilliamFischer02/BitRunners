@@ -49,6 +49,7 @@ import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
+import { getLevel, subscribeLevel } from './level.js';
 import { publishMinimapTick } from './minimap-state.js';
 import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
@@ -1104,7 +1105,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   playerTagNameBtn.appendChild(playerTagName);
   playerTagNameBtn.appendChild(playerTagAlert);
   playerTagNameBtn.appendChild(playerTagSub);
+  const playerTagLevel = document.createElement('span');
+  playerTagLevel.className = 'player-tag-level';
+  playerTagLevel.style.display = 'none';
   playerTagEl.appendChild(playerTagBadgeBtn);
+  playerTagEl.appendChild(playerTagLevel);
   playerTagEl.appendChild(playerTagNameBtn);
   host.appendChild(playerTagEl);
   playerTagBadgeBtn.addEventListener('click', (e) => {
@@ -1159,9 +1164,22 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // Sets "Lv N" on a level span, or hides it when the runner has no badges
+  // yet (level 0). Shared by the local + remote tags.
+  function applyLevel(levelSpan: HTMLElement, level: number): void {
+    if (level > 0) {
+      levelSpan.textContent = `Lv ${level}`;
+      levelSpan.style.display = '';
+    } else {
+      levelSpan.textContent = '';
+      levelSpan.style.display = 'none';
+    }
+  }
+
   // Initial render + identity subscription.
   let localIdentity: LocalIdentity = getIdentity();
   let localNameStyle: NameStyle = { ...getNameStyle() };
+  let localLevel = getLevel();
   function applyLocalNameStyle(): void {
     const cls = nameStyleClass(localNameStyle, localIdentity.signedIn);
     playerTagName.className = `player-tag-name${cls ? ` ${cls}` : ''}`;
@@ -1177,6 +1195,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     true,
   );
   applyLocalNameStyle();
+  applyLevel(playerTagLevel, localLevel);
   // Apply the stored theme immediately (no-ops for empty string / guest).
   applyThemeToPass(asciiPass, localIdentity.equippedTheme);
 
@@ -1223,6 +1242,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (netSession && localIdentity.signedIn) {
       netSession.sendIdentity({ nameWeight: next.weight, nameTint: next.tint });
     }
+  });
+  const unsubscribeLevel = subscribeLevel((next) => {
+    localLevel = next;
+    applyLevel(playerTagLevel, next);
+    if (netSession) netSession.sendIdentity({ level: next });
   });
 
   // Class string for a REMOTE runner's styled name from the wire values.
@@ -1272,6 +1296,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     tagEl: HTMLDivElement;
     tagName: HTMLSpanElement;
     tagBadge: HTMLSpanElement;
+    tagLevel: HTMLSpanElement;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
 
@@ -1279,18 +1304,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     el: HTMLDivElement;
     nameSpan: HTMLSpanElement;
     badgeSpan: HTMLSpanElement;
+    levelSpan: HTMLSpanElement;
   } {
     const el = document.createElement('div');
     el.className = 'player-tag player-tag--remote';
     const badgeSpan = document.createElement('span');
     badgeSpan.className = 'player-tag-badge';
     badgeSpan.style.display = 'none';
+    const levelSpan = document.createElement('span');
+    levelSpan.className = 'player-tag-level';
+    levelSpan.style.display = 'none';
     const nameSpan = document.createElement('span');
     nameSpan.className = 'player-tag-name';
     el.appendChild(badgeSpan);
+    el.appendChild(levelSpan);
     el.appendChild(nameSpan);
     host.appendChild(el);
-    return { el, nameSpan, badgeSpan };
+    return { el, nameSpan, badgeSpan, levelSpan };
   }
 
   // Tap-to-lock state. Click on a remote avatar or NPC dweller to lock the
@@ -1436,6 +1466,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             // Name styling is account-only — only broadcast when signed in.
             nameWeight: localIdentity.signedIn ? localNameStyle.weight : undefined,
             nameTint: localIdentity.signedIn ? localNameStyle.tint : undefined,
+            level: localLevel,
             userId,
           },
           {
@@ -1461,6 +1492,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 tagEl: tag.el,
                 tagName: tag.nameSpan,
                 tagBadge: tag.badgeSpan,
+                tagLevel: tag.levelSpan,
               };
               applyTag(
                 ra.tagEl,
@@ -1473,6 +1505,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               );
               if (!p.id.startsWith('npc:')) {
                 ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
+                applyLevel(ra.tagLevel, p.level);
               }
               // NPCs don't need a name tag — keep it but show the className.
               if (p.id.startsWith('npc:')) {
@@ -1521,6 +1554,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 0,
               );
               ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
+              applyLevel(ra.tagLevel, p.level);
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);
@@ -2018,6 +2052,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     remoteAvatars.clear();
     unsubscribeIdentity();
     unsubscribeNameStyle();
+    unsubscribeLevel();
     unsubscribeMission();
     clearMissionMarkers();
     for (const te of trackedEmotes) {

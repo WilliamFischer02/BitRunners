@@ -1596,6 +1596,16 @@ dialog.panel::backdrop {
   line-height: 1;
   filter: drop-shadow(0 0 4px currentColor);
 }
+/* mega-batch 4.10 — runner level chip, shown after the badge glyph. */
+.player-tag-level {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: #ffd860;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(255, 216, 96, 0.45);
+  white-space: nowrap;
+}
 .player-tag-badge--empty {
   color: var(--tint-dim);
   opacity: 0.7;

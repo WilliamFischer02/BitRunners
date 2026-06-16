@@ -91,6 +91,13 @@ export function isValidNameTint(t: unknown): t is string {
   return typeof t === 'string' && (NAME_TINTS as readonly string[]).includes(t);
 }
 
+// Runner level cap. Default formula is level = owned badge count, capped here.
+export const LEVEL_CAP = 20;
+export function clampLevel(n: unknown): number {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(LEVEL_CAP, Math.floor(n));
+}
+
 // Supabase auth user id (UUID). Sent on join so the server can enforce a
 // single live Colyseus connection per account (kills AFK self-ghosts left by
 // stale tabs).

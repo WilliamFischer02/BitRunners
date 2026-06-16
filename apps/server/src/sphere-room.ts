@@ -7,6 +7,7 @@ import {
   TETHER_RATE_LIMIT_PER_MIN,
   TETHER_REQUEST_RATE_LIMIT_PER_MIN,
   WS_CLOSE_SESSION_SUPERSEDED,
+  clampLevel,
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
@@ -156,6 +157,7 @@ export class SphereRoom extends Room<SphereState> {
           equippedTheme?: unknown;
           nameWeight?: unknown;
           nameTint?: unknown;
+          level?: unknown;
         },
       ) => {
         this.lastSeen.set(client.sessionId, Date.now());
@@ -185,6 +187,9 @@ export class SphereRoom extends Room<SphereState> {
           if (msg.nameTint === '' || isValidNameTint(msg.nameTint)) {
             p.nameTint = msg.nameTint as string;
           }
+        }
+        if (msg?.level !== undefined) {
+          p.level = clampLevel(msg.level);
         }
       },
     );
@@ -384,6 +389,7 @@ export class SphereRoom extends Room<SphereState> {
           equippedTheme?: string;
           nameWeight?: string;
           nameTint?: string;
+          level?: number;
           userId?: string;
         }
       | undefined,
@@ -420,6 +426,9 @@ export class SphereRoom extends Room<SphereState> {
     }
     if (options?.nameTint && isValidNameTint(options.nameTint)) {
       p.nameTint = options.nameTint;
+    }
+    if (options?.level !== undefined) {
+      p.level = clampLevel(options.level);
     }
     // Scatter spawn coords so newcomers don't all stack at (0,0). The
     // PlayerState schema defaults x/z to 0; without this every avatar
