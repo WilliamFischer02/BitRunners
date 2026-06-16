@@ -1,4 +1,4 @@
-# start-claude-auto.ps1 — launch Claude Code on the BitRunners mega-batch.
+﻿# start-claude-auto.ps1 — launch Claude Code on the BitRunners mega-batch.
 # Usage:  pwsh -File .\start-claude-auto.ps1
 #
 # Refuses to start on a dirty tree (autonomous mode + uncommitted local work
