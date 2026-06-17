@@ -469,7 +469,6 @@ function EmoteSlotsSection(): JSX.Element {
           return (
             <button
               type="button"
-              // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length loadout
               key={`eslot-${i}`}
               className={`emote-slot ${picker === i ? 'is-active' : ''}`}
               onClick={() => setPicker(picker === i ? null : i)}
@@ -517,7 +516,7 @@ function EmoteSlotsSection(): JSX.Element {
         </div>
       )}
       <div className="panel-stub">
-        ─── these 4 emotes fill the wheel's main directions. buy more in the shop's // emotes tab.
+        ─── these 4 emotes fill the wheel's main directions. buy more in the shop's emotes tab.
       </div>
     </section>
   );
