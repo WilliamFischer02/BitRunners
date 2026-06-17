@@ -6,22 +6,44 @@ import {
   openProtocols,
 } from './protocols-registry.js';
 
-// Protocols carousel — replaces the standalone `data scrape` launcher.
-// Sits in the HUD launch row beside the profile icon. Clicking opens a
-// small floating cartridge carousel; left/right arrows + keyboard ←/→
-// cycle focus; clicking the focused cartridge launches it (which
-// dispatches the per-protocol open event the relevant content panel
-// listens for) and dismisses the carousel.
+// Protocols carousel — a Nintendo-DS-style cartridge picker (mega-batch 4.14).
 //
-// V1: cartridges are launchers, not inline hosts. The Scrape cartridge
-// opens the existing ScrapeMenu modal; the Objectives cartridge opens
-// the Objectives modal. Phase 3 will add Tether Hop as another
-// cartridge (also a launcher, since Tether Hop is a full-canvas game).
+// Stage 1 (scaffold): cartridge cards on a drag-scrollable rail (pointer +
+//   touch), snapping to the nearest cartridge on release. The centred
+//   cartridge is scaled up + lifted so it reads as the focus.
+// Stage 2 (visual): worn-tape / peeled-label cartridge art via CSS gradients
+//   + an inline CC0 SVG fractal-noise texture (no external asset). Each
+//   protocol gets a colour band + a 3-letter glyph code.
+// Stage 3 (drop): selecting a cartridge plays an eased descent into a slot,
+//   a stepped "click-in", then launches the protocol. prefers-reduced-motion
+//   skips the animation and launches immediately.
+//
+// FEEL is a STOP-AND-ASK default (devlog 0102): descent 600ms
+// cubic-bezier(0.5,0,0.7,1), click-in 80ms steps(4), slot offset ~62px.
+
+const CART_W = 150; // cartridge box width incl. inner margin (px); drives snap
+const DROP_MS = 700; // total descent + click-in before launch
+
+const REDUCED_MOTION =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    : false;
+
+/** 3-letter cartridge code from the protocol label. */
+function code(label: string): string {
+  return (label.replace(/[^a-z]/gi, '').slice(0, 3) || '???').toUpperCase();
+}
 
 export function Protocols(): JSX.Element {
   const [open, setOpen] = useState(false);
   const [idx, setIdx] = useState(0);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const [dragDelta, setDragDelta] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [dropping, setDropping] = useState<ProtocolEntry | null>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const dragStart = useRef<{ x: number; idx: number } | null>(null);
+  const dropTimer = useRef<number | null>(null);
+  const len = PROTOCOLS.length;
 
   useEffect(() => {
     const onOpen = (): void => setOpen((v) => !v);
@@ -29,75 +51,92 @@ export function Protocols(): JSX.Element {
     return () => window.removeEventListener(PROTOCOLS_LAUNCH_EVENT, onOpen);
   }, []);
 
-  // Keyboard navigation only while the carousel is open.
+  useEffect(
+    () => () => {
+      if (dropTimer.current !== null) window.clearTimeout(dropTimer.current);
+    },
+    [],
+  );
+
+  const clampIdx = useCallback((i: number) => Math.max(0, Math.min(len - 1, i)), [len]);
+
+  // The cartridge currently nearest the centre (accounts for an in-progress
+  // drag) — drives the focus scaling.
+  const focused = clampIdx(idx - Math.round(dragDelta / CART_W));
+
+  const insert = useCallback(
+    (entry: ProtocolEntry) => {
+      if (!entry.available || dropping) return;
+      if (REDUCED_MOTION) {
+        entry.launch();
+        setOpen(false);
+        return;
+      }
+      setDropping(entry);
+      dropTimer.current = window.setTimeout(() => {
+        entry.launch();
+        setOpen(false);
+        setDropping(null);
+      }, DROP_MS);
+    },
+    [dropping],
+  );
+
+  // Keyboard navigation while open.
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
+      if (dropping) return;
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        setIdx((i) => (i - 1 + PROTOCOLS.length) % PROTOCOLS.length);
+        setIdx((i) => clampIdx(i - 1));
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        setIdx((i) => (i + 1) % PROTOCOLS.length);
+        setIdx((i) => clampIdx(i + 1));
       } else if (e.key === 'Escape') {
         setOpen(false);
       } else if (e.key === 'Enter' || e.key === ' ') {
-        // Insert the focused cartridge.
         const entry = PROTOCOLS[idx];
         if (entry?.available) {
           e.preventDefault();
-          entry.launch();
-          setOpen(false);
+          insert(entry);
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, idx]);
+  }, [open, idx, dropping, clampIdx, insert]);
 
-  // Touch swipe: horizontal swipe on the rail cycles cartridges.
-  useEffect(() => {
-    if (!open) return;
-    const el = containerRef.current;
-    if (!el) return;
-    let startX = 0;
-    let startY = 0;
-    let tracking = false;
-    const onStart = (e: TouchEvent): void => {
-      const t = e.touches[0];
-      if (!t) return;
-      startX = t.clientX;
-      startY = t.clientY;
-      tracking = true;
-    };
-    const onEnd = (e: TouchEvent): void => {
-      if (!tracking) return;
-      tracking = false;
-      const t = e.changedTouches[0];
-      if (!t) return;
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        if (dx < 0) {
-          setIdx((i) => (i + 1) % PROTOCOLS.length);
-        } else {
-          setIdx((i) => (i - 1 + PROTOCOLS.length) % PROTOCOLS.length);
-        }
-      }
-    };
-    el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchend', onEnd, { passive: true });
-    return () => {
-      el.removeEventListener('touchstart', onStart);
-      el.removeEventListener('touchend', onEnd);
-    };
-  }, [open]);
+  // Pointer drag (mouse + touch via Pointer Events).
+  const onPointerDown = (e: React.PointerEvent): void => {
+    if (dropping) return;
+    dragStart.current = { x: e.clientX, idx };
+    setDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent): void => {
+    if (!dragStart.current) return;
+    setDragDelta(e.clientX - dragStart.current.x);
+  };
+  const endDrag = (e: React.PointerEvent): void => {
+    if (!dragStart.current) return;
+    const moved = e.clientX - dragStart.current.x;
+    const next = clampIdx(dragStart.current.idx - Math.round(moved / CART_W));
+    dragStart.current = null;
+    setDragging(false);
+    setDragDelta(0);
+    setIdx(next);
+    // A tap (negligible movement) on the centred cartridge inserts it.
+    if (Math.abs(moved) < 6 && next === focused) {
+      const entry = PROTOCOLS[next];
+      if (entry?.available) insert(entry);
+    }
+  };
 
-  const insert = useCallback((entry: ProtocolEntry) => {
-    if (!entry.available) return;
-    entry.launch();
-    setOpen(false);
-  }, []);
+  const trackStyle = {
+    transform: `translateX(${-idx * CART_W + dragDelta}px)`,
+    transition: dragging ? 'none' : 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
+  };
 
   return (
     <>
@@ -113,11 +152,11 @@ export function Protocols(): JSX.Element {
         <span className="protocols-launch-cap">protocols</span>
       </button>
       {open && (
-        <div className="protocols-carousel" ref={containerRef} aria-label="protocols carousel">
+        <div className="protocols-carousel" aria-label="protocols carousel">
           <div className="protocols-head">
             <span className="protocols-title">{'// protocols'}</span>
             <span className="protocols-sub">
-              ← {idx + 1} / {PROTOCOLS.length} →
+              {focused + 1} / {len}
             </span>
             <button
               type="button"
@@ -128,38 +167,49 @@ export function Protocols(): JSX.Element {
               ✕
             </button>
           </div>
-          <div className="protocols-rail">
-            {PROTOCOLS.map((entry, i) => {
-              const focused = i === idx;
-              const cls = `protocol-cartridge${focused ? ' is-focused' : ''} cart-tint--${
-                entry.tint
-              }${entry.available ? '' : ' is-locked'}`;
-              return (
-                <button
-                  key={entry.key}
-                  type="button"
-                  className={cls}
-                  onClick={() => {
-                    if (focused) {
-                      insert(entry);
-                    } else {
-                      setIdx(i);
-                    }
-                  }}
-                  aria-label={`${entry.label} cartridge${focused ? ' (focused)' : ''}`}
-                >
-                  <span className="cart-glyph">{entry.glyph}</span>
-                  <span className="cart-label">{entry.label}</span>
-                  <span className="cart-flavor">{entry.flavor}</span>
-                  {focused && entry.available && <span className="cart-insert">[ INSERT ]</span>}
-                  {!entry.available && <span className="cart-lock">{'// LOCKED'}</span>}
-                </button>
-              );
-            })}
+          <div
+            className={`protocols-rail${dragging ? ' is-dragging' : ''}`}
+            ref={railRef}
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            <div className="protocols-track" style={trackStyle}>
+              {PROTOCOLS.map((entry, i) => {
+                const isFocus = i === focused;
+                const isDrop = dropping?.key === entry.key;
+                const cls = [
+                  'protocol-cartridge',
+                  `cart-tint--${entry.tint}`,
+                  isFocus ? 'is-focused' : '',
+                  entry.available ? '' : 'is-locked',
+                  isDrop ? 'is-dropping' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ');
+                return (
+                  <div key={entry.key} className="protocol-cartridge-cell">
+                    <div className={cls} aria-label={`${entry.label} cartridge`}>
+                      <span className="cart-noise" aria-hidden="true" />
+                      <span className="cart-band">
+                        <span className="cart-code">{code(entry.label)}</span>
+                      </span>
+                      <span className="cart-label">{entry.label}</span>
+                      <span className="cart-flavor">{entry.flavor}</span>
+                      {entry.available ? (
+                        isFocus && <span className="cart-insert">[ insert ]</span>
+                      ) : (
+                        <span className="cart-lock">{'// LOCKED'}</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="protocols-slot" aria-hidden="true" />
           </div>
-          <div className="protocols-foot">
-            ─── ← / → to browse · tap focused cartridge to insert ───
-          </div>
+          <div className="protocols-foot">─── drag to browse · tap the centre cartridge ───</div>
         </div>
       )}
     </>

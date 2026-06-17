@@ -4643,91 +4643,137 @@ dialog.panel::backdrop {
 .protocols-close:hover {
   border-color: #93e0b1;
 }
+/* ── Stage 1: drag-scroll rail (mega-batch 4.14) ── */
 .protocols-rail {
+  position: relative;
+  overflow: hidden;
+  height: 196px;
+  touch-action: pan-y;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.protocols-rail.is-dragging {
+  cursor: grabbing;
+}
+.protocols-track {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding: 4px 2px 8px;
+  /* Centre padding so the first + last cartridges can reach the middle. */
+  padding: 14px calc(50% - 67px);
+  will-change: transform;
 }
-.protocols-rail::-webkit-scrollbar {
-  display: none;
+.protocol-cartridge-cell {
+  flex: 0 0 150px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
+
+/* ── Stage 2: worn-tape cartridge art ── */
 .protocol-cartridge {
-  appearance: none;
-  background: rgba(8, 12, 14, 0.7);
-  border: 1px solid #2a3a32;
-  border-radius: 3px;
-  color: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-  cursor: pointer;
-  flex: 0 0 140px;
-  min-height: 144px;
+  position: relative;
+  width: 134px;
+  min-height: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   gap: 4px;
-  padding: 14px 8px 10px;
-  scroll-snap-align: center;
-  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+  padding: 12px 9px 12px;
+  overflow: hidden;
+  border-radius: 7px 7px 4px 4px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  /* Moulded-plastic shell: vertical sheen over a dark grey body. */
+  background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0) 22%,
+      rgba(0, 0, 0, 0.25) 60%,
+      rgba(0, 0, 0, 0.4) 100%
+    ), linear-gradient(180deg, #2a2f34 0%, #1b2024 100%);
+  border: 1px solid #11161a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transform: scale(0.86);
+  opacity: 0.72;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
 }
-.protocol-cartridge:hover {
-  border-color: #93e0b1;
+/* Worn fractal-noise overlay — procedurally generated inline SVG (CC0, no
+   external asset / attribution needed). */
+.cart-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Colour band = the peeling title label sticker. */
+.cart-band {
+  position: relative;
+  width: 100%;
+  padding: 10px 0;
+  margin-bottom: 4px;
+  border-radius: 3px;
+  text-align: center;
+  background: linear-gradient(180deg, #6a7078 0%, #4a5058 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+/* Peeled corner. */
+.cart-band::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-width: 0 9px 9px 0;
+  border-style: solid;
+  border-color: transparent #1b2024 transparent transparent;
+}
+.cart-code {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #11161a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.cart-tint--neutral .cart-band {
+  background: linear-gradient(180deg, #d8b84a 0%, #a8882a 100%);
+}
+.cart-tint--br .cart-band {
+  background: linear-gradient(180deg, #b07cff 0%, #6a3ab0 100%);
+}
+.cart-tint--corp .cart-band {
+  background: linear-gradient(180deg, #ff9450 0%, #c85a20 100%);
 }
 .protocol-cartridge.is-focused {
-  border-color: #c0ffd6;
-  background: rgba(14, 22, 18, 0.78);
-  transform: translateY(-4px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(192, 255, 214, 0.12);
-}
-.protocol-cartridge.cart-tint--br.is-focused {
-  border-color: #b07cff;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(176, 124, 255, 0.16);
-}
-.protocol-cartridge.cart-tint--corp.is-focused {
-  border-color: #ff9450;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(255, 148, 80, 0.16);
+  transform: scale(1.1) translateY(-8px);
+  opacity: 1;
+  border-color: #354048;
 }
 .protocol-cartridge.is-locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.cart-glyph {
-  font-size: clamp(28px, 5vw, 40px);
-  line-height: 1;
-  color: #93e0b1;
-  filter: drop-shadow(0 0 6px currentColor);
-}
-.protocol-cartridge.cart-tint--br .cart-glyph {
-  color: #b07cff;
-}
-.protocol-cartridge.cart-tint--corp .cart-glyph {
-  color: #ff9450;
+  filter: grayscale(0.7);
+  opacity: 0.4;
 }
 .cart-label {
   font-size: var(--ui-text-md);
   letter-spacing: 0.06em;
-  color: #c0ffd6;
+  color: #d6f5e2;
   text-align: center;
-  /* Allow the label to wrap if needed instead of truncating. */
   width: 100%;
   min-width: 0;
   word-break: break-word;
   overflow-wrap: anywhere;
-  hyphens: auto;
   line-height: 1.2;
 }
 .cart-flavor {
   font-size: var(--ui-text-xs);
   letter-spacing: 0.04em;
-  color: var(--tint-dim);
+  color: #8aa597;
   text-align: center;
   line-height: 1.35;
   margin-top: 2px;
 }
 .cart-insert {
-  margin-top: 4px;
+  margin-top: auto;
   font-size: var(--ui-text-xs);
   letter-spacing: 0.15em;
   color: #c0ffd6;
@@ -4736,10 +4782,47 @@ dialog.panel::backdrop {
   border-radius: 2px;
 }
 .cart-lock {
-  margin-top: 4px;
+  margin-top: auto;
   font-size: 9px;
   letter-spacing: 0.1em;
   color: #6e7a86;
+}
+
+/* ── Stage 3: drop-into-slot animation ── */
+.protocols-slot {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+.protocol-cartridge.is-dropping {
+  z-index: 2;
+  animation: cart-drop 0.6s cubic-bezier(0.5, 0, 0.7, 1) forwards, cart-click 0.08s steps(4, end)
+    0.6s forwards;
+}
+@keyframes cart-drop {
+  0% {
+    transform: scale(1.1) translateY(-8px);
+  }
+  78% {
+    transform: scale(0.94) translateY(46px);
+  }
+  100% {
+    transform: scale(0.9) translateY(52px);
+  }
+}
+@keyframes cart-click {
+  0% {
+    filter: brightness(1.5);
+  }
+  100% {
+    filter: brightness(1);
+  }
 }
 .protocols-foot {
   font-size: 9px;
@@ -4752,17 +4835,16 @@ dialog.panel::backdrop {
     transition: none;
   }
   .protocol-cartridge.is-focused {
-    transform: none;
+    transform: scale(1.06);
+  }
+  .protocol-cartridge.is-dropping {
+    animation: none;
   }
 }
 @media (max-width: 540px) {
   .protocols-carousel {
     top: 184px;
     right: 8px;
-  }
-  .protocol-cartridge {
-    flex-basis: 120px;
-    min-height: 128px;
   }
 }
 
