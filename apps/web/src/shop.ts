@@ -191,6 +191,21 @@ export function getShopItem(id: string): ShopItem | undefined {
   return BY_ID.get(id);
 }
 
+// Low-fi ASCII glyph per item, by equip slot (falls back to kind). Used in the
+// inventory + shop lists so items read as more than a bare name. No sprite
+// assets yet — these are monospace-safe glyphs.
+const SLOT_GLYPH: Record<string, string> = {
+  head: '▲',
+  chest: '■',
+  legs: '▮',
+  pet: '✦',
+};
+export function glyphFor(item: ShopItem): string {
+  const g = item.slot ? SLOT_GLYPH[item.slot] : undefined;
+  if (g) return g;
+  return item.kind === 'pet' ? '✦' : '◆';
+}
+
 export function priceOf(item: ShopItem): number {
   return item.cost;
 }

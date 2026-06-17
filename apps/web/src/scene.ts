@@ -49,6 +49,7 @@ import { type SkinTarget, buildClassRig, isValidClass } from './class-rigs.js';
 import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
+import { getLevel, subscribeLevel } from './level.js';
 import { publishMinimapTick } from './minimap-state.js';
 import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
@@ -66,6 +67,7 @@ import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
 import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
+import { getCurrentUserId } from './supabase.js';
 import {
   type LockedTarget,
   applyLock,
@@ -75,7 +77,9 @@ import {
   tickLock,
 } from './target-lock.js';
 import {
+  isTargeting,
   leaveTether,
+  sendTetherRequest,
   setTetherSink,
   tetherDeclined,
   tetherEstablished,
@@ -133,6 +137,24 @@ const COLLIDERS: readonly BoxCollider[] = [
 // local player or they vanish across the seam (devlog 0031).
 function wrapDelta(d: number): number {
   return ((((d + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) - PLATFORM_HALF;
+}
+
+// Shown when a newer tab for the same account supersedes this connection.
+// Persistent (no auto-dismiss) — the stale tab is intentionally dead so it
+// stops haunting the sphere; the runner continues in the other tab.
+function showSupersededOverlay(host: HTMLElement): void {
+  if (host.querySelector('.session-superseded')) return;
+  const el = document.createElement('div');
+  el.className = 'session-superseded';
+  el.innerHTML =
+    '<div class="session-superseded-box">' +
+    '<div class="session-superseded-title">// session moved to another tab</div>' +
+    '<div class="session-superseded-sub">this runner is now active in a newer tab or window.</div>' +
+    '<button type="button" class="session-superseded-btn">reconnect here</button>' +
+    '</div>';
+  const btn = el.querySelector('.session-superseded-btn');
+  btn?.addEventListener('click', () => window.location.reload());
+  host.appendChild(el);
 }
 // Exponential-smoothing rate for remote avatars (frame-rate independent).
 const REMOTE_LERP_K = 14;
@@ -721,6 +743,21 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   };
   const paletteHex = (name: string): number => PALETTE[name] ?? DEFAULT_HEX;
 
+  // Equipped cosmetics read flat/washed once the scene passes through the
+  // grayscale ASCII post-process. Push the clothing/pet palette ~20% more
+  // saturated at the material level so the hue survives the luminance ramp
+  // and the per-theme tint (mega-batch 4.7). Tuned in HSL so lightness is
+  // preserved — only chroma rises.
+  const CLOTHING_SAT_BOOST = 1.2;
+  const _satHsl = { h: 0, s: 0, l: 0 };
+  const _satColor = new Color();
+  const setSaturated = (c: Color, hex: number): void => {
+    _satColor.setHex(hex);
+    _satColor.getHSL(_satHsl);
+    _satColor.setHSL(_satHsl.h, Math.min(1, _satHsl.s * CLOTHING_SAT_BOOST), _satHsl.l);
+    c.copy(_satColor);
+  };
+
   function applySkin(t: SkinTarget, slot: SlotAppearance | null): void {
     if (!slot) {
       t.mat.color.setHex(t.baseColor);
@@ -728,11 +765,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       t.mat.emissiveIntensity = t.baseEmissiveIntensity;
       return;
     }
-    t.mat.color.setHex(paletteHex(slot.palette));
+    setSaturated(t.mat.color, paletteHex(slot.palette));
     // rarity escalates the glow: normal = recolour only; rare (effect) glows;
     // ultra (texture) glows hardest.
     if (slot.effect) {
-      t.mat.emissive.setHex(paletteHex(slot.palette));
+      setSaturated(t.mat.emissive, paletteHex(slot.palette));
       t.mat.emissiveIntensity = slot.texture ? 1.9 : 1.1;
     } else {
       t.mat.emissive.setHex(t.baseEmissive);
@@ -774,8 +811,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         petId = a.pet.itemId;
       }
       if (petMat) {
-        petMat.color.setHex(paletteHex(a.pet.palette));
-        petMat.emissive.setHex(paletteHex(a.pet.palette));
+        setSaturated(petMat.color, paletteHex(a.pet.palette));
+        setSaturated(petMat.emissive, paletteHex(a.pet.palette));
         petMat.emissiveIntensity = a.pet.texture ? 1.8 : 1.1;
       }
     } else if (petMesh) {
@@ -1070,7 +1107,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   playerTagNameBtn.appendChild(playerTagName);
   playerTagNameBtn.appendChild(playerTagAlert);
   playerTagNameBtn.appendChild(playerTagSub);
+  const playerTagLevel = document.createElement('span');
+  playerTagLevel.className = 'player-tag-level';
+  playerTagLevel.style.display = 'none';
   playerTagEl.appendChild(playerTagBadgeBtn);
+  playerTagEl.appendChild(playerTagLevel);
   playerTagEl.appendChild(playerTagNameBtn);
   host.appendChild(playerTagEl);
   playerTagBadgeBtn.addEventListener('click', (e) => {
@@ -1125,9 +1166,22 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // Sets "Lv N" on a level span, or hides it when the runner has no badges
+  // yet (level 0). Shared by the local + remote tags.
+  function applyLevel(levelSpan: HTMLElement, level: number): void {
+    if (level > 0) {
+      levelSpan.textContent = `Lv ${level}`;
+      levelSpan.style.display = '';
+    } else {
+      levelSpan.textContent = '';
+      levelSpan.style.display = 'none';
+    }
+  }
+
   // Initial render + identity subscription.
   let localIdentity: LocalIdentity = getIdentity();
   let localNameStyle: NameStyle = { ...getNameStyle() };
+  let localLevel = getLevel();
   function applyLocalNameStyle(): void {
     const cls = nameStyleClass(localNameStyle, localIdentity.signedIn);
     playerTagName.className = `player-tag-name${cls ? ` ${cls}` : ''}`;
@@ -1143,6 +1197,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     true,
   );
   applyLocalNameStyle();
+  applyLevel(playerTagLevel, localLevel);
   // Apply the stored theme immediately (no-ops for empty string / guest).
   applyThemeToPass(asciiPass, localIdentity.equippedTheme);
 
@@ -1185,7 +1240,31 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const unsubscribeNameStyle = subscribeNameStyle((next) => {
     localNameStyle = { ...next };
     applyLocalNameStyle();
+    // Broadcast styling so other clients render it (account-only).
+    if (netSession && localIdentity.signedIn) {
+      netSession.sendIdentity({ nameWeight: next.weight, nameTint: next.tint });
+    }
   });
+  const unsubscribeLevel = subscribeLevel((next) => {
+    localLevel = next;
+    applyLevel(playerTagLevel, next);
+    if (netSession) netSession.sendIdentity({ level: next });
+  });
+
+  // Class string for a REMOTE runner's styled name from the wire values.
+  // Remotes that send a non-default style are signed in by construction, so we
+  // pass signedIn=true; guests transmit empty strings → no class.
+  function remoteNameClass(weight: string, tint: string): string {
+    const cls = nameStyleClass(
+      {
+        v: 1,
+        weight: weight === 'bold' ? 'bold' : 'regular',
+        tint: (tint || 'none') as NameStyle['tint'],
+      },
+      true,
+    );
+    return `player-tag-name${cls ? ` ${cls}` : ''}`;
+  }
 
   function resize(): void {
     const w = host.clientWidth || 1;
@@ -1219,6 +1298,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     tagEl: HTMLDivElement;
     tagName: HTMLSpanElement;
     tagBadge: HTMLSpanElement;
+    tagLevel: HTMLSpanElement;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
 
@@ -1226,18 +1306,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     el: HTMLDivElement;
     nameSpan: HTMLSpanElement;
     badgeSpan: HTMLSpanElement;
+    levelSpan: HTMLSpanElement;
   } {
     const el = document.createElement('div');
     el.className = 'player-tag player-tag--remote';
     const badgeSpan = document.createElement('span');
     badgeSpan.className = 'player-tag-badge';
     badgeSpan.style.display = 'none';
+    const levelSpan = document.createElement('span');
+    levelSpan.className = 'player-tag-level';
+    levelSpan.style.display = 'none';
     const nameSpan = document.createElement('span');
     nameSpan.className = 'player-tag-name';
     el.appendChild(badgeSpan);
+    el.appendChild(levelSpan);
     el.appendChild(nameSpan);
     host.appendChild(el);
-    return { el, nameSpan, badgeSpan };
+    return { el, nameSpan, badgeSpan, levelSpan };
   }
 
   // Tap-to-lock state. Click on a remote avatar or NPC dweller to lock the
@@ -1252,6 +1337,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const ndcY = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     const hit = pickAvatar(tapRaycaster, camera, ndcX, ndcY, remoteAvatars);
     if (!hit) return; // tap on background — keep current lock as-is
+    // In tether targeting mode a tap offers a tether to the tapped runner
+    // (or dweller NPC) instead of locking the camera. The NPC bots
+    // auto-accept and chatter (server-side) so this is testable solo.
+    if (isTargeting()) {
+      const tapped = remoteAvatars.get(hit.id);
+      const name = tapped?.tagName.textContent || 'runner';
+      sendTetherRequest({ id: hit.id, name });
+      return;
+    }
     if (lockedTarget?.id === hit.id) {
       releaseLock(lockedTarget);
       lockedTarget = null;
@@ -1368,6 +1462,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const connectSphere = async (): Promise<void> => {
       if (sceneDisposed) return;
       setNet(`net: connecting · ${serverUrl}`, 'connecting');
+      // The auth uid lets the server enforce one live session per account, so
+      // a second tab kicks the first instead of leaving an AFK ghost.
+      const userId = (await getCurrentUserId()) ?? undefined;
+      if (sceneDisposed) return;
       try {
         const session = await joinSphere(
           serverUrl,
@@ -1376,6 +1474,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             displayName: localIdentity.displayName,
             equippedBadge: localIdentity.equippedBadge,
             equippedTheme: localIdentity.equippedTheme,
+            // Name styling is account-only — only broadcast when signed in.
+            nameWeight: localIdentity.signedIn ? localNameStyle.weight : undefined,
+            nameTint: localIdentity.signedIn ? localNameStyle.tint : undefined,
+            level: localLevel,
+            userId,
           },
           {
             onJoin(p) {
@@ -1400,6 +1503,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 tagEl: tag.el,
                 tagName: tag.nameSpan,
                 tagBadge: tag.badgeSpan,
+                tagLevel: tag.levelSpan,
               };
               applyTag(
                 ra.tagEl,
@@ -1410,6 +1514,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 p.equippedBadge,
                 0,
               );
+              if (!p.id.startsWith('npc:')) {
+                ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
+                applyLevel(ra.tagLevel, p.level);
+              }
               // NPCs don't need a name tag — keep it but show the className.
               if (p.id.startsWith('npc:')) {
                 ra.tagName.textContent = `${p.className.replace('dweller.', '')}`;
@@ -1456,6 +1564,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 p.equippedBadge,
                 0,
               );
+              ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
+              applyLevel(ra.tagLevel, p.level);
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);
@@ -1502,6 +1612,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               } else {
                 setNet('net: disconnected · reload', 'error');
               }
+            },
+            onSuperseded() {
+              if (sceneDisposed) return;
+              // A newer tab for this account took over. Do NOT reconnect —
+              // that would ping-pong with the live tab. Tear down quietly and
+              // show a persistent overlay instead.
+              netSession = null;
+              setTetherSink(null);
+              leaveTether();
+              clearRemoteAvatars();
+              reconnectAttempt = RECONNECT_DELAYS.length;
+              setNet('net: session moved to another tab', 'error');
+              showSupersededOverlay(host);
             },
           },
           roomCode || undefined,
@@ -1940,6 +2063,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     remoteAvatars.clear();
     unsubscribeIdentity();
     unsubscribeNameStyle();
+    unsubscribeLevel();
     unsubscribeMission();
     clearMissionMarkers();
     for (const te of trackedEmotes) {

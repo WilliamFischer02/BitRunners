@@ -4,6 +4,7 @@ import { ThemeView } from './ThemeShop.js';
 import {
   BOT_TICK_MS,
   CREDITS_PER_TOKEN,
+  EMOTE_LOADOUT_SLOTS,
   EQUIP_SLOTS,
   type EconomyState,
   type Faction,
@@ -21,7 +22,9 @@ import {
   equip,
   exchangeCreditsForTokens,
   getEconomy,
+  getEmoteLoadout,
   getEquipped,
+  getOwnedEmotes,
   hasAutoScrape,
   hasBotBitsTab,
   hasBotPasscodesTab,
@@ -32,17 +35,21 @@ import {
   isAppearanceHidden,
   isPrestigeUnlocked,
   isTreeUnlocked,
+  ownsPremiumEmote,
   prestigeReset,
   prestigeTokenPayout,
+  purchaseEmote,
   scrape,
   scrapeYield,
   setAppearanceHidden,
+  setEmoteSlot,
   subscribeEconomy,
   tabulate,
   tabulateAll,
   tabulateAura,
   tabulateReach,
 } from './economy.js';
+import { BASE_EMOTE_IDS, PREMIUM_EMOTES, getEmote } from './emotes.js';
 import {
   SHOP_CATALOG,
   type ShopItem,
@@ -50,6 +57,7 @@ import {
   currencyOf,
   evaluate,
   getShopItem,
+  glyphFor,
   isOwned,
   priceOf,
 } from './shop.js';
@@ -205,6 +213,9 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
     <div className={`shop-item ${rarityClass(item)} ${owned ? 'is-owned' : ''}`}>
       <div className="shop-item-main">
         <span className="shop-item-name">
+          <span className="shop-item-glyph" aria-hidden="true">
+            {glyphFor(item)}
+          </span>
           {item.rarity && <span className={`rar-badge ${rarityClass(item)}`}>{item.rarity}</span>}
           {item.name}
         </span>
@@ -225,10 +236,32 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
   );
 }
 
-export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
+// Shop is a tabbed hub (mega-batch 4.8): outfits / emotes / themes /
+// upgrades. The selected tab persists to sessionStorage so re-opening the
+// shop lands on the same section.
+export type ShopTab = 'outfits' | 'emotes' | 'themes' | 'upgrades';
+const SHOP_TAB_KEY = 'bitrunners.shop.tab';
+const SHOP_TABS: { id: ShopTab; label: string }[] = [
+  { id: 'outfits', label: '// outfits' },
+  { id: 'emotes', label: '// emotes' },
+  { id: 'themes', label: '// themes' },
+  { id: 'upgrades', label: '// upgrades' },
+];
+
+function readShopTab(): ShopTab {
+  try {
+    const v = sessionStorage.getItem(SHOP_TAB_KEY);
+    if (v === 'outfits' || v === 'emotes' || v === 'themes' || v === 'upgrades') return v;
+  } catch {
+    // sessionStorage unavailable — fall through to default
+  }
+  return 'outfits';
+}
+
+function OutfitsTab({ eco }: { eco: EconomyState }): JSX.Element {
   return (
     <section className="panel-section">
-      <div className="panel-section-title">$ shop · credits &amp; tokens</div>
+      <div className="panel-section-title">$ outfits · credits &amp; tokens</div>
       <div className="shop-credits">
         credits · {eco.credits} · tokens · {eco.tokens}
       </div>
@@ -273,11 +306,85 @@ export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
           </div>
         );
       })}
+    </section>
+  );
+}
+
+function EmotesTab({ eco }: { eco: EconomyState }): JSX.Element {
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ emotes · cooler pack</div>
+      <div className="shop-credits">credits · {eco.credits}</div>
+      <div className="shop-list">
+        {PREMIUM_EMOTES.map((e) => {
+          const owned = ownsPremiumEmote(e.id);
+          const canBuy = !owned && eco.credits >= e.price;
+          return (
+            <div className={`shop-item ${owned ? 'is-owned' : ''}`} key={e.id}>
+              <div className="shop-item-main">
+                <span className="shop-item-name">
+                  <span className="shop-item-glyph" aria-hidden="true">
+                    {e.glyph}
+                  </span>
+                  {e.label}
+                </span>
+                <span className="shop-item-blurb">emote · {e.glyph}</span>
+              </div>
+              <button
+                type="button"
+                className={canBuy ? 'shop-buy is-ready' : 'shop-buy'}
+                disabled={!canBuy}
+                onClick={() => {
+                  purchaseEmote(e.id, e.price);
+                }}
+              >
+                {owned ? '[ owned ]' : `[ ${e.price} cr ]`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
       <div className="panel-stub">
-        ─── power-ups moved to the skill tree. shop is cosmetics only · real rewards + lore pending
-        owner Q&amp;A.
+        ─── equip purchased emotes in the inventory's $ emote slots. price is a placeholder pending
+        owner tuning.
       </div>
     </section>
+  );
+}
+
+export function ShopView({ eco }: { eco: EconomyState }): JSX.Element {
+  const [tab, setTab] = useState<ShopTab>(readShopTab);
+
+  const pick = (t: ShopTab): void => {
+    setTab(t);
+    try {
+      sessionStorage.setItem(SHOP_TAB_KEY, t);
+    } catch {
+      // sessionStorage unavailable — selection just won't persist
+    }
+  };
+
+  return (
+    <>
+      <div className="shop-tabs" role="tablist" aria-label="shop sections">
+        {SHOP_TABS.map((t) => (
+          <button
+            type="button"
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={tab === t.id ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+            onClick={() => pick(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'outfits' && <OutfitsTab eco={eco} />}
+      {tab === 'emotes' && <EmotesTab eco={eco} />}
+      {tab === 'themes' && <ThemeView />}
+      {tab === 'upgrades' && <TreeView eco={eco} />}
+    </>
   );
 }
 
@@ -345,6 +452,76 @@ function TreeView({ eco }: { eco: EconomyState }): JSX.Element {
   );
 }
 
+function EmoteSlotsSection(): JSX.Element {
+  const [, force] = useState(0);
+  useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
+  const [picker, setPicker] = useState<number | null>(null);
+  const loadout = getEmoteLoadout();
+  const ownedIds = [...BASE_EMOTE_IDS, ...getOwnedEmotes()];
+
+  return (
+    <section className="panel-section">
+      <div className="panel-section-title">$ emote slots</div>
+      <div className="emote-slots">
+        {Array.from({ length: EMOTE_LOADOUT_SLOTS }, (_, i) => i).map((i) => {
+          const id = loadout[i];
+          const def = id ? getEmote(id) : undefined;
+          return (
+            <button
+              type="button"
+              key={`eslot-${i}`}
+              className={`emote-slot ${picker === i ? 'is-active' : ''}`}
+              onClick={() => setPicker(picker === i ? null : i)}
+            >
+              <span className="emote-slot-glyph">{def?.glyph ?? '·'}</span>
+              <span className="emote-slot-label">{def?.label ?? 'empty'}</span>
+            </button>
+          );
+        })}
+      </div>
+      {picker !== null && (
+        <div className="emote-picker">
+          <div className="panel-stub">─── pick an emote for slot {picker + 1}</div>
+          <div className="emote-picker-grid">
+            <button
+              type="button"
+              className="emote-pick"
+              onClick={() => {
+                setEmoteSlot(picker, null);
+                setPicker(null);
+              }}
+            >
+              <span className="emote-slot-glyph">·</span>
+              <span className="emote-slot-label">clear</span>
+            </button>
+            {ownedIds.map((id) => {
+              const def = getEmote(id);
+              if (!def) return null;
+              return (
+                <button
+                  type="button"
+                  key={id}
+                  className="emote-pick"
+                  onClick={() => {
+                    setEmoteSlot(picker, id);
+                    setPicker(null);
+                  }}
+                >
+                  <span className="emote-slot-glyph">{def.glyph}</span>
+                  <span className="emote-slot-label">{def.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      <div className="panel-stub">
+        ─── these 4 emotes fill the wheel's main directions. buy more in the shop's emotes tab.
+      </div>
+    </section>
+  );
+}
+
 export function InventoryView(): JSX.Element {
   const slots = getEconomy().slots;
   const equipped = getEconomy().equipped;
@@ -381,7 +558,16 @@ export function InventoryView(): JSX.Element {
               title={item ? item.name : 'empty'}
               onClick={() => onSlotClick(cell)}
             >
-              {item ? item.name.slice(0, 10) : '·'}
+              {item ? (
+                <>
+                  <span className="inv-slot-glyph" aria-hidden="true">
+                    {glyphFor(item)}
+                  </span>
+                  <span className="inv-slot-name">{item.name.slice(0, 10)}</span>
+                </>
+              ) : (
+                '·'
+              )}
               {isEq && <span className="inv-eq">E</span>}
             </button>
           );
@@ -390,10 +576,18 @@ export function InventoryView(): JSX.Element {
       <div className="inv-equip">
         {EQUIP_SLOTS.map((s) => {
           const eid = equipped[s];
+          const eitem = eid ? getShopItem(eid) : undefined;
           return (
             <div className="inv-equip-row" key={s}>
               <span className="panel-key">{s}</span>
-              <span className="panel-val">{eid ? (getShopItem(eid)?.name ?? eid) : '─'}</span>
+              <span className="panel-val">
+                {eitem && (
+                  <span className="inv-equip-glyph" aria-hidden="true">
+                    {glyphFor(eitem)}{' '}
+                  </span>
+                )}
+                {eid ? (eitem?.name ?? eid) : '─'}
+              </span>
               <button
                 type="button"
                 className={eid ? 'scrape-mini is-ready' : 'scrape-mini'}
@@ -421,6 +615,7 @@ export function InventoryView(): JSX.Element {
       <div className="panel-stub">
         ─── tap a slot to equip it. equipped clothing + pets appear on your runner in the 3D scene.
       </div>
+      <EmoteSlotsSection />
     </section>
   );
 }

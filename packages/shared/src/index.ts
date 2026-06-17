@@ -33,7 +33,30 @@ export const EMOTE_GLYPHS: Record<EmoteId, string> = {
   bad: '[x]',
 };
 
-const EMOTE_VALUES: ReadonlySet<string> = new Set(Object.values(EMOTE_GLYPHS));
+// Additional emote glyphs unlockable via the emote loadout (mega-batch 4.12).
+// Two more "base" glyphs (salute, heart) round the free set to 10, plus a
+// 10-glyph premium "cooler" pack. The full client catalog (ids/labels/price)
+// lives in apps/web/src/emotes.ts; the glyphs live here so the server's
+// allowlist accepts an equipped emote. All ASCII, no free text.
+export const EXTRA_EMOTE_GLYPHS = [
+  'o7',
+  '<3',
+  '>:)',
+  '8)',
+  'xD',
+  ':3',
+  '\\m/',
+  '*_*',
+  'T_T',
+  'B)',
+  '~_~',
+  'O_O',
+] as const;
+
+const EMOTE_VALUES: ReadonlySet<string> = new Set([
+  ...Object.values(EMOTE_GLYPHS),
+  ...EXTRA_EMOTE_GLYPHS,
+]);
 
 export function isValidEmote(text: unknown): text is string {
   return typeof text === 'string' && EMOTE_VALUES.has(text);
@@ -69,6 +92,48 @@ const THEME_KEY_RE = /^[a-z0-9_]{3,32}$/;
 export function isValidThemeKey(key: unknown): key is string {
   return typeof key === 'string' && THEME_KEY_RE.test(key);
 }
+
+// Name-tag styling (weight + tint). Mirrors the curated vocabulary in
+// apps/web/src/name-style.ts; kept here so the server can shape-validate the
+// 'identity' wire and other clients can render a remote runner's styled name
+// (the styling used to be local-only). The server can't import the web
+// catalog (separate package), so the lists are duplicated as a shape gate.
+export const NAME_WEIGHTS = ['regular', 'bold'] as const;
+export const NAME_TINTS = [
+  'none',
+  'solid_mint',
+  'solid_ember',
+  'solid_iris',
+  'gradient',
+  'glow',
+] as const;
+export function isValidNameWeight(w: unknown): w is string {
+  return typeof w === 'string' && (NAME_WEIGHTS as readonly string[]).includes(w);
+}
+export function isValidNameTint(t: unknown): t is string {
+  return typeof t === 'string' && (NAME_TINTS as readonly string[]).includes(t);
+}
+
+// Runner level cap. Default formula is level = owned badge count, capped here.
+export const LEVEL_CAP = 20;
+export function clampLevel(n: unknown): number {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(LEVEL_CAP, Math.floor(n));
+}
+
+// Supabase auth user id (UUID). Sent on join so the server can enforce a
+// single live Colyseus connection per account (kills AFK self-ghosts left by
+// stale tabs).
+const USER_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function isValidUserId(id: unknown): id is string {
+  return typeof id === 'string' && USER_ID_RE.test(id);
+}
+
+// WebSocket close code the server uses when a newer tab/connection for the
+// same account supersedes an older one. The stale client shows a
+// "session moved" overlay and must NOT auto-reconnect (it would ping-pong
+// with the live tab). 4000-4999 is the application-private range.
+export const WS_CLOSE_SESSION_SUPERSEDED = 4001;
 
 // ── Tether chat (PR 87 — Phase-2 chat wire-up) ────────────────────────────
 //

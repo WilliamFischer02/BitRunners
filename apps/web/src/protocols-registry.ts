@@ -9,7 +9,9 @@
 //
 // Phase 3 will add `tether_hop`; for now we ship Scrape and Objectives.
 
-export type ProtocolKey = 'scrape' | 'objectives' | 'shop' | 'tether_chat';
+export type ProtocolKey = 'scrape' | 'objectives' | 'shop' | 'tether_chat' | 'freq_lock';
+
+export const FREQ_LOCK_OPEN_EVENT = 'bitrunners:open-freq-lock';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -77,6 +79,14 @@ function launchTetherChat(): void {
   }
 }
 
+function launchFreqLock(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(FREQ_LOCK_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
@@ -113,5 +123,14 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'br',
     available: true,
     launch: launchTetherChat,
+  },
+  {
+    key: 'freq_lock',
+    label: 'freq_lock',
+    flavor: 'lock the signal · earn credits',
+    glyph: '♫',
+    tint: 'neutral',
+    available: true,
+    launch: launchFreqLock,
   },
 ];
