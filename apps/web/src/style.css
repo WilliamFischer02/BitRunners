@@ -1307,8 +1307,9 @@ dialog.panel::backdrop {
 }
 .tether-overlay {
   position: fixed;
-  bottom: clamp(60px, 11vh, 110px);
-  right: clamp(12px, 2vw, 28px);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: min(280px, 84vw);
   max-height: 50vh;
   display: flex;
@@ -1316,7 +1317,7 @@ dialog.panel::backdrop {
   background: rgba(8, 12, 14, 0.92);
   border: 1px solid #b07cff;
   border-radius: 6px;
-  z-index: 7;
+  z-index: 250;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
   color: #c0ffd6;
   box-shadow: 0 0 24px rgba(176, 124, 255, 0.25);
