@@ -102,39 +102,55 @@ body,
   }
 }
 
-/* expanded modal: tap minimap to enlarge for phone legibility */
+/* Expanded "Spectrum Navigator" modal: tap minimap to enlarge.
+ * Layout split into two stacking layers so the map is always an
+ * undistorted square and the name+close card always sits on top:
+ *   1. Square map canvas, centered, sized to fit the smaller of available
+ *      width / (height − card-reserve). Works in any orientation.
+ *   2. Floating name + close card pinned to the bottom of the viewport,
+ *      z-stacked above the canvas. */
 .starmap-expanded-back {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
+  z-index: 60;
+}
+.starmap-expanded {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
-  padding: 16px;
-}
-.starmap-expanded {
-  background: rgba(8, 12, 14, 0.95);
-  border: 1px solid #84d8a4;
-  border-radius: 6px;
-  box-shadow: 0 0 30px rgba(132, 216, 164, 0.18);
-  padding: 10px 12px 14px;
-  display: flex;
-  flex-direction: column;
-  width: min(420px, 92vw);
-  max-height: 92vh;
+  /* Reserve 132px at the bottom so the canvas never sits under the card. */
+  padding: 16px 16px 132px 16px;
+  box-sizing: border-box;
   color: #c0ffd6;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 .starmap-expanded-head {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 70;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(8, 12, 14, 0.95);
+  border: 1px solid #84d8a4;
+  border-radius: 6px;
+  box-shadow: 0 0 30px rgba(132, 216, 164, 0.18);
+  padding: 10px 14px;
+  width: min(420px, calc(100vw - 32px));
   font-size: 12px;
   letter-spacing: 0.08em;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #355042;
-  margin-bottom: 8px;
+  color: #c0ffd6;
+  box-sizing: border-box;
+}
+.starmap-expanded-title {
+  flex: 1;
+  font-weight: 700;
 }
 .starmap-expanded-close {
   appearance: none;
@@ -162,24 +178,16 @@ body,
 }
 .starmap-expanded-canvas {
   display: block;
-  /* Always a square, sized to the SMALLER of available width and height so
-     it never distorts or clips in portrait or landscape — letterboxed via
-     the auto margins when one axis is tighter. */
-  width: 100%;
-  max-width: min(92vw, 62vh);
-  height: auto;
+  /* Always a square — sized to the SMALLER of available viewport width
+     and (viewport height − bottom-card reserve − padding). Guarantees
+     undistorted aspect on both portrait and landscape. */
+  width: min(calc(100vw - 32px), calc(100vh - 164px));
+  height: min(calc(100vw - 32px), calc(100vh - 164px));
   aspect-ratio: 1 / 1;
-  margin: 0 auto;
   border: 1px solid #355042;
   border-radius: 3px;
   background: rgba(8, 12, 14, 0.6);
-}
-.starmap-expanded-foot {
-  font-size: 10px;
-  color: var(--tint-dim);
-  text-align: center;
-  padding-top: 8px;
-  letter-spacing: 0.06em;
+  box-shadow: 0 0 30px rgba(132, 216, 164, 0.12);
 }
 
 .fps {
