@@ -44,6 +44,9 @@ startMissionSync();
 startMissionServerLoad();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
+const BoardsLanding = lazy(() =>
+  import('./BoardsLanding.js').then((m) => ({ default: m.BoardsLanding })),
+);
 // freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
 const FreqLock = lazy(() => import('./FreqLock.js'));
 
@@ -54,6 +57,7 @@ const AUTH_RECOVERY_HASH = '#auth/recovery';
 
 type RoutedSurface =
   | { kind: 'board'; slug: string }
+  | { kind: 'boards-landing' }
   | { kind: 'auth-verified' }
   | { kind: 'auth-recovery' }
   | null;
@@ -64,12 +68,12 @@ function readRoute(): RoutedSurface {
     const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
     return slug.length > 0 ? { kind: 'board', slug } : null;
   }
-  // write.bitrunners.app/<slug> → board route. Treats the first path segment
-  // as the slug so the writer subdomain reads as a clean URL (no `#board/`
-  // fragment). Anything after a second `/` is dropped — slugs are flat ids.
+  // write.bitrunners.app → writer portal. /<slug> opens that board; bare /
+  // shows the boards-landing list with an "+ add board" button.
   if (window.location.hostname === BOARD_HOSTNAME) {
     const slug = window.location.pathname.replace(/^\/+/, '').replace(/\/.*$/, '').trim();
     if (slug.length > 0) return { kind: 'board', slug };
+    return { kind: 'boards-landing' };
   }
   // Supabase appends its own params after the route — match by prefix.
   if (hash.startsWith(AUTH_VERIFIED_HASH)) return { kind: 'auth-verified' };
@@ -102,6 +106,21 @@ export function App(): JSX.Element {
         }
       >
         <Board slug={route.slug} />
+      </Suspense>
+    );
+  } else if (route?.kind === 'boards-landing') {
+    content = (
+      <Suspense
+        fallback={
+          <div className="board">
+            <header className="board-header">
+              <span className="board-title">bitrunners · writer portal</span>
+              <span className="board-status">loading…</span>
+            </header>
+          </div>
+        }
+      >
+        <BoardsLanding />
       </Suspense>
     );
   } else if (route?.kind === 'auth-verified') {
