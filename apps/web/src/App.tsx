@@ -48,6 +48,7 @@ const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })
 const FreqLock = lazy(() => import('./FreqLock.js'));
 
 const BOARD_HASH_PREFIX = '#board/';
+const BOARD_HOSTNAME = 'write.bitrunners.app';
 const AUTH_VERIFIED_HASH = '#auth/verified';
 const AUTH_RECOVERY_HASH = '#auth/recovery';
 
@@ -62,6 +63,13 @@ function readRoute(): RoutedSurface {
   if (hash.startsWith(BOARD_HASH_PREFIX)) {
     const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
     return slug.length > 0 ? { kind: 'board', slug } : null;
+  }
+  // write.bitrunners.app/<slug> → board route. Treats the first path segment
+  // as the slug so the writer subdomain reads as a clean URL (no `#board/`
+  // fragment). Anything after a second `/` is dropped — slugs are flat ids.
+  if (window.location.hostname === BOARD_HOSTNAME) {
+    const slug = window.location.pathname.replace(/^\/+/, '').replace(/\/.*$/, '').trim();
+    if (slug.length > 0) return { kind: 'board', slug };
   }
   // Supabase appends its own params after the route — match by prefix.
   if (hash.startsWith(AUTH_VERIFIED_HASH)) return { kind: 'auth-verified' };
