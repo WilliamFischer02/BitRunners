@@ -552,6 +552,86 @@ body,
   color: #eafff0;
   outline: none;
 }
+.boards-landing-rename {
+  appearance: none;
+  margin-left: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.boards-landing-rename:hover {
+  background: rgba(60, 110, 80, 0.18);
+  color: var(--tint);
+  border-color: var(--tint);
+}
+.boards-landing-rename-row {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.boards-landing-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(60, 110, 80, 0.08);
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.boards-landing-rename-input:focus {
+  outline: none;
+  border-color: var(--tint);
+  background: rgba(80, 140, 100, 0.12);
+}
+.boards-landing-rename-input:disabled {
+  opacity: 0.6;
+}
+.boards-landing-rename-save,
+.boards-landing-rename-cancel {
+  appearance: none;
+  padding: 8px 12px;
+  background: rgba(60, 110, 80, 0.55);
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.boards-landing-rename-save:hover:not(:disabled),
+.boards-landing-rename-cancel:hover:not(:disabled) {
+  background: rgba(80, 140, 100, 0.7);
+}
+.boards-landing-rename-save:disabled,
+.boards-landing-rename-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.boards-landing-rename-cancel {
+  background: transparent;
+  color: var(--tint-dim);
+}
+.boards-landing-rename-err {
+  flex-basis: 100%;
+  color: #ff9450;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+}
 .boards-landing-add {
   appearance: none;
   margin-top: 10px;
