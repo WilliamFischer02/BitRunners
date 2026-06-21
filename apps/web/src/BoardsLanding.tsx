@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+const MIN_SLUG_LENGTH = 16;
+const SLUG_RE = /^[A-Za-z0-9_-]+$/;
 
 // Landing surface for write.bitrunners.app/ (devlog 0106).
 //
@@ -31,6 +34,28 @@ export function BoardsLanding(): JSX.Element {
   const [slugs, setSlugs] = useState<string[]>([]);
   const [complete, setComplete] = useState(true);
   const [errorText, setErrorText] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
+  const [renameError, setRenameError] = useState('');
+  const [renameBusy, setRenameBusy] = useState(false);
+
+  const fetchList = useCallback(async (): Promise<void> => {
+    try {
+      const res = await fetch('/api/board', { cache: 'no-store' });
+      if (!res.ok) {
+        setErrorText(`server responded ${res.status}`);
+        setStatus('error');
+        return;
+      }
+      const data = (await res.json()) as BoardsResponse;
+      setSlugs(Array.isArray(data.slugs) ? [...data.slugs].sort() : []);
+      setComplete(data.complete !== false);
+      setStatus('ready');
+    } catch (err) {
+      setErrorText(err instanceof Error ? err.message : 'network error');
+      setStatus('error');
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +88,59 @@ export function BoardsLanding(): JSX.Element {
     const slug = mintSlug();
     window.location.assign(`/${slug}`);
   }, []);
+
+  const openRename = useCallback((slug: string): void => {
+    setRenaming(slug);
+    setDraft(slug);
+    setRenameError('');
+  }, []);
+
+  const cancelRename = useCallback((): void => {
+    setRenaming(null);
+    setDraft('');
+    setRenameError('');
+  }, []);
+
+  const submitRename = useCallback(async (): Promise<void> => {
+    if (renaming == null) return;
+    const next = draft.trim();
+    if (next === renaming) {
+      cancelRename();
+      return;
+    }
+    if (next.length < MIN_SLUG_LENGTH) {
+      setRenameError(`needs ≥${MIN_SLUG_LENGTH} chars`);
+      return;
+    }
+    if (!SLUG_RE.test(next)) {
+      setRenameError('letters, digits, _ or - only');
+      return;
+    }
+    setRenameBusy(true);
+    setRenameError('');
+    try {
+      const res = await fetch(`/api/board/${encodeURIComponent(renaming)}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rename_to: next }),
+      });
+      if (res.status === 409) {
+        setRenameError('that slug already exists');
+        return;
+      }
+      if (!res.ok) {
+        const msg = await res.text().catch(() => '');
+        setRenameError(`server ${res.status}${msg ? `: ${msg}` : ''}`);
+        return;
+      }
+      cancelRename();
+      await fetchList();
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'network error');
+    } finally {
+      setRenameBusy(false);
+    }
+  }, [renaming, draft, cancelRename, fetchList]);
 
   return (
     <div className="board">
@@ -97,9 +175,31 @@ export function BoardsLanding(): JSX.Element {
             <ul className="boards-landing-list">
               {slugs.map((slug) => (
                 <li key={slug} className="boards-landing-row">
-                  <a className="boards-landing-link" href={`/${slug}`}>
-                    {slug}
-                  </a>
+                  {renaming === slug ? (
+                    <RenameRow
+                      original={slug}
+                      draft={draft}
+                      busy={renameBusy}
+                      error={renameError}
+                      onChange={setDraft}
+                      onCancel={cancelRename}
+                      onSubmit={submitRename}
+                    />
+                  ) : (
+                    <>
+                      <a className="boards-landing-link" href={`/${slug}`}>
+                        {slug}
+                      </a>
+                      <button
+                        type="button"
+                        className="boards-landing-rename"
+                        onClick={() => openRename(slug)}
+                        aria-label={`rename ${slug}`}
+                      >
+                        rename
+                      </button>
+                    </>
+                  )}
                 </li>
               ))}
             </ul>
@@ -125,3 +225,74 @@ export function BoardsLanding(): JSX.Element {
 }
 
 export default BoardsLanding;
+
+interface RenameRowProps {
+  original: string;
+  draft: string;
+  busy: boolean;
+  error: string;
+  onChange(next: string): void;
+  onCancel(): void;
+  onSubmit(): void;
+}
+
+function RenameRow({
+  original,
+  draft,
+  busy,
+  error,
+  onChange,
+  onCancel,
+  onSubmit,
+}: RenameRowProps): JSX.Element {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  return (
+    <form
+      className="boards-landing-rename-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onSubmit();
+      }}
+    >
+      <input
+        ref={inputRef}
+        type="text"
+        className="boards-landing-rename-input"
+        value={draft}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+        aria-label={`new slug for ${original}`}
+        disabled={busy}
+        spellCheck={false}
+        autoComplete="off"
+      />
+      <button
+        type="submit"
+        className="boards-landing-rename-save"
+        disabled={busy || draft.trim().length === 0}
+      >
+        {busy ? '…' : 'save'}
+      </button>
+      <button
+        type="button"
+        className="boards-landing-rename-cancel"
+        onClick={onCancel}
+        disabled={busy}
+      >
+        cancel
+      </button>
+      {error && <span className="boards-landing-rename-err">{error}</span>}
+    </form>
+  );
+}
