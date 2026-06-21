@@ -68,10 +68,7 @@ function readRoute(): RoutedSurface {
   // as the slug so the writer subdomain reads as a clean URL (no `#board/`
   // fragment). Anything after a second `/` is dropped — slugs are flat ids.
   if (window.location.hostname === BOARD_HOSTNAME) {
-    const slug = window.location.pathname
-      .replace(/^\/+/, '')
-      .replace(/\/.*$/, '')
-      .trim();
+    const slug = window.location.pathname.replace(/^\/+/, '').replace(/\/.*$/, '').trim();
     if (slug.length > 0) return { kind: 'board', slug };
   }
   // Supabase appends its own params after the route — match by prefix.
