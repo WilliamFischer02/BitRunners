@@ -182,4 +182,17 @@ export function startIdentity(): void {
       fanout();
     }
   });
+
+  // Mission completions mutate samaritan_corporate / samaritan_bitrunner on
+  // the server via the complete_mission RPC, but the client's cached
+  // identity snapshot only refreshes on auth events. Without this listener
+  // the reputation chips stay stale until next sign-in even though badges
+  // (which have their own realtime monitor) tick up correctly.
+  try {
+    window.addEventListener('bitrunners:mission-complete', () => {
+      void refreshIdentity();
+    });
+  } catch {
+    // non-DOM env — ignore
+  }
 }
