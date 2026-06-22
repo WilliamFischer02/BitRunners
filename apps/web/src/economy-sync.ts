@@ -16,7 +16,7 @@ import {
   importProgress,
   subscribeEconomy,
 } from './economy.js';
-import { claimEconomyGrants, getSupabase, subscribeAuth } from './supabase.js';
+import { claimEconomyGrants, getSupabase, saveEconomy, subscribeAuth } from './supabase.js';
 
 const SAVE_DEBOUNCE_MS = 1500;
 const TABLE = 'player_economy';
@@ -45,22 +45,25 @@ async function loadFromAccount(uid: string): Promise<void> {
       return;
     }
     const remote = data?.blob as Partial<EconomyState> | undefined;
-    const remoteUpdated = typeof remote?.updatedAt === 'number' ? remote.updatedAt : -1;
-    // Strict `>` so a tie favours LOCAL. Fixes the guest→signup clobber
-    // (devlog 0112): a fresh account row created at sign-up carries
-    // updated_at = NOW(), which usually ties or beats the in-memory guest
-    // state's updatedAt and clobbered hours of offline scrape progress.
-    // On a real tie, the guest who's been playing wins; the server-fresh
-    // empty blob loses.
-    if (remote && remoteUpdated > getEconomy().updatedAt) {
-      importProgress(remote); // account is newer → adopt it
+    const hasRemote = !!remote && remote.v === 1;
+    const remoteScrapes = typeof remote?.lifetimeScrapes === 'number' ? remote.lifetimeScrapes : -1;
+    // Merge on lifetimeScrapes (monotonic, clock-independent), NOT updatedAt.
+    // One rule fixes BOTH clobbers:
+    //  * shared-device (devlog 0093): a poorer/other-account local blob carries
+    //    a recent updatedAt; keying on lifetimeScrapes stops it overwriting a
+    //    richer remote account.
+    //  * guest→signup (devlog 0112): a guest's real offline progress has a
+    //    higher lifetimeScrapes than a fresh/empty account row, so it is pushed
+    //    up instead of clobbered by the server-fresh blob.
+    if (hasRemote && remoteScrapes >= getEconomy().lifetimeScrapes) {
+      importProgress(remote); // account has >= progress (or new device) → adopt it
       emitSynced();
     } else {
-      await saveNow(uid); // local is newer / server empty or tied → push it up
+      await saveNow(uid); // no remote (first save) or local is strictly more progressed
     }
     // Apply grants WHILE `loading` is still true so the addCredits/addTokens
-    // calls don't trigger the debounce listener. The explicit saveNow at the
-    // end of applyPendingGrants is the single authoritative flush.
+    // calls don't trigger the debounce listener. The saveNow inside
+    // applyPendingGrants is the single authoritative flush.
     await applyPendingGrants(uid);
   } finally {
     loading = false;
@@ -86,15 +89,33 @@ async function applyPendingGrants(uid: string): Promise<void> {
 }
 
 async function saveNow(uid: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  const { error } = await sb
-    .from(TABLE)
-    .upsert({ user_id: uid, blob: exportProgress(), updated_at: new Date().toISOString() });
-  if (error) {
-    console.warn('[bitrunners] economy save failed:', error.message);
+  const result = await saveEconomy(uid, exportProgress());
+  if (!result) return; // network / unconfigured — keep local, retry on next change
+  if (!result.accepted) {
+    // Server rejected this write as stale / a clobber (fewer lifetimeScrapes).
+    // Adopt the authoritative remote so the device converges on the real state
+    // instead of repeatedly trying to push a lower one up.
+    console.warn('[bitrunners] economy save rejected:', result.reason, '— reloading remote');
+    await adoptRemote(uid);
     return;
   }
+  emitSynced();
+}
+
+/** Re-fetch the account's blob and adopt it locally. Used when the server
+ *  rejects a save as stale/clobber so the device converges on the real state
+ *  instead of fighting it. Guards `loading` so the import doesn't echo back
+ *  into another save. */
+async function adoptRemote(uid: string): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  const { data } = await sb.from(TABLE).select('blob').eq('user_id', uid).maybeSingle();
+  const remote = data?.blob as Partial<EconomyState> | undefined;
+  if (!remote || remote.v !== 1) return;
+  const wasLoading = loading;
+  loading = true;
+  importProgress(remote);
+  loading = wasLoading;
   emitSynced();
 }
 

@@ -325,6 +325,46 @@ export async function claimEconomyGrants(): Promise<GrantClaim | null> {
   return { credits: Number(r.credits ?? 0), tokens: Number(r.tokens ?? 0) };
 }
 
+export interface EconomySaveResult {
+  accepted: boolean;
+  reason: string;
+}
+
+/**
+ * Persists the economy blob through the guarded save_economy RPC (migration
+ * 0016). The server rejects stale / rolled-back writes (an incoming blob with
+ * fewer lifetimeScrapes than stored), so a fresh or stale device can no longer
+ * clobber good progress. Falls back to the legacy direct upsert when the RPC
+ * isn't deployed yet, so the client keeps saving before 0016 is applied.
+ * Returns null only on a hard network/config failure.
+ */
+export async function saveEconomy(uid: string, blob: unknown): Promise<EconomySaveResult | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data, error } = await sb.rpc('save_economy', { p_blob: blob });
+  if (error) {
+    // PGRST202 = RPC not found (0016 not applied yet) → fall back to the legacy
+    // direct upsert so saves still persist. Any other error is a real failure.
+    const missing = error.code === 'PGRST202' || /save_economy/i.test(error.message);
+    if (!missing) {
+      console.warn('[bitrunners] save_economy failed:', error.message);
+      return null;
+    }
+    const { error: upErr } = await sb
+      .from('player_economy')
+      .upsert({ user_id: uid, blob, updated_at: new Date().toISOString() });
+    if (upErr) {
+      console.warn('[bitrunners] economy upsert (fallback) failed:', upErr.message);
+      return null;
+    }
+    return { accepted: true, reason: 'fallback-upsert' };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { accepted: true, reason: 'ok' };
+  const r = row as { accepted?: unknown; reason?: unknown };
+  return { accepted: r.accepted === true, reason: String(r.reason ?? '') };
+}
+
 // ────────── identity (Sub-Phase B, migration 0007) ──────────
 
 export type DisplayNameStatus = 'unset' | 'pending' | 'approved' | 'rejected';

@@ -99,13 +99,20 @@ BEGIN
     v_old_scrapes := COALESCE((v_old  ->> 'lifetimeScrapes')::NUMERIC, 0);
     v_new_scrapes := COALESCE((p_blob ->> 'lifetimeScrapes')::NUMERIC, 0);
 
-    IF v_new_ms < v_old_ms THEN
-      RETURN QUERY SELECT FALSE, 'stale: server has a newer snapshot', v_old_updated;
+    -- Primary guard: lifetime counters are monotonic (lifetimeScrapes only ever
+    -- increases). A blob with FEWER lifetime scrapes than stored is a rollback /
+    -- clobber (e.g. another account's or a stale device's state) — reject it.
+    -- Clock-independent, so it is robust across devices.
+    IF v_new_scrapes < v_old_scrapes THEN
+      RETURN QUERY SELECT FALSE, 'rejected: lifetimeScrapes rollback (clobber)', v_old_updated;
       RETURN;
     END IF;
 
-    IF v_old_scrapes > 0 AND v_new_scrapes < v_old_scrapes THEN
-      RETURN QUERY SELECT FALSE, 'rejected: lifetime counter rollback (possible clobber)', v_old_updated;
+    -- Tie-break: equal lifetime progress but an OLDER updatedAt is a stale write
+    -- from a lagging device. Reject. (Wall-clock skew only matters at exact
+    -- lifetimeScrapes ties, which is rare.)
+    IF v_new_scrapes = v_old_scrapes AND v_new_ms < v_old_ms THEN
+      RETURN QUERY SELECT FALSE, 'stale: server has a newer snapshot', v_old_updated;
       RETURN;
     END IF;
   END IF;
