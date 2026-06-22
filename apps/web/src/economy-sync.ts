@@ -16,7 +16,7 @@ import {
   importProgress,
   subscribeEconomy,
 } from './economy.js';
-import { claimEconomyGrants, getSupabase, subscribeAuth } from './supabase.js';
+import { claimEconomyGrants, getSupabase, saveEconomy, subscribeAuth } from './supabase.js';
 
 const SAVE_DEBOUNCE_MS = 1500;
 const TABLE = 'player_economy';
@@ -45,12 +45,18 @@ async function loadFromAccount(uid: string): Promise<void> {
       return;
     }
     const remote = data?.blob as Partial<EconomyState> | undefined;
-    const remoteUpdated = typeof remote?.updatedAt === 'number' ? remote.updatedAt : -1;
-    if (remote && remoteUpdated >= getEconomy().updatedAt) {
-      importProgress(remote); // account is newer (or local never saved) → adopt it
+    const hasRemote = !!remote && remote.v === 1;
+    const remoteScrapes = typeof remote?.lifetimeScrapes === 'number' ? remote.lifetimeScrapes : -1;
+    // Merge on lifetimeScrapes (monotonic, clock-independent), NOT updatedAt:
+    // importProgress re-stamps updatedAt=now, and a shared-device localStorage
+    // can hold another/older account's blob with a recent timestamp. Adopting
+    // the account whenever it has >= lifetime progress stops a poorer local
+    // state from being pushed up over a richer account (the clobber bug).
+    if (hasRemote && remoteScrapes >= getEconomy().lifetimeScrapes) {
+      importProgress(remote); // account has >= progress (or new device) → adopt it
       emitSynced();
     } else {
-      await saveNow(uid); // local is newer / server empty → push it up
+      await saveNow(uid); // no remote (first save) or local is strictly more progressed
     }
   } finally {
     loading = false;
@@ -78,13 +84,14 @@ async function applyPendingGrants(uid: string): Promise<void> {
 }
 
 async function saveNow(uid: string): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  const { error } = await sb
-    .from(TABLE)
-    .upsert({ user_id: uid, blob: exportProgress(), updated_at: new Date().toISOString() });
-  if (error) {
-    console.warn('[bitrunners] economy save failed:', error.message);
+  const result = await saveEconomy(uid, exportProgress());
+  if (!result) return; // network / unconfigured — keep local, retry on next change
+  if (!result.accepted) {
+    // Server rejected this write as stale / a clobber (fewer lifetimeScrapes).
+    // Adopt the authoritative remote so the device converges on the real state
+    // instead of repeatedly trying to push a lower one up.
+    console.warn('[bitrunners] economy save rejected:', result.reason, '— reloading remote');
+    await loadFromAccount(uid);
     return;
   }
   emitSynced();
