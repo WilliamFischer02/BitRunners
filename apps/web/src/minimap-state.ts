@@ -26,7 +26,15 @@ export interface MinimapTick {
   facing: number;
 }
 
+/** Live remote runner — rendered as a dot on the minimap. */
+export interface MinimapRemote {
+  id: string;
+  x: number;
+  z: number;
+}
+
 const state: MinimapTick = { playerX: 0, playerZ: 0, facing: 0 };
+let remotes: ReadonlyArray<MinimapRemote> = [];
 
 const EVENT = 'bitrunners:minimap-tick';
 
@@ -42,9 +50,24 @@ export function publishMinimapTick(playerX: number, playerZ: number, facing: num
   }
 }
 
+/** Publish the current set of remote runners. Caller is expected to push a
+ *  fresh array each tick — the array reference is stored as-is, so don't
+ *  mutate it after handing it over. Empty array when offline / alone. */
+export function publishMinimapRemotes(next: ReadonlyArray<MinimapRemote>): void {
+  remotes = next;
+  // Reuses the tick event — the Starmap repaint loop is already dirtied by
+  // any tick, so we don't need a second fan-out channel.
+}
+
 /** Cheap; safe to call every animation frame. */
 export function getMinimapTick(): MinimapTick {
   return state;
+}
+
+/** Cheap; safe to call every animation frame. Returns the last-published
+ *  list of remote runners (empty array when offline / alone). */
+export function getMinimapRemotes(): ReadonlyArray<MinimapRemote> {
+  return remotes;
 }
 
 /** Returns an unsubscribe function. */

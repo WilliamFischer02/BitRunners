@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { MINIMAP_ANCHORS, getMinimapTick, onMinimapTick } from './minimap-state.js';
+import {
+  MINIMAP_ANCHORS,
+  getMinimapRemotes,
+  getMinimapTick,
+  onMinimapTick,
+} from './minimap-state.js';
 import { getActiveCheckpointAnchor, subscribeMissionChanges } from './missions.js';
 
 // Floating top-right HUD minimap — starmap-projection style.
@@ -142,6 +147,39 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     ctx.fillStyle = '#6cf0ff';
     ctx.globalAlpha = onScreen ? 1 : 0.6;
     ctx.fillText('OBJ', mx, my + objSize);
+    ctx.globalAlpha = 1;
+  }
+
+  // remote runners — small dots, drawn underneath the local player so
+  // the centre marker reads as "you". Offscreen runners get clamped to
+  // the disc's edge so they're still discoverable.
+  const remoteDotSize = opts.big ? 2.6 : 1.8;
+  for (const rem of getMinimapRemotes()) {
+    const dx = wrapDelta(rem.x - tick.playerX);
+    const dz = wrapDelta(rem.z - tick.playerZ);
+    let mx = cx + dx * px;
+    let my = cy + dz * px;
+    let onScreen = true;
+    const pad = 6 * scale;
+    if (mx < pad || mx > pxSize - pad || my < pad || my > pxSize - pad) {
+      onScreen = false;
+      const ang = Math.atan2(dz, dx);
+      const r = pxSize / 2 - pad;
+      mx = cx + Math.cos(ang) * r;
+      my = cy + Math.sin(ang) * r;
+    }
+    ctx.fillStyle = 'rgba(176, 124, 255, 0.95)';
+    ctx.globalAlpha = onScreen ? 1 : 0.5;
+    // halo
+    ctx.beginPath();
+    ctx.arc(mx, my, remoteDotSize + 1.4, 0, Math.PI * 2);
+    ctx.globalAlpha = onScreen ? 0.25 : 0.15;
+    ctx.fill();
+    // core
+    ctx.globalAlpha = onScreen ? 1 : 0.55;
+    ctx.beginPath();
+    ctx.arc(mx, my, remoteDotSize, 0, Math.PI * 2);
+    ctx.fill();
     ctx.globalAlpha = 1;
   }
 

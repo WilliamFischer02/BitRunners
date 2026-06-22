@@ -50,7 +50,7 @@ import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { getLevel, subscribeLevel } from './level.js';
-import { publishMinimapTick } from './minimap-state.js';
+import { type MinimapRemote, publishMinimapRemotes, publishMinimapTick } from './minimap-state.js';
 import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
   MISSIONS,
@@ -1332,6 +1332,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     tagLevel: HTMLSpanElement;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
+  // Reusable buffer published to minimap-state once per tick. Lifetime
+  // matches the scene; cleared on dispose so the minimap doesn't keep
+  // showing ghosts after the user leaves the room.
+  const minimapRemotesScratch: MinimapRemote[] = [];
 
   function buildRemoteTag(): {
     el: HTMLDivElement;
@@ -1938,6 +1942,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // HUD updates at the same cadence as outbound moves — once per ~67 ms.
     if (now - lastMinimapEmit >= NET_SEND_MS) {
       publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
+      // Push live remote positions for the minimap dots. Re-using one
+      // scratch array — at a full sphere we publish at most 40 entries
+      // per tick, but the array reference is kept stable to dodge GC.
+      minimapRemotesScratch.length = 0;
+      for (const [id, ra] of remoteAvatars) {
+        minimapRemotesScratch.push({
+          id,
+          x: ra.group.position.x,
+          z: ra.group.position.z,
+        });
+      }
+      publishMinimapRemotes(minimapRemotesScratch);
       lastMinimapEmit = now;
     }
 
@@ -2092,6 +2108,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       if (ra.tagEl.parentNode === host) host.removeChild(ra.tagEl);
     }
     remoteAvatars.clear();
+    // Clear the minimap dots — no more remote runners visible from this
+    // scene instance.
+    publishMinimapRemotes([]);
     unsubscribeIdentity();
     unsubscribeNameStyle();
     unsubscribeLevel();
