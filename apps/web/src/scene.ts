@@ -142,6 +142,37 @@ function wrapDelta(d: number): number {
 // Shown when a newer tab for the same account supersedes this connection.
 // Persistent (no auto-dismiss) — the stale tab is intentionally dead so it
 // stops haunting the sphere; the runner continues in the other tab.
+/**
+ * Format an unknown rejection from the Colyseus matchmaker into a string the
+ * user can actually parse. The default `String(err)` returns
+ * `[object XMLHttpRequest]` when the matchmaker XHR fails outright (Fly cold
+ * start, blocked network), which is what the field bug report at devlog 0110
+ * captured. Drop in here so every consumer benefits.
+ */
+function formatNetError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, unknown> & {
+      readyState?: number;
+      status?: number;
+      statusText?: string;
+    };
+    if (typeof e.message === 'string' && e.message) return e.message;
+    // XHR rejection — typeof XMLHttpRequest checks both modern + jsdom.
+    if (typeof XMLHttpRequest !== 'undefined' && err instanceof XMLHttpRequest) {
+      const status = err.status;
+      const text = err.statusText;
+      if (status === 0) return 'server unreachable (cold start? network blocked?)';
+      return `xhr ${status}${text ? ` ${text}` : ''}`;
+    }
+    if (typeof e.status === 'number') {
+      return `status ${e.status}${e.statusText ? ` ${e.statusText}` : ''}`;
+    }
+  }
+  return 'connection failed';
+}
+
 function showSupersededOverlay(host: HTMLElement): void {
   if (host.querySelector('.session-superseded')) return;
   const el = document.createElement('div');
@@ -1648,7 +1679,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         }
         console.info('[bitrunners] joined sphere as', session.sessionId);
       } catch (err) {
-        const msg = (err as Error)?.message ?? String(err);
+        const msg = formatNetError(err);
         console.warn('[bitrunners] multiplayer disabled — connect failed:', err);
         setNet(`net: error · ${msg.slice(0, 80)}`, 'error');
       }
