@@ -9,39 +9,64 @@ interface Step {
   target?: string;
 }
 
-// First-play walkthrough (devlog 0043). Guided, advance-on-[next], skippable.
-// Each step optionally targets a HUD element — when set, a dashed pulsing ring
-// is drawn around it so the body copy actually points at the thing it talks
-// about (devlog 0058). The obelisk encounter (or [finish]) is the finale that
-// grants server_speaker. Guests see an account-link CTA after the reward.
+// First-play walkthrough. Guided, advance-on-[next], skippable.
+//
+// Tour covers the post-cartridge-carousel HUD (devlog 0102): protocols
+// launcher, credits HUD, spectrum navigator, emote wheel + inventory,
+// profile chip, movement, and the obelisk finale.
+//
+// Logged-in users skip the tour entirely — see the auth gate at the top of
+// the Tutorial component. The obelisk encounter (or [finish]) is the finale
+// that grants server_speaker; guests who reach it see the reward UI plus an
+// account-link CTA.
 const STEPS: Step[] = [
   {
     title: 'welcome, runner',
-    body: 'you booted into the cloud as a bit_spekter. a quick tour of the basics — you can [skip] anytime.',
-  },
-  {
-    title: 'your inventory',
-    body: 'the ▦ button in the centre of the emote wheel (bottom-right) opens your inventory. clothing and pets you own live there; tap one to equip it.',
-    target: '.emote-center',
-  },
-  {
-    title: 'the shop',
-    body: 'the $ button on the right rail opens the shop. spend Credits on clothing and pets.',
-    target: '.shop-launch',
-  },
-  {
-    title: 'data scrape',
-    body: 'open // data scrape on the right rail. tap SCRAPE for bits, TABULATE up the ladder (bits→strings→serials→passcodes), then CALCULATE a passcode into Credits via the Admin or the Company. passcodes also buy upgrades in the skill tree.',
-    target: '.scrape-launch',
+    body: 'you booted into the cloud as a bit_spekter. a quick tour of the HUD — you can [skip] anytime.',
   },
   {
     title: 'moving around',
-    body: 'move with WASD / arrow keys, or the on-screen joystick on touch. roam the platform.',
+    body: 'WASD or arrow keys to roam; touch devices get a thumbstick. the cloud is a wrapping platform — keep walking and you come back around.',
     target: '.hint',
   },
   {
-    title: 'points of interest',
-    body: 'find SAMM (the vending machine) to gamble Credits — and the tall obelisk, where something is watching. head to the obelisk to finish.',
+    title: '// protocols',
+    body: 'tap the ⌬ protocols slot to open the cartridge carousel. drag (or use ←/→) between five cartridges: data_scrape, objectives, shop, tether_chat, and freq_lock. the centred one drops into the slot when you tap it.',
+    target: '.protocols-launch',
+  },
+  {
+    title: 'data_scrape',
+    body: 'data_scrape is how you mine the cloud: SCRAPE bits → TABULATE them up the ladder (bits → strings → serials → passcodes) → CALCULATE a passcode into ¢ credits at the Admin or the Company. passcodes also buy upgrades in the skill tree.',
+    target: '.protocols-launch',
+  },
+  {
+    title: 'credits + tokens',
+    body: 'the top strip tracks ¢ credits (currency for shop cosmetics and SAMM gambling) and ◈ tokens (collectible scraps from missions and Admin grants). both follow your account once you sign in.',
+    target: '.credits-hud',
+  },
+  {
+    title: 'spectrum navigator',
+    body: 'the minimap in the top-right is the spectrum navigator. tap it to maximise — compass N/E/S/W, live x/z readout, plus pins for SAMM, the Admin, and your current OBJ checkpoint.',
+    target: '.starmap',
+  },
+  {
+    title: 'emotes + inventory',
+    body: 'the wheel in the bottom-right fires emotes. four cardinal slots are yours to swap — open inventory via the centre ▦ to pick from owned emotes, equip outfits, and switch themes. the shop and inventory are siblings of the same modal.',
+    target: '.emote-center',
+  },
+  {
+    title: 'your handle',
+    body: 'the profile chip in the top-left is your runner. tap it to set a display name and link a free account. signing in keeps your tokens, credits, outfits, badges, and level across devices.',
+    target: '.profile',
+  },
+  {
+    title: 'levels + missions',
+    body: 'open objectives from the carousel to see active missions. completing them earns badges; each badge bumps your Lv chip (cap Lv 20) which other runners can see on your nametag.',
+    target: '.protocols-launch',
+  },
+  {
+    title: 'one more thing — the obelisk',
+    body: 'find SAMM (the vending machine) to gamble credits, or freq_lock to chase a rhythm-based credit haul. then head for the tall obelisk in the distance — something is watching from inside. that ends the tour.',
   },
 ];
 
@@ -92,8 +117,29 @@ function TutorialHighlight({ target }: { target: string }): JSX.Element | null {
   );
 }
 
+/**
+ * Synchronous heuristic: does the browser already hold a Supabase session?
+ * Used to suppress the tutorial flash on initial render for returning
+ * logged-in users (`subscribeAuth` is async, so a brief flicker would
+ * otherwise appear before auth state resolves). Reads the supabase-js v2
+ * storage key shape — degrades gracefully to a flash if the convention
+ * changes.
+ */
+function hasPersistedSession(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith('sb-') && k.endsWith('-auth-token')) return true;
+    }
+  } catch {
+    // private mode / quota error — assume guest
+  }
+  return false;
+}
+
 export function Tutorial(): JSX.Element | null {
-  const [active, setActive] = useState(() => !isTutorialDone());
+  const [active, setActive] = useState(() => !isTutorialDone() && !hasPersistedSession());
   const [step, setStep] = useState(0);
   const [phase, setPhase] = useState<Phase>('steps');
   const [auth, setAuth] = useState<AuthSnapshot>({ status: 'guest' });
@@ -115,8 +161,20 @@ export function Tutorial(): JSX.Element | null {
     return () => window.removeEventListener('bitrunners:admin-encounter', onAdmin);
   }, []);
 
-  // Track auth so we only show the "make account" CTA to guests.
-  useEffect(() => subscribeAuth(setAuth), []);
+  // Auth gate. Logged-in users skip the tour entirely — silently mark the
+  // tutorial done (which also grants server_speaker, the same unlock guests
+  // earn by walking through) so signed-in users aren't worse off.
+  useEffect(
+    () =>
+      subscribeAuth((next) => {
+        setAuth(next);
+        if (next.status !== 'guest') {
+          if (!isTutorialDone()) completeTutorial();
+          setActive(false);
+        }
+      }),
+    [],
+  );
 
   if (!active) return null;
 

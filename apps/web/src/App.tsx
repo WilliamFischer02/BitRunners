@@ -7,7 +7,7 @@ import { BadgesModal } from './BadgesModal.js';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { CreditsHud } from './CreditsHud.js';
-import { EMOTE_GLYPHS, type EmoteId, EmoteWheel } from './EmoteWheel.js';
+import { EmoteWheel } from './EmoteWheel.js';
 import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
@@ -20,8 +20,11 @@ import { TetherChat } from './TetherChat.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startBadgeMonitor } from './badge-notifications.js';
+import { startLevel } from './level.js';
+import { startMissionServerLoad } from './mission-server-load.js';
 import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
+import { FREQ_LOCK_OPEN_EVENT } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
@@ -33,16 +36,28 @@ startIdentity();
 startBadgeMonitor();
 startVisibilityWatcher();
 startSignupGrant();
+startLevel();
 startMissionSync();
+// Reads server-side mission progress on sign-in and rebuilds local state
+// from it (server is the source of truth — must start after mission-sync so
+// the local write path is already listening).
+startMissionServerLoad();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
+const BoardsLanding = lazy(() =>
+  import('./BoardsLanding.js').then((m) => ({ default: m.BoardsLanding })),
+);
+// freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
+const FreqLock = lazy(() => import('./FreqLock.js'));
 
 const BOARD_HASH_PREFIX = '#board/';
+const BOARD_HOSTNAME = 'write.bitrunners.app';
 const AUTH_VERIFIED_HASH = '#auth/verified';
 const AUTH_RECOVERY_HASH = '#auth/recovery';
 
 type RoutedSurface =
   | { kind: 'board'; slug: string }
+  | { kind: 'boards-landing' }
   | { kind: 'auth-verified' }
   | { kind: 'auth-recovery' }
   | null;
@@ -52,6 +67,13 @@ function readRoute(): RoutedSurface {
   if (hash.startsWith(BOARD_HASH_PREFIX)) {
     const slug = hash.slice(BOARD_HASH_PREFIX.length).trim();
     return slug.length > 0 ? { kind: 'board', slug } : null;
+  }
+  // write.bitrunners.app → writer portal. /<slug> opens that board; bare /
+  // shows the boards-landing list with an "+ add board" button.
+  if (window.location.hostname === BOARD_HOSTNAME) {
+    const slug = window.location.pathname.replace(/^\/+/, '').replace(/\/.*$/, '').trim();
+    if (slug.length > 0) return { kind: 'board', slug };
+    return { kind: 'boards-landing' };
   }
   // Supabase appends its own params after the route — match by prefix.
   if (hash.startsWith(AUTH_VERIFIED_HASH)) return { kind: 'auth-verified' };
@@ -84,6 +106,21 @@ export function App(): JSX.Element {
         }
       >
         <Board slug={route.slug} />
+      </Suspense>
+    );
+  } else if (route?.kind === 'boards-landing') {
+    content = (
+      <Suspense
+        fallback={
+          <div className="board">
+            <header className="board-header">
+              <span className="board-title">bitrunners · writer portal</span>
+              <span className="board-status">loading…</span>
+            </header>
+          </div>
+        }
+      >
+        <BoardsLanding />
       </Suspense>
     );
   } else if (route?.kind === 'auth-verified') {
@@ -150,7 +187,14 @@ function Game({ className }: GameProps): JSX.Element {
   const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
   const [sammInRange, setSammInRange] = useState(false);
   const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
+  const [freqLockOpen, setFreqLockOpen] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const onOpen = (): void => setFreqLockOpen(true);
+    window.addEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+  }, []);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -187,8 +231,8 @@ function Game({ className }: GameProps): JSX.Element {
     return () => window.removeEventListener('bitrunners:grant-received', onGrant);
   }, []);
 
-  const onEmote = useCallback((id: EmoteId) => {
-    controlsRef.current?.triggerEmote(EMOTE_GLYPHS[id]);
+  const onEmote = useCallback((glyph: string) => {
+    controlsRef.current?.triggerEmote(glyph);
   }, []);
 
   return (
@@ -201,6 +245,11 @@ function Game({ className }: GameProps): JSX.Element {
       <ShopInventoryModal />
       <Objectives />
       <EmoteWheel onEmote={onEmote} onInventory={() => openShopInventory('inventory')} />
+      {freqLockOpen && (
+        <Suspense fallback={null}>
+          <FreqLock onClose={() => setFreqLockOpen(false)} />
+        </Suspense>
+      )}
       <Samm inRange={sammInRange} />
       <Tutorial />
       <Starmap />

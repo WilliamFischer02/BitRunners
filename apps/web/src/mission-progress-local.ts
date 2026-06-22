@@ -16,7 +16,7 @@
 //   active:    string|null — currently-active mission key (or null)
 //   nextIdx:   number     — checkpoint index for the active mission
 
-import type { MissionState } from './missions.js';
+import type { MissionFaction, MissionState } from './missions.js';
 
 const STORAGE_KEY = 'bitrunners.mission-progress.v1';
 const EVENT = 'bitrunners:mission-progress-changed';
@@ -28,10 +28,15 @@ export interface MissionProgressLocal {
   nextIdx: number;
   /** Server-recorded state for the active mission ('active' | 'final'). */
   activeState: MissionState;
+  /** Faction chosen at each completed mission's final dialogue, keyed by
+   *  mission key. Additive (older blobs default to {}). Used so the
+   *  objectives panel can label past completions even when they are no
+   *  longer the active mission. */
+  factions: Record<string, MissionFaction>;
 }
 
 function defaultState(): MissionProgressLocal {
-  return { v: 1, completed: [], active: null, nextIdx: 0, activeState: 'inactive' };
+  return { v: 1, completed: [], active: null, nextIdx: 0, activeState: 'inactive', factions: {} };
 }
 
 function isState(x: unknown): x is MissionProgressLocal {
@@ -40,6 +45,15 @@ function isState(x: unknown): x is MissionProgressLocal {
   return (
     o.v === 1 && Array.isArray(o.completed) && (typeof o.active === 'string' || o.active === null)
   );
+}
+
+function normalizeFactions(x: unknown): Record<string, MissionFaction> {
+  if (typeof x !== 'object' || x === null) return {};
+  const out: Record<string, MissionFaction> = {};
+  for (const [k, v] of Object.entries(x as Record<string, unknown>)) {
+    if (v === 'corporate' || v === 'bitrunner') out[k] = v;
+  }
+  return out;
 }
 
 function load(): MissionProgressLocal {
@@ -55,6 +69,7 @@ function load(): MissionProgressLocal {
       active: parsed.active,
       nextIdx: Number.isFinite(parsed.nextIdx) ? parsed.nextIdx : 0,
       activeState: (parsed.activeState ?? 'inactive') as MissionState,
+      factions: normalizeFactions(parsed.factions),
     };
   } catch {
     return defaultState();
@@ -98,14 +113,45 @@ export function advanceActiveIdx(nextIdx: number, missionState: MissionState): v
   persist();
 }
 
-export function markCompleted(key: string): void {
-  if (state.completed.includes(key)) return;
+export function markCompleted(key: string, faction?: MissionFaction): void {
+  const alreadyDone = state.completed.includes(key);
+  const factions = faction ? { ...state.factions, [key]: faction } : state.factions;
+  if (alreadyDone && factions === state.factions) return;
   state = {
     ...state,
-    completed: [...state.completed, key],
+    completed: alreadyDone ? state.completed : [...state.completed, key],
+    factions,
     active: null,
     nextIdx: 0,
     activeState: 'complete',
+  };
+  persist();
+}
+
+/** Faction the runner picked when they completed `key`, or null. */
+export function factionFor(key: string): MissionFaction | null {
+  return state.factions[key] ?? null;
+}
+
+/** Overwrite the entire local store from the server's authoritative view.
+ *  Server is the source of truth on sign-in (acceptance: a returning player
+ *  loads exactly the state they left). Merges nothing — the server snapshot
+ *  wins — but tolerates a partial snapshot by keeping it internally
+ *  consistent. */
+export function reconcileFromServer(snap: {
+  completed: string[];
+  factions: Record<string, MissionFaction>;
+  active: string | null;
+  nextIdx: number;
+  activeState: MissionState;
+}): void {
+  state = {
+    v: 1,
+    completed: [...new Set(snap.completed)],
+    factions: { ...snap.factions },
+    active: snap.active,
+    nextIdx: Number.isFinite(snap.nextIdx) ? snap.nextIdx : 0,
+    activeState: snap.activeState,
   };
   persist();
 }

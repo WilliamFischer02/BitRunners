@@ -102,67 +102,92 @@ body,
   }
 }
 
-/* expanded modal: tap minimap to enlarge for phone legibility */
+/* Expanded "Spectrum Navigator" modal: tap minimap to enlarge.
+ * Layout split into two stacking layers so the map is always an
+ * undistorted square and the name+close card always sits on top:
+ *   1. Square map canvas, centered, sized to fit the smaller of available
+ *      width / (height − card-reserve). Works in any orientation.
+ *   2. Floating name + close card pinned to the bottom of the viewport,
+ *      z-stacked above the canvas. */
 .starmap-expanded-back {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.7);
+  z-index: 60;
+}
+.starmap-expanded {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 60;
-  padding: 16px;
-}
-.starmap-expanded {
-  background: rgba(8, 12, 14, 0.95);
-  border: 1px solid #84d8a4;
-  border-radius: 6px;
-  box-shadow: 0 0 30px rgba(132, 216, 164, 0.18);
-  padding: 10px 12px 14px;
-  display: flex;
-  flex-direction: column;
-  width: min(420px, 92vw);
-  max-height: 92vh;
+  /* Reserve 132px at the bottom so the canvas never sits under the card. */
+  padding: 16px 16px 132px 16px;
+  box-sizing: border-box;
   color: #c0ffd6;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 .starmap-expanded-head {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 70;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: rgba(8, 12, 14, 0.95);
+  border: 1px solid #84d8a4;
+  border-radius: 6px;
+  box-shadow: 0 0 30px rgba(132, 216, 164, 0.18);
+  padding: 10px 14px;
+  width: min(420px, calc(100vw - 32px));
   font-size: 12px;
   letter-spacing: 0.08em;
-  padding-bottom: 6px;
-  border-bottom: 1px solid #355042;
-  margin-bottom: 8px;
+  color: #c0ffd6;
+  box-sizing: border-box;
+}
+.starmap-expanded-title {
+  flex: 1;
+  font-weight: 700;
 }
 .starmap-expanded-close {
   appearance: none;
-  background: transparent;
-  border: 0;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid #355042;
+  border-radius: 4px;
   color: var(--tint-dim);
   cursor: pointer;
-  font-size: 14px;
-  padding: 4px 8px;
+  font-size: 18px;
+  line-height: 1;
+  /* ≥44px touch target — ESC is only a fallback; on touch the ✕ is the
+     primary exit (mega-batch 4.5). */
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.starmap-expanded-close:hover {
+.starmap-expanded-close:hover,
+.starmap-expanded-close:focus-visible {
   color: #ff9450;
+  border-color: #ff9450;
 }
 .starmap-expanded-canvas {
   display: block;
-  width: 100%;
-  height: auto;
+  /* Always a square — sized to the SMALLER of available viewport width
+     and (viewport height − bottom-card reserve − padding). Guarantees
+     undistorted aspect on both portrait and landscape. */
+  width: min(calc(100vw - 32px), calc(100vh - 164px));
+  height: min(calc(100vw - 32px), calc(100vh - 164px));
   aspect-ratio: 1 / 1;
   border: 1px solid #355042;
   border-radius: 3px;
   background: rgba(8, 12, 14, 0.6);
-}
-.starmap-expanded-foot {
-  font-size: 10px;
-  color: var(--tint-dim);
-  text-align: center;
-  padding-top: 8px;
-  letter-spacing: 0.06em;
+  box-shadow: 0 0 30px rgba(132, 216, 164, 0.12);
 }
 
 .fps {
@@ -456,6 +481,183 @@ body,
   font-size: 11px;
   letter-spacing: 0.04em;
   font-variant-numeric: tabular-nums;
+}
+
+/* ──────────── writer portal landing (write.bitrunners.app/) ──────────── */
+.boards-landing {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  align-items: center;
+}
+.boards-landing-section {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: #0d1110;
+  border: 1px solid #2a3330;
+  border-radius: 4px;
+}
+.boards-landing-section-title {
+  color: var(--tint);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2a3330;
+}
+.boards-landing-stub {
+  color: var(--tint-dim);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 8px 4px;
+}
+.boards-landing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.boards-landing-row {
+  display: flex;
+  align-items: center;
+}
+.boards-landing-link {
+  flex: 1;
+  display: block;
+  padding: 10px 12px;
+  border-radius: 3px;
+  background: rgba(60, 110, 80, 0.08);
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  border: 1px solid transparent;
+  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;
+  word-break: break-all;
+}
+.boards-landing-link:hover,
+.boards-landing-link:focus-visible {
+  background: rgba(80, 140, 100, 0.18);
+  border-color: var(--tint-dim);
+  color: #eafff0;
+  outline: none;
+}
+.boards-landing-rename {
+  appearance: none;
+  margin-left: 6px;
+  padding: 6px 10px;
+  background: transparent;
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.boards-landing-rename:hover {
+  background: rgba(60, 110, 80, 0.18);
+  color: var(--tint);
+  border-color: var(--tint);
+}
+.boards-landing-rename-row {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.boards-landing-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 12px;
+  background: rgba(60, 110, 80, 0.08);
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.boards-landing-rename-input:focus {
+  outline: none;
+  border-color: var(--tint);
+  background: rgba(80, 140, 100, 0.12);
+}
+.boards-landing-rename-input:disabled {
+  opacity: 0.6;
+}
+.boards-landing-rename-save,
+.boards-landing-rename-cancel {
+  appearance: none;
+  padding: 8px 12px;
+  background: rgba(60, 110, 80, 0.55);
+  border: 1px solid var(--tint-dim);
+  border-radius: 3px;
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.boards-landing-rename-save:hover:not(:disabled),
+.boards-landing-rename-cancel:hover:not(:disabled) {
+  background: rgba(80, 140, 100, 0.7);
+}
+.boards-landing-rename-save:disabled,
+.boards-landing-rename-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.boards-landing-rename-cancel {
+  background: transparent;
+  color: var(--tint-dim);
+}
+.boards-landing-rename-err {
+  flex-basis: 100%;
+  color: #ff9450;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding-left: 4px;
+}
+.boards-landing-add {
+  appearance: none;
+  margin-top: 10px;
+  padding: 12px 16px;
+  background: rgba(60, 110, 80, 0.55);
+  border: 1px solid var(--tint-dim);
+  border-radius: 4px;
+  color: var(--tint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.boards-landing-add:hover {
+  background: rgba(80, 140, 100, 0.7);
+}
+.boards-landing-add:active {
+  background: rgba(100, 170, 130, 0.85);
+}
+.boards-landing-foot {
+  color: var(--tint-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-align: center;
 }
 
 /* ──────────── boot loader & class select ──────────── */
@@ -1068,6 +1270,318 @@ dialog.panel::backdrop {
   text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
 }
 
+/* ──────────── session superseded (single live session per account) ──────────── */
+.session-superseded {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 8, 0.92);
+  z-index: 120;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.session-superseded-box {
+  max-width: 88vw;
+  padding: 22px 26px;
+  border: 1px solid #6a3a30;
+  border-radius: 4px;
+  background: rgba(10, 14, 16, 0.9);
+  text-align: center;
+}
+.session-superseded-title {
+  color: #ff9b8b;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
+}
+.session-superseded-sub {
+  margin-top: 10px;
+  color: #8aa597;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.session-superseded-btn {
+  margin-top: 16px;
+  padding: 8px 16px;
+  min-height: 44px;
+  border: 1px solid #3a6850;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  color: #a8f0c0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.session-superseded-btn:hover {
+  border-color: #5a9878;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
+}
+
+/* ──────────── freq_lock minigame (devlog 0109 — 3D signal disturbance) ──────────── */
+.freqlock-back {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 6, 8, 0.92);
+  z-index: 70;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.freqlock {
+  position: relative;
+  width: min(420px, 94vw);
+  height: min(72vh, 640px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #355042;
+  border-radius: 6px;
+  background: rgba(8, 12, 14, 0.96);
+  overflow: hidden;
+}
+.freqlock-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #1c2a22;
+  font-size: 11px;
+  color: #c0ffd6;
+}
+.freqlock-title {
+  letter-spacing: 0.08em;
+}
+.freqlock-stat {
+  color: #8aa597;
+  font-variant-numeric: tabular-nums;
+}
+.freqlock-head .panel-close {
+  margin-left: auto;
+}
+
+/* Stage: perspective container + flat hit row at the bottom. */
+.freqlock-stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  perspective: 720px;
+  perspective-origin: 50% 100%;
+  background: radial-gradient(ellipse at 50% 30%, rgba(132, 216, 164, 0.05) 0%, transparent 60%),
+    linear-gradient(to bottom, #050807 0%, #0a1410 100%);
+}
+
+/* The "floor" tilts back so tracks recede into the distance. Children
+   positioned with top:0 are far away (small), top:100% are at the
+   player's feet (large). */
+.freqlock-floor {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 0;
+  bottom: 96px; /* leaves room for the hit row */
+  display: flex;
+  gap: 4px;
+  transform-style: preserve-3d;
+  transform: rotateX(55deg);
+  transform-origin: 50% 100%;
+}
+
+.freqlock-track {
+  position: relative;
+  flex: 1;
+  /* faint side rails so each track reads as its own surface */
+  background: linear-gradient(
+    to right,
+    rgba(132, 216, 164, 0.06) 0%,
+    transparent 6%,
+    transparent 94%,
+    rgba(132, 216, 164, 0.06) 100%
+  );
+}
+
+/* The steady "straight light" running down the centre of each track —
+   brightest near the player (full opacity at bottom, fades into the
+   distance). */
+.freqlock-beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(132, 216, 164, 0) 0%,
+    rgba(132, 216, 164, 0.35) 35%,
+    rgba(132, 216, 164, 0.9) 90%,
+    #c0ffd6 100%
+  );
+  box-shadow: 0 0 6px rgba(132, 216, 164, 0.45);
+}
+
+/* A disturbance — a bright bulge that bends the beam outward as it
+   travels toward the player. Rotated back so it stands up facing the
+   camera instead of lying flat on the floor. */
+.freqlock-disturb {
+  position: absolute;
+  left: 50%;
+  width: 48px;
+  height: 32px;
+  margin-left: -24px;
+  margin-top: -16px;
+  background: radial-gradient(
+    ellipse at center,
+    #f4ffec 0%,
+    #93e0b1 22%,
+    rgba(132, 216, 164, 0.55) 55%,
+    transparent 78%
+  );
+  border-radius: 50%;
+  filter: blur(0.5px);
+  pointer-events: none;
+  transform: rotateX(-55deg);
+  transform-origin: center bottom;
+  animation: freqlock-pulse 480ms ease-in-out infinite alternate;
+}
+
+@keyframes freqlock-pulse {
+  from {
+    filter: blur(0.5px) brightness(0.92);
+  }
+  to {
+    filter: blur(0.5px) brightness(1.18);
+  }
+}
+
+/* Hit row at the bottom — flat on screen, sits above the rotated floor. */
+.freqlock-hit-row {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 8px;
+  display: flex;
+  gap: 8px;
+  height: 80px;
+  z-index: 2;
+}
+.freqlock-hit {
+  flex: 1;
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid rgba(132, 216, 164, 0.32);
+  border-radius: 4px;
+  color: var(--tint, #c0ffd6);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* glow lipping the top edge — frames the lane */
+  box-shadow: inset 0 1px 0 rgba(132, 216, 164, 0.5), inset 0 -16px 18px rgba(132, 216, 164, 0.08);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.freqlock-hit:hover {
+  border-color: rgba(132, 216, 164, 0.55);
+}
+.freqlock-hit:active {
+  background: rgba(132, 216, 164, 0.18);
+  box-shadow: inset 0 1px 0 #c0ffd6, inset 0 -16px 18px rgba(132, 216, 164, 0.22);
+}
+.freqlock-hit-key {
+  font-size: 16px;
+  font-weight: 700;
+  color: #c0ffd6;
+  text-shadow: 0 0 6px rgba(132, 216, 164, 0.5);
+}
+.freqlock-hit-label {
+  font-size: 10px;
+  color: #8aa597;
+}
+
+.freqlock-judge {
+  height: 22px;
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #8aa597;
+}
+.freqlock-judge[data-j="locked"] {
+  color: #7ef0c8;
+  text-shadow: 0 0 8px rgba(126, 240, 200, 0.6);
+}
+.freqlock-judge[data-j="good"] {
+  color: #c0ffd6;
+}
+.freqlock-judge[data-j="miss"] {
+  color: #ff9b8b;
+}
+.freqlock-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(6, 9, 11, 0.92);
+}
+.freqlock-overlay-title {
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  color: #c0ffd6;
+  text-transform: uppercase;
+}
+.freqlock-overlay-sub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8aa597;
+}
+.freqlock-credits {
+  color: #ffd860;
+  font-weight: 700;
+}
+.freqlock-overlay-row {
+  display: flex;
+  gap: 10px;
+}
+.freqlock-btn {
+  appearance: none;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid #3a6850;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  color: #a8f0c0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.freqlock-btn:hover {
+  border-color: #5a9878;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freqlock-disturb {
+    animation: none;
+  }
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;
@@ -1084,8 +1598,9 @@ dialog.panel::backdrop {
 }
 .tether-overlay {
   position: fixed;
-  bottom: clamp(60px, 11vh, 110px);
-  right: clamp(12px, 2vw, 28px);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: min(280px, 84vw);
   max-height: 50vh;
   display: flex;
@@ -1093,7 +1608,7 @@ dialog.panel::backdrop {
   background: rgba(8, 12, 14, 0.92);
   border: 1px solid #b07cff;
   border-radius: 6px;
-  z-index: 7;
+  z-index: 250;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
   color: #c0ffd6;
   box-shadow: 0 0 24px rgba(176, 124, 255, 0.25);
@@ -1527,6 +2042,16 @@ dialog.panel::backdrop {
   font-size: 12px;
   line-height: 1;
   filter: drop-shadow(0 0 4px currentColor);
+}
+/* mega-batch 4.10 — runner level chip, shown after the badge glyph. */
+.player-tag-level {
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  color: #ffd860;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(255, 216, 96, 0.45);
+  white-space: nowrap;
 }
 .player-tag-badge--empty {
   color: var(--tint-dim);
@@ -2306,6 +2831,16 @@ dialog.panel::backdrop {
   gap: 6px;
   align-items: center;
 }
+/* mega-batch 4.8 — shop section tabs (outfits/emotes/themes/upgrades) */
+.shop-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 0 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #1c2a22;
+}
 .shopinv-tab {
   appearance: none;
   background: rgba(20, 28, 24, 0.7);
@@ -2587,6 +3122,98 @@ dialog.panel::backdrop {
   background: #93e0b1;
   padding: 0 3px;
   border-radius: 2px;
+}
+/* mega-batch 4.7 — icon glyph + name stacked inside each filled slot. */
+.inv-slot.is-filled {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.inv-slot-glyph {
+  font-size: 18px;
+  line-height: 1;
+  color: #93e0b1;
+}
+.inv-slot.rar-rare .inv-slot-glyph {
+  color: #7ef0c8;
+}
+.inv-slot.rar-ultra .inv-slot-glyph {
+  color: #c8a0ff;
+}
+.inv-slot-name {
+  font-size: 8px;
+  text-align: center;
+  line-height: 1.1;
+}
+.inv-equip-glyph {
+  color: #93e0b1;
+}
+.shop-item-glyph {
+  display: inline-block;
+  margin-right: 5px;
+  color: #93e0b1;
+}
+/* mega-batch 4.12 — emote loadout slots + picker */
+.emote-slots {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin: 4px 0 8px;
+}
+.emote-slot {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  aspect-ratio: 1 / 1;
+  background: rgba(8, 12, 14, 0.6);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #c0ffd6;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.emote-slot.is-active {
+  border-color: #93e0b1;
+}
+.emote-slot-glyph {
+  font-size: 14px;
+  line-height: 1;
+  color: #93e0b1;
+}
+.emote-slot-label {
+  font-size: 8px;
+  color: var(--tint-dim);
+}
+.emote-picker {
+  margin-bottom: 8px;
+}
+.emote-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+.emote-pick {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  background: rgba(20, 28, 24, 0.5);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #c0ffd6;
+  cursor: pointer;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+}
+.emote-pick:hover {
+  border-color: #93e0b1;
 }
 .inv-equip {
   display: flex;
@@ -4201,6 +4828,35 @@ dialog.panel::backdrop {
   }
 }
 
+/* ════════ Desktop / tablet launcher pills (mega-batch 4.4) ════════
+   The global .profile (top ~10px) and .protocols-launch (top:156px) rules
+   above placed the launcher tiles in the top-right column — directly over
+   the minimap (.starmap: top:12px right:12px, height clamp(120,18vw,156)).
+   On anything wider than the mobile breakpoint, drop BOTH tiles into the
+   right column BELOW the minimap, stair-stepped (upper nudged inward, lower
+   flush right), keeping a ≥44px short axis. */
+@media (min-width: 541px) {
+  .profile,
+  .protocols-launch {
+    /* 12px (minimap top) + minimap height + 10px gutter */
+    top: calc(12px + clamp(120px, 18vw, 156px) + 10px);
+    height: clamp(56px, 8.4vw, 72px);
+    min-height: 44px;
+  }
+  .profile {
+    /* upper tile — nudged inward for the stair-step */
+    right: 24px;
+    min-width: 120px;
+    max-width: 168px;
+    width: auto;
+  }
+  .protocols-launch {
+    /* lower tile — flush right, one tile-height + gap below the profile */
+    right: 12px;
+    top: calc(12px + clamp(120px, 18vw, 156px) + 10px + clamp(56px, 8.4vw, 72px) + 8px);
+  }
+}
+
 /* ════════ Standby ribbon (Phase 2 — devlog 0066) ════════
    Faint band drawn at the top of the canvas-host when the tab is hidden /
    the visibility watcher has put us in standby. The scene disconnects from
@@ -4279,91 +4935,137 @@ dialog.panel::backdrop {
 .protocols-close:hover {
   border-color: #93e0b1;
 }
+/* ── Stage 1: drag-scroll rail (mega-batch 4.14) ── */
 .protocols-rail {
+  position: relative;
+  overflow: hidden;
+  height: 196px;
+  touch-action: pan-y;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.protocols-rail.is-dragging {
+  cursor: grabbing;
+}
+.protocols-track {
   display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  padding: 4px 2px 8px;
+  /* Centre padding so the first + last cartridges can reach the middle. */
+  padding: 14px calc(50% - 67px);
+  will-change: transform;
 }
-.protocols-rail::-webkit-scrollbar {
-  display: none;
+.protocol-cartridge-cell {
+  flex: 0 0 150px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
 }
+
+/* ── Stage 2: worn-tape cartridge art ── */
 .protocol-cartridge {
-  appearance: none;
-  background: rgba(8, 12, 14, 0.7);
-  border: 1px solid #2a3a32;
-  border-radius: 3px;
-  color: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
-  cursor: pointer;
-  flex: 0 0 140px;
-  min-height: 144px;
+  position: relative;
+  width: 134px;
+  min-height: 150px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
   gap: 4px;
-  padding: 14px 8px 10px;
-  scroll-snap-align: center;
-  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+  padding: 12px 9px 12px;
+  overflow: hidden;
+  border-radius: 7px 7px 4px 4px;
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  /* Moulded-plastic shell: vertical sheen over a dark grey body. */
+  background: linear-gradient(
+      160deg,
+      rgba(255, 255, 255, 0.08) 0%,
+      rgba(255, 255, 255, 0) 22%,
+      rgba(0, 0, 0, 0.25) 60%,
+      rgba(0, 0, 0, 0.4) 100%
+    ), linear-gradient(180deg, #2a2f34 0%, #1b2024 100%);
+  border: 1px solid #11161a;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 4px 10px rgba(0, 0, 0, 0.5);
+  transform: scale(0.86);
+  opacity: 0.72;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
 }
-.protocol-cartridge:hover {
-  border-color: #93e0b1;
+/* Worn fractal-noise overlay — procedurally generated inline SVG (CC0, no
+   external asset / attribution needed). */
+.cart-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.06;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='90' height='90'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+/* Colour band = the peeling title label sticker. */
+.cart-band {
+  position: relative;
+  width: 100%;
+  padding: 10px 0;
+  margin-bottom: 4px;
+  border-radius: 3px;
+  text-align: center;
+  background: linear-gradient(180deg, #6a7078 0%, #4a5058 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+/* Peeled corner. */
+.cart-band::after {
+  content: "";
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  border-width: 0 9px 9px 0;
+  border-style: solid;
+  border-color: transparent #1b2024 transparent transparent;
+}
+.cart-code {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #11161a;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+.cart-tint--neutral .cart-band {
+  background: linear-gradient(180deg, #d8b84a 0%, #a8882a 100%);
+}
+.cart-tint--br .cart-band {
+  background: linear-gradient(180deg, #b07cff 0%, #6a3ab0 100%);
+}
+.cart-tint--corp .cart-band {
+  background: linear-gradient(180deg, #ff9450 0%, #c85a20 100%);
 }
 .protocol-cartridge.is-focused {
-  border-color: #c0ffd6;
-  background: rgba(14, 22, 18, 0.78);
-  transform: translateY(-4px);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(192, 255, 214, 0.12);
-}
-.protocol-cartridge.cart-tint--br.is-focused {
-  border-color: #b07cff;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(176, 124, 255, 0.16);
-}
-.protocol-cartridge.cart-tint--corp.is-focused {
-  border-color: #ff9450;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5), inset 0 0 12px rgba(255, 148, 80, 0.16);
+  transform: scale(1.1) translateY(-8px);
+  opacity: 1;
+  border-color: #354048;
 }
 .protocol-cartridge.is-locked {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.cart-glyph {
-  font-size: clamp(28px, 5vw, 40px);
-  line-height: 1;
-  color: #93e0b1;
-  filter: drop-shadow(0 0 6px currentColor);
-}
-.protocol-cartridge.cart-tint--br .cart-glyph {
-  color: #b07cff;
-}
-.protocol-cartridge.cart-tint--corp .cart-glyph {
-  color: #ff9450;
+  filter: grayscale(0.7);
+  opacity: 0.4;
 }
 .cart-label {
   font-size: var(--ui-text-md);
   letter-spacing: 0.06em;
-  color: #c0ffd6;
+  color: #d6f5e2;
   text-align: center;
-  /* Allow the label to wrap if needed instead of truncating. */
   width: 100%;
   min-width: 0;
   word-break: break-word;
   overflow-wrap: anywhere;
-  hyphens: auto;
   line-height: 1.2;
 }
 .cart-flavor {
   font-size: var(--ui-text-xs);
   letter-spacing: 0.04em;
-  color: var(--tint-dim);
+  color: #8aa597;
   text-align: center;
   line-height: 1.35;
   margin-top: 2px;
 }
 .cart-insert {
-  margin-top: 4px;
+  margin-top: auto;
   font-size: var(--ui-text-xs);
   letter-spacing: 0.15em;
   color: #c0ffd6;
@@ -4372,10 +5074,47 @@ dialog.panel::backdrop {
   border-radius: 2px;
 }
 .cart-lock {
-  margin-top: 4px;
+  margin-top: auto;
   font-size: 9px;
   letter-spacing: 0.1em;
   color: #6e7a86;
+}
+
+/* ── Stage 3: drop-into-slot animation ── */
+.protocols-slot {
+  position: absolute;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  width: 150px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0) 70%);
+  pointer-events: none;
+}
+.protocol-cartridge.is-dropping {
+  z-index: 2;
+  animation: cart-drop 0.6s cubic-bezier(0.5, 0, 0.7, 1) forwards, cart-click 0.08s steps(4, end)
+    0.6s forwards;
+}
+@keyframes cart-drop {
+  0% {
+    transform: scale(1.1) translateY(-8px);
+  }
+  78% {
+    transform: scale(0.94) translateY(46px);
+  }
+  100% {
+    transform: scale(0.9) translateY(52px);
+  }
+}
+@keyframes cart-click {
+  0% {
+    filter: brightness(1.5);
+  }
+  100% {
+    filter: brightness(1);
+  }
 }
 .protocols-foot {
   font-size: 9px;
@@ -4388,17 +5127,16 @@ dialog.panel::backdrop {
     transition: none;
   }
   .protocol-cartridge.is-focused {
-    transform: none;
+    transform: scale(1.06);
+  }
+  .protocol-cartridge.is-dropping {
+    animation: none;
   }
 }
 @media (max-width: 540px) {
   .protocols-carousel {
     top: 184px;
     right: 8px;
-  }
-  .protocol-cartridge {
-    flex-basis: 120px;
-    min-height: 128px;
   }
 }
 

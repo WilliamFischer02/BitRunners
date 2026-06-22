@@ -5,6 +5,16 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-06-16 — Emote loadout rides the account-synced economy blob; no profiles column / 0013 migration (devlog 0100)
+
+**Decision:** Mega-batch task 4.12 specified persisting the emote loadout via a new `profiles.equipped_emotes` JSONB column + RPC (`0013_emote_loadout.sql`). Instead, `ownedEmotes` (premium ids) and `emoteLoadout` (4 slots) were added as **additive fields on the device-local economy blob** (`economy.ts`), exactly like clothing `owned`/`equipped`. That blob already syncs per-account via `player_economy` (migration 0002, `economy-sync.ts`), so the loadout follows the account **with no new migration and no owner SQL step**.
+
+**Why it matters:** A separate `profiles.equipped_emotes` would create a *second* source of truth for the same data (player_economy blob vs profiles column), which is the incoherence the project has avoided before (cf. the credit-shop vs passcode-tree consolidation). The blob path is consistent with every other cosmetic, requires zero owner action, and is trade-safe in the same (limited) way the rest of the economy is. **No `0013_*` migration was created** — 0013 stays free for future use.
+
+**Future sessions:** if the owner specifically wants the loadout server-authoritative (e.g. anti-cheat on equipped emotes), that's the same upgrade as the broader server-authoritative economy (trading epic) — do it there, not as a one-off profiles column.
+
+---
+
 ## 2026-06-04 — Sub-Phase E: theme balance verification stays client-side
 
 **Decision:** `purchase_theme` RPC verifies the faction gate (from `profiles.samaritan_*`) but NOT the credit/token balance. The economy is a device-local JSONB blob (player_economy, migration 0002) — not server-authoritative. A client-deduct-then-RPC pattern is used; the client refunds on RPC error. This is consistent with all other purchases (SAMM, shop). Server-authoritative balance verification is the P2P trading epic concern.

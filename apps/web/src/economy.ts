@@ -77,8 +77,20 @@ export interface EconomyState {
   slots: (string | null)[];
   equipped: Equipped;
   appearanceHidden: boolean;
+  // Emote loadout (mega-batch 4.12). `ownedEmotes` holds purchased PREMIUM
+  // emote ids only — the 10 base emotes are always available (resolved via the
+  // catalog in emotes.ts, which this module stays decoupled from). `emoteLoadout`
+  // is the 4-slot equipped set (catalog ids; null = empty slot). Both ride the
+  // account-synced blob, so no separate migration is needed.
+  ownedEmotes: string[];
+  emoteLoadout: (string | null)[];
   updatedAt: number;
 }
+
+export const EMOTE_LOADOUT_SLOTS = 4;
+// Default equipped emotes for a fresh runner — mirrors emotes.ts
+// DEFAULT_EMOTE_LOADOUT (kept inline so economy stays catalog-agnostic).
+const DEFAULT_LOADOUT: readonly (string | null)[] = ['wave', 'happy', 'think', 'tired'];
 
 const NEXT_TIER: Record<RefinableTier, 'strings' | 'serials' | 'passcodes'> = {
   bits: 'strings',
@@ -119,8 +131,20 @@ function defaultState(): EconomyState {
     slots: emptySlots(),
     equipped: { head: null, chest: null, legs: null, pet: null },
     appearanceHidden: false,
+    ownedEmotes: [],
+    emoteLoadout: [...DEFAULT_LOADOUT],
     updatedAt: 0,
   };
+}
+
+function normLoadout(v: unknown): (string | null)[] {
+  const base: (string | null)[] = [...DEFAULT_LOADOUT];
+  if (!Array.isArray(v)) return base;
+  for (let i = 0; i < EMOTE_LOADOUT_SLOTS; i++) {
+    const cell = v[i];
+    base[i] = typeof cell === 'string' ? cell : cell === null ? null : (base[i] ?? null);
+  }
+  return base;
 }
 
 function isEconomyState(x: unknown): x is EconomyState {
@@ -199,6 +223,8 @@ function normalize(parsed: EconomyState): EconomyState {
     slots: normSlots(p.slots),
     equipped: normEquipped(p.equipped),
     appearanceHidden: p.appearanceHidden === true,
+    ownedEmotes: strArray(p.ownedEmotes),
+    emoteLoadout: normLoadout(p.emoteLoadout),
   };
 }
 
@@ -569,6 +595,41 @@ export function purchaseItem(
   state = { ...state, ...wallet, owned: [...state.owned, id], slots };
   persist();
   return { ok: true };
+}
+
+// ── Emote loadout (mega-batch 4.12) ───────────────────────────────────────
+// Owned tracks PREMIUM purchases only; base emotes are always available
+// (the catalog in emotes.ts knows which are base). Loadout is 4 catalog ids.
+
+export function getOwnedEmotes(): readonly string[] {
+  return state.ownedEmotes;
+}
+
+export function ownsPremiumEmote(id: string): boolean {
+  return state.ownedEmotes.includes(id);
+}
+
+/** Buy a premium emote with Credits. Atomic; no inventory slot needed. */
+export function purchaseEmote(id: string, cost: number): MutResult {
+  if (cost < 0) return { ok: false, reason: 'invalid' };
+  if (state.ownedEmotes.includes(id)) return { ok: false, reason: 'owned' };
+  if (state.credits < cost) return { ok: false, reason: 'insufficient credits' };
+  state = { ...state, credits: state.credits - cost, ownedEmotes: [...state.ownedEmotes, id] };
+  persist();
+  return { ok: true };
+}
+
+export function getEmoteLoadout(): readonly (string | null)[] {
+  return state.emoteLoadout;
+}
+
+/** Set emote loadout slot `i` to a catalog id (or null to clear). */
+export function setEmoteSlot(i: number, id: string | null): void {
+  if (i < 0 || i >= EMOTE_LOADOUT_SLOTS) return;
+  const next = state.emoteLoadout.slice();
+  next[i] = id;
+  state = { ...state, emoteLoadout: next };
+  persist();
 }
 
 /** Spend Credits (SAMM bet, etc.). False if the balance is insufficient. */

@@ -1,3 +1,4 @@
+import { WS_CLOSE_SESSION_SUPERSEDED } from '@bitrunners/shared';
 import { Client, type Room, getStateCallbacks } from 'colyseus.js';
 
 export interface RemotePlayer {
@@ -12,12 +13,18 @@ export interface RemotePlayer {
   displayName: string;
   equippedBadge: string;
   equippedTheme: string;
+  nameWeight: string;
+  nameTint: string;
+  level: number;
 }
 
 export interface IdentityUpdate {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
+  level?: number;
 }
 
 export interface TetherPeerSummary {
@@ -33,6 +40,9 @@ export interface NetworkCallbacks {
   onIdentity?(id: string, p: RemotePlayer): void;
   /** Fired when the server closes the connection unexpectedly (e.g. idle kick). */
   onDisconnect?(code: number): void;
+  /** Fired when a newer tab/connection for the same account superseded this
+   *  one. The client should show a "session moved" overlay and NOT reconnect. */
+  onSuperseded?(): void;
   // Tether chat (PR 87) — server routes the five message types between
   // exactly two consenting peers. Each callback receives the originating
   // sessionId so the client can match against the local tether state.
@@ -50,6 +60,11 @@ export interface JoinOptions {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
+  level?: number;
+  /** Supabase auth uid — lets the server enforce one live session per account. */
+  userId?: string;
 }
 
 export interface NetworkSession {
@@ -85,6 +100,9 @@ interface PlayerSchema {
   displayName?: string;
   equippedBadge?: string;
   equippedTheme?: string;
+  nameWeight?: string;
+  nameTint?: string;
+  level?: number;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -100,6 +118,9 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     displayName: p.displayName ?? '',
     equippedBadge: p.equippedBadge ?? '',
     equippedTheme: p.equippedTheme ?? '',
+    nameWeight: p.nameWeight ?? '',
+    nameTint: p.nameTint ?? '',
+    level: p.level ?? 0,
   };
 }
 
@@ -117,10 +138,14 @@ export async function joinSphere(
   const client = new Client(serverUrl);
   // Build the join payload — strip undefined keys so legacy servers see the
   // same shape they used to (className only) when identity fields are absent.
-  const opts: Record<string, string> = { className: joinOpts.className };
+  const opts: Record<string, string | number> = { className: joinOpts.className };
   if (joinOpts.displayName) opts.displayName = joinOpts.displayName;
   if (joinOpts.equippedBadge) opts.equippedBadge = joinOpts.equippedBadge;
   if (joinOpts.equippedTheme) opts.equippedTheme = joinOpts.equippedTheme;
+  if (joinOpts.nameWeight) opts.nameWeight = joinOpts.nameWeight;
+  if (joinOpts.nameTint) opts.nameTint = joinOpts.nameTint;
+  if (joinOpts.level) opts.level = joinOpts.level;
+  if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
   let room: Room;
@@ -180,6 +205,9 @@ export async function joinSphere(
         playerCb.listen('displayName', fireIdentity);
         playerCb.listen('equippedBadge', fireIdentity);
         playerCb.listen('equippedTheme', fireIdentity);
+        playerCb.listen('nameWeight', fireIdentity);
+        playerCb.listen('nameTint', fireIdentity);
+        playerCb.listen('level', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
@@ -221,9 +249,24 @@ export async function joinSphere(
     callbacks.onTetherRejected?.(msg?.reason ?? 'moderation');
   });
 
+  // A newer tab for the same account just connected — the server is closing
+  // this socket. Flag it so the close below doesn't trigger a reconnect loop.
+  let superseded = false;
+  room.onMessage('session-superseded', () => {
+    superseded = true;
+    callbacks.onSuperseded?.();
+  });
+
   let intentionalLeave = false;
   room.onLeave((code: number) => {
-    if (!intentionalLeave) callbacks.onDisconnect?.(code);
+    if (intentionalLeave) return;
+    if (superseded) return; // already handled by the session-superseded message
+    // The close code is the reliable signal if the message frame didn't flush.
+    if (code === WS_CLOSE_SESSION_SUPERSEDED) {
+      callbacks.onSuperseded?.();
+      return;
+    }
+    callbacks.onDisconnect?.(code);
   });
 
   return {
@@ -243,7 +286,10 @@ export async function joinSphere(
       if (
         update.displayName === undefined &&
         update.equippedBadge === undefined &&
-        update.equippedTheme === undefined
+        update.equippedTheme === undefined &&
+        update.nameWeight === undefined &&
+        update.nameTint === undefined &&
+        update.level === undefined
       ) {
         return;
       }

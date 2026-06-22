@@ -57,12 +57,26 @@ async function loadFromAccount(uid: string): Promise<void> {
       emitSynced();
     } else {
       await saveNow(uid); // no remote (first save) or local is strictly more progressed
+    const remoteUpdated = typeof remote?.updatedAt === 'number' ? remote.updatedAt : -1;
+    // Strict `>` so a tie favours LOCAL. Fixes the guest→signup clobber
+    // (devlog 0112): a fresh account row created at sign-up carries
+    // updated_at = NOW(), which usually ties or beats the in-memory guest
+    // state's updatedAt and clobbered hours of offline scrape progress.
+    // On a real tie, the guest who's been playing wins; the server-fresh
+    // empty blob loses.
+    if (remote && remoteUpdated > getEconomy().updatedAt) {
+      importProgress(remote); // account is newer → adopt it
+      emitSynced();
+    } else {
+      await saveNow(uid); // local is newer / server empty or tied → push it up
     }
+    // Apply grants WHILE `loading` is still true so the addCredits/addTokens
+    // calls don't trigger the debounce listener. The explicit saveNow at the
+    // end of applyPendingGrants is the single authoritative flush.
+    await applyPendingGrants(uid);
   } finally {
     loading = false;
   }
-  // After the load guard clears so addCredits/addTokens persist + sync back up.
-  await applyPendingGrants(uid);
 }
 
 /**
@@ -98,6 +112,19 @@ async function saveNow(uid: string): Promise<void> {
 }
 
 /**
+ * Synchronously cancel any pending debounced save and flush state now.
+ * Called from beforeunload / visibilitychange so progress isn't lost when the
+ * tab closes / is backgrounded inside the 1500 ms debounce window.
+ */
+function flushPendingSave(): void {
+  if (saveTimer !== null) {
+    window.clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (userId) void saveNow(userId);
+}
+
+/**
  * Wire economy persistence to the signed-in account. Call once at app start.
  * No-op when auth isn't configured (subscribeAuth reports guest).
  */
@@ -119,4 +146,18 @@ export function initEconomySync(): void {
       if (userId) void saveNow(userId);
     }, SAVE_DEBOUNCE_MS);
   });
+
+  // Don't lose progress if the tab closes inside the debounce window.
+  // visibilitychange catches tab-backgrounded / phone-locked / app-switched;
+  // beforeunload catches the actual unload. Browsers may not finish the
+  // fetch on unload, but visibilitychange fires earlier on most mobile and
+  // desktop flows so the save has a chance to land.
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', flushPendingSave);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushPendingSave();
+      });
+    }
+  }
 }

@@ -14,6 +14,7 @@
 // known state on scene init.
 
 export type MissionState = 'inactive' | 'active' | 'final' | 'complete';
+export type MissionFaction = 'corporate' | 'bitrunner';
 
 export interface Checkpoint {
   /** World-space X. */

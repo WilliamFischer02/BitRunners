@@ -141,6 +141,15 @@ export function isAuthConfigured(): boolean {
   return getSupabase() !== null;
 }
 
+/** The signed-in user's UUID, or null when guest / unconfigured. Used by the
+ *  network layer so the server can enforce one live session per account. */
+export async function getCurrentUserId(): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const { data } = await sb.auth.getSession();
+  return data.session?.user.id ?? null;
+}
+
 export type Role = 'user' | 'dev' | 'admin';
 
 /** The signed-in user's role ('user' if guest / unconfigured / on error). */

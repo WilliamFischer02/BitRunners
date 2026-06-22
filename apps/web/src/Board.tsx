@@ -176,6 +176,14 @@ export function Board({ slug }: BoardProps): JSX.Element {
   return (
     <div className="board">
       <header className="board-header">
+        <button
+          type="button"
+          className="board-btn"
+          onClick={() => window.location.assign('/')}
+          title="back to writer portal"
+        >
+          ← back
+        </button>
         <span className="board-title">bitrunners · writer board</span>
         <span className="board-status">{status}</span>
         <button type="button" className="board-btn" onClick={onSaveClick}>
