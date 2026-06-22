@@ -1321,7 +1321,7 @@ dialog.panel::backdrop {
   text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
 }
 
-/* ──────────── freq_lock minigame (mega-batch 4.13) ──────────── */
+/* ──────────── freq_lock minigame (devlog 0109 — 3D signal disturbance) ──────────── */
 .freqlock-back {
   position: absolute;
   inset: 0;
@@ -1362,52 +1362,152 @@ dialog.panel::backdrop {
 .freqlock-head .panel-close {
   margin-left: auto;
 }
+
+/* Stage: perspective container + flat hit row at the bottom. */
+.freqlock-stage {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  perspective: 720px;
+  perspective-origin: 50% 100%;
+  background: radial-gradient(ellipse at 50% 30%, rgba(132, 216, 164, 0.05) 0%, transparent 60%),
+    linear-gradient(to bottom, #050807 0%, #0a1410 100%);
+}
+
+/* The "floor" tilts back so tracks recede into the distance. Children
+   positioned with top:0 are far away (small), top:100% are at the
+   player's feet (large). */
+.freqlock-floor {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  top: 0;
+  bottom: 96px; /* leaves room for the hit row */
+  display: flex;
+  gap: 4px;
+  transform-style: preserve-3d;
+  transform: rotateX(55deg);
+  transform-origin: 50% 100%;
+}
+
 .freqlock-track {
   position: relative;
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 2px;
-  padding: 0 6px 6px;
+  /* faint side rails so each track reads as its own surface */
+  background: linear-gradient(
+    to right,
+    rgba(132, 216, 164, 0.06) 0%,
+    transparent 6%,
+    transparent 94%,
+    rgba(132, 216, 164, 0.06) 100%
+  );
 }
-.freqlock-lane {
-  position: relative;
-  appearance: none;
-  background: rgba(20, 28, 24, 0.35);
-  border: 1px solid #16201b;
-  border-radius: 3px;
-  overflow: hidden;
-  cursor: pointer;
+
+/* The steady "straight light" running down the centre of each track —
+   brightest near the player (full opacity at bottom, fades into the
+   distance). */
+.freqlock-beam {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(
+    to bottom,
+    rgba(132, 216, 164, 0) 0%,
+    rgba(132, 216, 164, 0.35) 35%,
+    rgba(132, 216, 164, 0.9) 90%,
+    #c0ffd6 100%
+  );
+  box-shadow: 0 0 6px rgba(132, 216, 164, 0.45);
 }
-.freqlock-lane:active {
-  background: rgba(132, 216, 164, 0.12);
-}
-.freqlock-note {
+
+/* A disturbance — a bright bulge that bends the beam outward as it
+   travels toward the player. Rotated back so it stands up facing the
+   camera instead of lying flat on the floor. */
+.freqlock-disturb {
   position: absolute;
   left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 20px;
-  color: #93e0b1;
-  text-shadow: 0 0 8px rgba(147, 224, 177, 0.6);
-}
-.freqlock-hit-glyph {
-  position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
-  font-size: 18px;
-  color: #3a4650;
-}
-.freqlock-hitline {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  bottom: 34px;
-  height: 2px;
-  background: rgba(132, 216, 164, 0.5);
-  box-shadow: 0 0 10px rgba(132, 216, 164, 0.5);
+  width: 48px;
+  height: 32px;
+  margin-left: -24px;
+  margin-top: -16px;
+  background: radial-gradient(
+    ellipse at center,
+    #f4ffec 0%,
+    #93e0b1 22%,
+    rgba(132, 216, 164, 0.55) 55%,
+    transparent 78%
+  );
+  border-radius: 50%;
+  filter: blur(0.5px);
   pointer-events: none;
+  transform: rotateX(-55deg);
+  transform-origin: center bottom;
+  animation: freqlock-pulse 480ms ease-in-out infinite alternate;
 }
+
+@keyframes freqlock-pulse {
+  from {
+    filter: blur(0.5px) brightness(0.92);
+  }
+  to {
+    filter: blur(0.5px) brightness(1.18);
+  }
+}
+
+/* Hit row at the bottom — flat on screen, sits above the rotated floor. */
+.freqlock-hit-row {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 8px;
+  display: flex;
+  gap: 8px;
+  height: 80px;
+  z-index: 2;
+}
+.freqlock-hit {
+  flex: 1;
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(8, 12, 14, 0.7);
+  border: 1px solid rgba(132, 216, 164, 0.32);
+  border-radius: 4px;
+  color: var(--tint, #c0ffd6);
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  /* glow lipping the top edge — frames the lane */
+  box-shadow: inset 0 1px 0 rgba(132, 216, 164, 0.5), inset 0 -16px 18px rgba(132, 216, 164, 0.08);
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.freqlock-hit:hover {
+  border-color: rgba(132, 216, 164, 0.55);
+}
+.freqlock-hit:active {
+  background: rgba(132, 216, 164, 0.18);
+  box-shadow: inset 0 1px 0 #c0ffd6, inset 0 -16px 18px rgba(132, 216, 164, 0.22);
+}
+.freqlock-hit-key {
+  font-size: 16px;
+  font-weight: 700;
+  color: #c0ffd6;
+  text-shadow: 0 0 6px rgba(132, 216, 164, 0.5);
+}
+.freqlock-hit-label {
+  font-size: 10px;
+  color: #8aa597;
+}
+
 .freqlock-judge {
   height: 22px;
   text-align: center;
@@ -1416,7 +1516,7 @@ dialog.panel::backdrop {
   text-transform: uppercase;
   color: #8aa597;
 }
-.freqlock-judge[data-j="perfect"] {
+.freqlock-judge[data-j="locked"] {
   color: #7ef0c8;
   text-shadow: 0 0 8px rgba(126, 240, 200, 0.6);
 }
@@ -1429,7 +1529,7 @@ dialog.panel::backdrop {
 .freqlock-overlay {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1474,6 +1574,12 @@ dialog.panel::backdrop {
 }
 .freqlock-btn:hover {
   border-color: #5a9878;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .freqlock-disturb {
+    animation: none;
+  }
 }
 
 /* ──────────── tether_chat (PR 83) ──────────── */
