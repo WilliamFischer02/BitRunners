@@ -108,8 +108,12 @@ if (-not (Test-Path .\launch-prompt.md)) {
 # The path in .claude/settings.json still blocks pushes to main, deletes of
 # protected files, etc., so "bypass" here means "don't ask me to confirm
 # every edit", NOT "ignore the safety rails".
+#
+# MAX_THINKING_TOKENS maxes the extended-thinking budget for the session —
+# pairs with the `ultrathink` keyword in launch-prompt.md (max effort).
+$env:MAX_THINKING_TOKENS = "31999"
 Write-Host ""
-Write-Host "🚀 Launching Claude Code in autonomous mode…" -ForegroundColor Cyan
+Write-Host "🚀 Launching Claude Code in autonomous mode (max effort)…" -ForegroundColor Cyan
 # Claude Code takes the initial prompt as a positional arg, not a flag.
 # (`--print` exists but is for non-interactive one-shot; we want an
 # interactive session that opens with the prompt as the first message.)
