@@ -138,6 +138,17 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
         <div className="dialogue-head">
           <span className="dialogue-name">▒▓ THE ADMIN ▓▒</span>
           <span className="dialogue-sub">{'// hostile read-access'}</span>
+          <button
+            type="button"
+            className="panel-close"
+            aria-label="skip dialogue"
+            onClick={(e) => {
+              e.stopPropagation();
+              doClose();
+            }}
+          >
+            skip ▸
+          </button>
         </div>
         {phase === 'prompt' ? (
           <div className="dialogue-body">
