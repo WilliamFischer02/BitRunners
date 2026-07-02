@@ -173,6 +173,9 @@ export function Boot({ onSelect, startAtSelect = false }: BootProps): JSX.Elemen
     <div className="boot-screen">
       <div className="boot-grid-bg" aria-hidden="true" />
       <div className="boot-select-pane">
+        {/* 4.2: an unmistakable screen title in the BitRunner purple accent so
+            the class grid announces itself as the character-select step. */}
+        <h1 className="boot-select-heading">Character Select</h1>
         <div className="boot-banner">class registry · select stack</div>
         <div className="boot-select-prompt">
           {'> '}choose your stack <span className="boot-caret">▌</span>

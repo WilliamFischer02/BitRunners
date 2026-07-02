@@ -874,6 +874,55 @@ body,
   letter-spacing: 0.04em;
 }
 
+/* 4.2 — Character Select heading. BitRunner purple (#b07cff family), well
+   clear of the green/mono palette, with a gentle glow pulse so the title
+   reads as the focal point of the class grid. */
+.boot-select-heading {
+  margin: 0 0 6px;
+  font-family: inherit;
+  font-size: clamp(22px, 4.4vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #b07cff;
+  text-shadow: 0 0 12px rgba(176, 124, 255, 0.75), 0 0 26px rgba(176, 124, 255, 0.4);
+  animation: heading-glow 2.6s ease-in-out infinite;
+}
+@keyframes heading-glow {
+  0%,
+  100% {
+    text-shadow: 0 0 10px rgba(176, 124, 255, 0.6), 0 0 22px rgba(176, 124, 255, 0.3);
+  }
+  50% {
+    text-shadow: 0 0 16px rgba(176, 124, 255, 0.95), 0 0 34px rgba(176, 124, 255, 0.55);
+  }
+}
+
+/* 4.2 — locked cards also glow (dimmer than selectable), so the whole grid
+   reads as a set of interactive-looking options. Selectable cards keep the
+   brighter green `tile-breathe` above; locked cards get a faint purple pulse
+   that matches the "comes online in later releases" framing. The dashed
+   border + 0.42 opacity + grayscale (below) keep them clearly secondary. */
+.boot-tile--locked {
+  animation: tile-locked-breathe 2.8s ease-in-out infinite;
+}
+@keyframes tile-locked-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(176, 124, 255, 0.1), 0 0 10px rgba(176, 124, 255, 0.12);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(176, 124, 255, 0.2), 0 0 18px rgba(176, 124, 255, 0.28);
+  }
+}
+/* Keyboard focus on a selectable card — a stronger ring than the hover glow
+   so tab-navigation is obvious (locked cards are disabled and unfocusable). */
+.boot-tile--active:focus-visible {
+  outline: none;
+  border-color: #c0ffd6;
+  box-shadow: 0 0 0 2px rgba(192, 255, 214, 0.5), 0 0 34px rgba(147, 224, 177, 0.55);
+}
+
 /* ──────────── transition rain ──────────── */
 .rain {
   position: fixed;
@@ -4348,6 +4397,11 @@ dialog.panel::backdrop {
   }
   /* selected tile — no breathe pulse */
   .boot-tile--active {
+    animation: none;
+  }
+  /* 4.2 — freeze the character-select glows; the static shadow still reads */
+  .boot-tile--locked,
+  .boot-select-heading {
     animation: none;
   }
 
