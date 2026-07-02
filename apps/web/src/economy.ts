@@ -84,6 +84,10 @@ export interface EconomyState {
   // account-synced blob, so no separate migration is needed.
   ownedEmotes: string[];
   emoteLoadout: (string | null)[];
+  // circuit_patch minigame (mega-batch 2 · 4.4). True once the runner has ever
+  // solved the puzzle — gates the first-clear (100 cr) vs repeat (20 cr)
+  // reward. Additive + defaulted so old blobs load clean.
+  circuitFirstClear: boolean;
   updatedAt: number;
 }
 
@@ -133,6 +137,7 @@ function defaultState(): EconomyState {
     appearanceHidden: false,
     ownedEmotes: [],
     emoteLoadout: [...DEFAULT_LOADOUT],
+    circuitFirstClear: false,
     updatedAt: 0,
   };
 }
@@ -225,6 +230,7 @@ function normalize(parsed: EconomyState): EconomyState {
     appearanceHidden: p.appearanceHidden === true,
     ownedEmotes: strArray(p.ownedEmotes),
     emoteLoadout: normLoadout(p.emoteLoadout),
+    circuitFirstClear: p.circuitFirstClear === true,
   };
 }
 
@@ -645,6 +651,19 @@ export function spendCredits(amount: number): boolean {
 export function addCredits(amount: number): void {
   if (!Number.isFinite(amount) || amount <= 0) return;
   state = { ...state, credits: state.credits + amount };
+  persist();
+}
+
+/** circuit_patch (4.4): has the runner ever solved the puzzle? Gates the
+ *  first-clear vs repeat reward. */
+export function hasClearedCircuit(): boolean {
+  return state.circuitFirstClear;
+}
+
+/** Mark the circuit_patch puzzle as cleared at least once (idempotent). */
+export function markCircuitCleared(): void {
+  if (state.circuitFirstClear) return;
+  state = { ...state, circuitFirstClear: true };
   persist();
 }
 

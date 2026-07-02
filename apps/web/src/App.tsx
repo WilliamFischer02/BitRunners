@@ -26,7 +26,7 @@ import { startLevel } from './level.js';
 import { startMissionServerLoad } from './mission-server-load.js';
 import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
-import { FREQ_LOCK_OPEN_EVENT } from './protocols-registry.js';
+import { CIRCUIT_PATCH_OPEN_EVENT, FREQ_LOCK_OPEN_EVENT } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
@@ -54,6 +54,8 @@ const BoardsLanding = lazy(() =>
 );
 // freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
 const FreqLock = lazy(() => import('./FreqLock.js'));
+// circuit_patch routing minigame — lazy chunk (mega-batch 2 · 4.4).
+const CircuitPatch = lazy(() => import('./CircuitPatch.js'));
 
 const BOARD_HASH_PREFIX = '#board/';
 const BOARD_HOSTNAME = 'write.bitrunners.app';
@@ -193,12 +195,19 @@ function Game({ className }: GameProps): JSX.Element {
   const [sammInRange, setSammInRange] = useState(false);
   const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
   const [freqLockOpen, setFreqLockOpen] = useState(false);
+  const [circuitOpen, setCircuitOpen] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
     const onOpen = (): void => setFreqLockOpen(true);
     window.addEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (): void => setCircuitOpen(true);
+    window.addEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
   }, []);
 
   useEffect(() => {
@@ -253,6 +262,11 @@ function Game({ className }: GameProps): JSX.Element {
       {freqLockOpen && (
         <Suspense fallback={null}>
           <FreqLock onClose={() => setFreqLockOpen(false)} />
+        </Suspense>
+      )}
+      {circuitOpen && (
+        <Suspense fallback={null}>
+          <CircuitPatch onClose={() => setCircuitOpen(false)} />
         </Suspense>
       )}
       <Samm inRange={sammInRange} />

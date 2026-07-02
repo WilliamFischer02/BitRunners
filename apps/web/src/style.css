@@ -1670,6 +1670,287 @@ dialog.panel::backdrop {
   }
 }
 
+/* ──────────── circuit_patch minigame (mega-batch 2 · 4.4) ──────────── */
+.circ-back {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  background: rgba(3, 5, 7, 0.9);
+  backdrop-filter: blur(2px);
+}
+.circ {
+  position: relative;
+  width: min(380px, 100%);
+  max-height: 94vh;
+  overflow-y: auto;
+  background: #0b0e0d;
+  border: 1px solid #2a3340;
+  border-radius: 4px;
+  color: #d4ecdd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: 12px;
+}
+.circ-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a3340;
+  background: #0d1110;
+}
+.circ-title {
+  font-size: var(--ui-text-md);
+  color: #b48bff;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.circ-sub {
+  flex: 1;
+  font-size: 10px;
+  color: #6e7a86;
+}
+.circ-board {
+  position: relative;
+  margin: 16px auto 6px;
+  flex: none;
+}
+.circ-cell {
+  position: absolute;
+  appearance: none;
+  padding: 0;
+  background: rgba(18, 26, 24, 0.6);
+  border: 1px solid #24303a;
+  border-radius: 3px;
+  cursor: pointer;
+  overflow: hidden;
+}
+.circ-cell.is-empty:hover {
+  border-color: #3a6850;
+  background: rgba(30, 44, 40, 0.6);
+}
+.circ-cell.is-fixed {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.circ-node {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: #cfe8dc;
+  opacity: 0.5;
+}
+/* wire segments: center → edge. power thick amber, data thin cyan. */
+.circ-wire {
+  position: absolute;
+  background: currentColor;
+  border-radius: 2px;
+}
+.circ-wire--power {
+  color: #ffd860;
+  box-shadow: 0 0 6px rgba(255, 216, 96, 0.55);
+}
+.circ-wire--data {
+  color: #6cf0ff;
+  box-shadow: 0 0 5px rgba(108, 240, 255, 0.5);
+}
+.circ-wire--power.circ-wire--n,
+.circ-wire--power.circ-wire--s {
+  width: 6px;
+  height: 50%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.circ-wire--power.circ-wire--e,
+.circ-wire--power.circ-wire--w {
+  height: 6px;
+  width: 50%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.circ-wire--data.circ-wire--n,
+.circ-wire--data.circ-wire--s {
+  width: 2px;
+  height: 50%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.circ-wire--data.circ-wire--e,
+.circ-wire--data.circ-wire--w {
+  height: 2px;
+  width: 50%;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.circ-wire--n {
+  top: 0;
+}
+.circ-wire--s {
+  bottom: 0;
+}
+.circ-wire--w {
+  left: 0;
+}
+.circ-wire--e {
+  right: 0;
+}
+.circ-board.is-live .circ-wire {
+  animation: circ-live 0.5s ease-in-out 2;
+}
+@keyframes circ-live {
+  50% {
+    filter: brightness(1.9);
+  }
+}
+/* border port stubs */
+.circ-port {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 7px;
+  letter-spacing: 0;
+  border-radius: 2px;
+  color: #05070a;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.circ-port--power {
+  background: #ffd860;
+  box-shadow: 0 0 8px rgba(255, 216, 96, 0.7);
+}
+.circ-port--data {
+  background: #6cf0ff;
+  box-shadow: 0 0 8px rgba(108, 240, 255, 0.65);
+}
+.circ-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  padding: 8px 10px 4px;
+  width: 100%;
+}
+.circ-piece {
+  appearance: none;
+  width: 60px;
+  padding: 4px 2px 3px;
+  background: rgba(18, 26, 24, 0.7);
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  color: #a8c4b6;
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.circ-piece:hover:not(:disabled) {
+  border-color: #3a6850;
+}
+.circ-piece.is-selected {
+  border-color: #b07cff;
+  box-shadow: 0 0 0 1px rgba(176, 124, 255, 0.4), 0 0 12px rgba(176, 124, 255, 0.3);
+}
+.circ-piece:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.circ-piece-preview {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #24303a;
+  border-radius: 2px;
+  background: rgba(8, 12, 14, 0.6);
+}
+.circ-piece-label {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.circ-piece-count {
+  font-size: 9px;
+  color: #6e7a86;
+}
+.circ-foot {
+  width: 100%;
+  padding: 6px 12px 0;
+  color: #6e7a86;
+  font-size: 9px;
+  line-height: 1.5;
+  text-align: center;
+}
+.circ-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 20px;
+  text-align: center;
+  background: rgba(6, 9, 11, 0.94);
+  border-radius: 4px;
+}
+.circ-overlay-title {
+  font-size: 18px;
+  letter-spacing: 0.1em;
+  color: #ffd860;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px rgba(255, 216, 96, 0.6);
+}
+.circ-overlay-sub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #8aa597;
+}
+.circ-credits {
+  color: #ffd860;
+  font-weight: 700;
+}
+.circ-overlay-row {
+  display: flex;
+  gap: 10px;
+}
+.circ-btn {
+  appearance: none;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid #3a6850;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  color: #a8f0c0;
+  font: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.circ-btn:hover {
+  border-color: #5a9878;
+}
+@media (prefers-reduced-motion: reduce) {
+  .circ-board.is-live .circ-wire {
+    animation: none;
+  }
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;
