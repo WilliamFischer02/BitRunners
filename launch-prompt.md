@@ -1,10 +1,14 @@
-# BitRunners — autonomous mega-batch launch prompt (2026-06-16)
+# BitRunners — autonomous mega-batch 2 launch prompt (2026-07-01)
+
+ultrathink
 
 You are running in fully autonomous mode on the **BitRunners** repo on
-branch `claude/mega-batch-YYYY-MM-DD` (already created and checked out).
-The owner has walked away — they will not be available to answer
-follow-up questions during this session. You must finish the work
-listed below and leave the repo in a mergeable state.
+branch `claude/mega-batch-YYYY-MM-DD` (already created and checked out
+by the launcher). The owner has walked away — they will not be available
+to answer follow-up questions during this session. Work at **maximum
+effort and thoroughness**: read everything relevant before coding,
+verify every change compiles and lints, and leave the repo in a
+mergeable state.
 
 ## 0. Read these first, in this order
 
@@ -14,10 +18,11 @@ project is RIGHT NOW.
 1. `CLAUDE.md`
 2. `.claude/handoff.md`
 3. `.claude/decisions.md`
-4. The newest file in `docs/devlog/` (highest numbered)
+4. The newest files in `docs/devlog/` (read everything ≥ 0108 — the
+   economy-persistence hardening in 0112 and migration 0016 changed how
+   saves merge; your minigame rewards ride that system)
 5. `docs/devlog/0004-roadmap-revised.md`
 6. `docs/lore/README.md` (terminology glossary — use exact spellings)
-7. `docs/lore/015-chat-policy.md` (moderation rules)
 
 After reading, do a one-paragraph readback in your own words covering:
 phase / branch / what's blocked / what the active roadmap item is.
@@ -28,212 +33,258 @@ phase / branch / what's blocked / what the active roadmap item is.
 - **Never amend the lockfile by hand.** `pnpm install --frozen-lockfile` is the floor.
 - **Never bypass `.claude/settings.json`** or its do-not-touch zones.
 - **Never surface `docs/lore/_sealed/`** content in NPC dialogue, UI, or any player-facing surface.
-- **Never add a paid resource** (Fly machine upgrade, paid Supabase tier, Anthropic key with no budget gate).
+- **Never add a paid resource.**
+- **No new Supabase migrations in this batch.** Every reward/unlock in
+  this batch rides the existing `player_economy.blob` additive-field
+  pattern (see `.claude/decisions.md` 2026-06-16 emote-loadout entry and
+  the merge rules in `economy-sync.ts` / migration 0016). If you believe
+  a task truly needs schema, STOP: write the proposed migration's
+  description + intended contents into `.claude/handoff.md` under
+  "## proposed migrations" and leave the feature client-side. The owner
+  has a separate Supabase agent that authors migrations against the live
+  database.
 - **Devlog every significant change.** New devlogs in `docs/devlog/NNNN-title.md`, next available number. Every PR has its own entry.
 - **No new dependency without a devlog mention** (name, version, why).
-- Before every commit: `pnpm exec biome check --write .` → `pnpm typecheck` → relevant `pnpm --filter ... build`. If any of the three fails, **fix it before committing.** Do not commit broken code.
-- The autonomous flag does NOT grant permission to delete branches, force-push, or interact with prod resources. Stick to local tree + commits + draft PRs.
+- Before every commit: `pnpm exec biome check --write .` → `pnpm typecheck` → `pnpm build`. If any fails, **fix before committing.**
+- The autonomous flag does NOT grant permission to delete branches, force-push, or interact with prod resources. Local tree + commits + draft PRs only.
+- New economy fields must be **additive + defaulted** so old blobs load clean (`normalize()` pattern in `economy.ts`).
 
 ## 2. STOP-AND-ASK triggers
 
-If you hit any of these, **stop, push what you have, leave a TODO comment in the relevant file, and move on to the next task.** Do not invent answers.
+If you hit any of these, **stop, push what you have, leave a TODO comment
+in the relevant file + a note in `.claude/handoff.md`, and move on to the
+next task.** Do not invent answers.
 
-- Cartridge descent animation FEEL — easing curve, "click" duration, exact slot shading. Pick a sensible default (see §11) and ship it but call out the call in the devlog.
-- Level-from-badges formula — see §15 for the default.
-- Shop tab taxonomy — see §13 for the default split.
-- Any lore answer the canon files don't already specify.
+- Minigame reward tuning — ship the defaults given below, flag in devlog.
+- Protocol cartridge names — defaults below (`circuit_patch`, `core_run`); flag for rename.
+- Any lore answer the canon files don't already specify (esp. void-room and glitch-switch flavour text).
 - Anything that requires owner email / OAuth / secrets you don't have.
-- Any task where you'd need to delete or rewrite an existing migration.
+- Any task where you'd need a new migration (see hard rule above).
+- Doubling-map edge cases you can't resolve from the code (e.g. server
+  clamping you can't verify without a live deploy).
 
 ## 3. PR strategy
 
-Open **one PR per major task** unless explicitly told to bundle. Each PR:
-- Has its own devlog entry
-- Has its own commit (or small handful of commits)
-- Lints + typechecks + builds clean
-- Is opened as **draft**
-- Lists owner verification steps in the PR body
-- Cross-references any related deferred items
+One PR per numbered task below. Each PR: own devlog entry, lints +
+typechecks + builds clean, opened as **draft**, owner verification steps
+in the body. Sub-branch per task off the mega-batch branch
+(`claude/mega-batch-.../menu-pill`, `.../circuit-patch`, etc.).
 
-Branch off `claude/mega-batch-YYYY-MM-DD` for each task — use sub-branches like `claude/mega-batch-.../desktop-pills`, `claude/mega-batch-.../minimap-exit`, etc. Open each as its own PR against `main`. When a sub-task is done, return to the mega-batch branch and start the next.
-
-If a task gets too large for a single PR (e.g. the Nintendo-DS cartridge work), break it into staged PRs: scaffold first, then animation, then polish. Devlog each stage.
+Tasks 4.4 and 4.5 are large — staged PRs are fine (scaffold → mechanics
+→ polish). Task 4.6 touches `packages/shared` + server: **flag in the PR
+body that merging triggers a Fly redeploy.**
 
 ## 4. Priority order
 
-Do them in this order. Do not skip ahead. If you get stuck on one, push a WIP draft + open the next.
+Small, high-certainty wins first; the map rework last because it has the
+widest blast radius.
 
-### P0 — bugs + data integrity (do these first)
+### 4.1 Launcher pill says "Menu" instead of the class name
 
-#### 4.1 Persistent objective progress
-
-**Symptom**: closing the tab or signing back in resets the player to the first objective. Worse, when the player starts a NEW objective, the previously-completed objective greys out as if uncompleted, shows `0/3 checkpoints`, and locks.
-
-**Acceptance criteria**:
-- A returning player loads exactly the objective state they left, including which checkpoints are complete on the active objective.
-- Completed objectives stay visually marked complete forever (no grey-out, no re-lock).
-- Server-side source of truth: read on auth, write on every checkpoint advance + completion.
-- Look at `apps/web/src/missions.ts` + `apps/web/src/Objectives.tsx` + the `mission_progress` table + the RPCs in `supabase/migrations/0011_physical_missions.sql`. Those RPCs already exist (`start_mission`, `advance_checkpoint`, `complete_mission`, `get_mission_progress`); the wire-up is what's broken.
-- Add an integration-style smoke test that opens the page twice in sequence and asserts the second load preserves progress. If Playwright isn't installed, document the manual repro in the devlog.
-
-#### 4.2 Account / runner select shows "guest no user_id" while logged in + stale username
-
-**Symptom**: even when the Supabase session is `authenticated`, the runner-select panel shows the guest placeholder and the wrong (older) username.
+**What**: the HUD launcher pill (`.profile`, `apps/web/src/ProfileIcon.tsx`)
+currently renders the player's class name (e.g. `bit_spekter`) as its
+label, which reads as info, not as a button. Rename the visible pill text
+to exactly `Menu` so it reads as the main menu affordance.
 
 **Acceptance criteria**:
-- Inspect `apps/web/src/UsernameEditor.tsx`, `apps/web/src/profile.ts`, `apps/web/src/supabase.ts:fetchMyIdentity`. The bug is almost certainly a stale cache + missing `subscribeAuth` reaction.
-- Replace the guest placeholder with the live `display_name` from `fetchMyIdentity` the moment `subscribeAuth` flips to `authenticated`.
-- Username editor's "save" path must invalidate the cached identity so the new approved name renders immediately (no page reload).
-- Display the user UUID truncated to 8 chars (not "no user_id") for debugging on signed-in sessions.
+- The pill's cap/label text is `Menu`. The class name does NOT disappear
+  from the game — keep it inside the opened panel (it's already there)
+  and in the `.hint` line.
+- aria-label updated to match ("open menu").
+- No layout regression on mobile (≤ 540 px) or desktop — check the
+  media-query variants in `style.css` that reposition `.profile`.
 
-#### 4.3 AFK self-ghosts from stale tabs
+### 4.2 Character-select screen: obvious title + glowing options
 
-**Symptom**: opening a new tab while another tab is still open leaves the old session's avatar in the sphere as an AFK ghost, which the player then walks into.
-
-**Acceptance criteria**:
-- Server-side: when a new client joins with the same `user_id` as an existing client in the same room, **disconnect the older client.** Send a `tether-ended` + room kick to the stale session; the stale tab should render a "// session moved to another tab" overlay and stop spamming reconnects.
-- This is the right behaviour even across spheres — a user should have at most one live Colyseus connection at a time.
-- See `apps/server/src/sphere-room.ts` `onJoin` + `onLeave`. The matchmaker filter may also need a pass — check `apps/server/src/index.ts`.
-- Add a `single_session` test: connect twice, assert the first connection receives a leave event within 2 s.
-
-### P1 — broken UX
-
-#### 4.4 Desktop launcher pills overlap minimap + sit too high
-
-**Symptom**: on **desktop** viewport (≥ 720 px) the profile + protocols pills render as two side-by-side squares vertically too high and overlap the minimap.
+**What**: the boot/class-select screen (`apps/web/src/Boot.tsx`) doesn't
+announce itself. Add a clearly visible **"Character Select"** heading in
+a DIFFERENT colour from the rest of the boot text, and give the class
+option cards an animated glow so they are obviously interactive.
 
 **Acceptance criteria**:
-- Open `apps/web/src/style.css`. The mobile layout (≤ 540 px) was reworked in devlogs 0082 / 0084 / 0086 — desktop layout was never re-checked. The default `.profile` + `.protocols-launch` rules above the media query are the ones rendering on desktop.
-- Position both pills so they sit BELOW the minimap, not in front of it. The minimap lives at top-right; the pills should drop into the right-hand vertical column under it.
-- Match the mobile stair-step feel (one pill nudged inward, one flush right) but with desktop-appropriate sizing (≥ 44 px tap height is fine on desktop, you have room).
-- Take a screenshot via dev server if possible; document the before/after dimensions in the devlog.
+- Heading text exactly `Character Select`, styled in an accent colour
+  distinct from the existing green/mono palette (suggest the BitRunner
+  purple `#b07cff` family — matches faction tinting elsewhere).
+- Class cards (locked AND unlocked states) get an animated glow:
+  CSS keyframed `box-shadow` / `filter` pulse, ~2–3 s loop, stronger on
+  hover/focus. The selectable card (bit_spekter + any unlocked classes)
+  glows brighter than locked ones.
+- `prefers-reduced-motion: reduce` → static glow, no animation.
+- Do not change selection logic, order, or the locked-class behaviour.
 
-#### 4.5 Minimap distortion on mobile + missing exit button
+### 4.3 Account-needed nudge
 
-**Symptom**: opening the minimap goes fullscreen. On desktop that's fine. On mobile it stretches to portrait and looks distorted. There's no visible exit — only ESC works, which is a **softlock on touch devices**.
-
-**Acceptance criteria**:
-- Find the minimap component (grep `minimap` and `MiniMap`).
-- Mobile fullscreen layout: preserve aspect ratio, letterbox if needed, no distortion.
-- Add a visible **`✕`** close button in the top-right of the minimap overlay. ≥ 44 × 44 px touch target. ESC still works as a fallback. Tapping outside the minimap dismisses too.
-- Test by spawning a mobile viewport in dev (393 × 852 portrait). Don't ship without doing this.
-
-### P2 — graphical pass (visual redesign)
-
-#### 4.6 Runner-select / account menu reorganization
-
-The current menu is a long unsectioned list. Redesign it with clear visual separation between functional groups, using the existing terminal aesthetic. The username must reflect the most-recent **approved** display name (ties into 4.2).
-
-**Suggested sections** (terminal-style section headers like `$ identity` already used in `TetherChat.tsx`):
-- `$ identity` — display name, badge, theme
-- `$ samaritan` — corp / br scores
-- `$ account` — email, signed-in status, sign-out
-- `$ debug` — uuid (truncated), session id, server region
-
-Reuse `.panel`, `.panel-header`, `.panel-section`, `.panel-section-title` classes — already styled.
-
-#### 4.7 Inventory visual redesign
-
-**Symptom**: inventory shows item NAMES only; equipped clothing reads as mono-off-white in-world; possible theme interference flattening palette.
+**What**: when a guest does something whose progress would only survive
+across devices with an account, immediately prompt them with a small
+modal that routes to account creation.
 
 **Acceptance criteria**:
-- Add an icon (or low-fi ASCII glyph if no sprite available) next to each item name in the inventory list.
-- Audit clothing material colours in `apps/web/src/scene.ts` / wherever outfits are constructed. If the theme shader is desaturating the world by default, gate that behaviour or bump the input saturation.
-- If the colour palette IS already varied, push saturation up by ~20 % at the material level. Devlog the before/after with a screenshot.
-- Do not touch the equipped-outfit schema — only how it renders.
+- New component `AccountNudge.tsx` + a tiny helper module that other
+  systems call: `nudgeAccount(reason: string)`.
+- Trigger points (guest only, each fires at most ONCE per session):
+  first credits earned from any minigame, first shop purchase, first
+  mission/objective completion, first badge earned, first emote-loadout
+  change. (Tutorial-end already has its own CTA — leave it.)
+- Modal copy: terminal aesthetic, explains progress is device-local as a
+  guest, one primary button `[ make account ]` → dispatches the existing
+  `bitrunners:open-profile` event (opens the account panel that already
+  hosts sign-up), one secondary `[ later ]` → dismiss.
+- Never shows for signed-in users. Never blocks input (dismissable, ESC
+  works, backdrop tap dismisses).
+- Reuse `.panel` styling; ≥ 44 px touch targets.
 
-#### 4.8 Shop redesign
+### 4.4 New minigame: `// circuit_patch` (circuit-routing puzzle)
 
-From a flat list to a tabbed menu with sections. Default tabs (use these if no canon overrides them):
-- `// outfits`
-- `// emotes`
-- `// themes`
-- `// upgrades`
+**What**: a tile-placement puzzle. A grid board has a POWER inlet and a
+DATA inlet on its border, each with a matching outlet on the opposite
+corner/edge. The player places pieces from a fixed inventory to route
+BOTH flows simultaneously from inlet to outlet. Power routes only along
+THICK lines; data only along THIN lines; the two never interconnect.
 
-Persist selected tab to `sessionStorage` so re-opening keeps the section.
+**Mechanics (v1 — ship exactly this, tune later)**:
+- Board: **4×4 placeable cells** (16 max tiles, per the owner's spec)
+  with port stubs on the border. Level definition supports pre-placed
+  immovable tiles (obstacles) for future levels — v1 level may use one.
+- Piece types, each in a POWER (thick) and DATA (thin) variant:
+  - `straight` — connects two opposite edges.
+  - `elbow` — connects two adjacent edges.
+  - `cross_bridge` — special: carries power straight through one axis
+    AND data straight through the other axis without connecting them
+    (this is how the two paths cross each other).
+- Interaction: tap a palette piece to select, tap a cell to place; tap a
+  placed piece to rotate 90°; long-press / right-click to remove. Pieces
+  return to the palette on removal. Palette shows remaining counts.
+- Win check: flood-fill from the power inlet along thick-line
+  connectivity (two adjacent tiles conduct when both expose a thick
+  connector on the shared edge) reaching the power outlet, AND the same
+  for data along thin lines. Run the check after every placement /
+  rotation; on win, play a brief "circuit live" pulse along both paths,
+  then the reward screen.
+- V1 ships **one hand-designed level** whose piece inventory admits at
+  least one valid solution. **Write a unit test that encodes the
+  intended solution and asserts the flood-fill validator accepts it**
+  (vitest, pure functions — keep board logic in a `circuit-core.ts`
+  module separate from the React component so it's testable headless).
+- Rewards (STOP-AND-ASK defaults): first-ever completion 100 credits;
+  repeat completions 20. Track via additive economy-blob fields
+  (`circuitFirstClear: boolean`-style; defaulted in `normalize()`).
+- Rendering: DOM/CSS grid in the terminal aesthetic (no three.js).
+  Thick line = 6 px stroke, thin line = 2 px, both in the palette's
+  existing tint colours (power = amber `#ffd860` family, data = cyan
+  `#6cf0ff` family). Lazy-loaded chunk like `FreqLock`.
+- Registry: new cartridge in `protocols-registry.ts` — key
+  `circuit_patch`, label `circuit_patch`, glyph `⌗`, tint `neutral`.
+  ESC / ✕ closes, same shell as freq_lock.
 
-#### 4.9 Nametag styling + badges visible to OTHER players
+### 4.5 New minigame: `// core_run` (shrinking procedural maze)
 
-**Symptom**: badges + nametag styling are currently visible only to the local player.
+**What**: inserting the cartridge teleports the runner to a separate
+maze arena. Reach the CENTER of the maze before the timer expires. As
+the timer counts down, the maze's outer rings progressively "dissolve
+into raw data" — the playable map shrinks inward, adding urgency.
 
-**Acceptance criteria**:
-- Confirm whether `equipped_badge` is on the `PlayerState` schema in `packages/shared` / `apps/server`. If not, add it + a server `'identity'` handler write-through (the pattern is already there for `displayName` and `equippedTheme`).
-- Render the badge inline next to the nametag for every remote avatar, not just `localPlayer`.
-- Ties into 4.10's level number.
+**Mechanics (v1 defaults — ship these, tune later)**:
+- Maze: odd-sized grid (default **21×21** cells), generated with
+  recursive-backtracker, entrance on the perimeter, goal at the exact
+  center. After carving, apply light braiding (remove ~10 % of dead
+  ends) so there are occasional loops.
+- **Difficulty normalization** (the owner's key requirement — no unfair
+  rolls): after generation, BFS the shortest path from entrance to
+  center. Accept the maze only if path length ∈ a fixed band (default
+  **[55, 85] cells** for 21×21). Regenerate up to 20 times; keep the
+  closest-to-band candidate if none lands inside. Unit-test the
+  generator: 50 seeded runs all produce accepted-band mazes and a
+  reachable center (pure module `maze-core.ts`, vitest).
+- Timer: default **90 s**. Dissolve starts at 60 s remaining: every
+  **8 s**, the outermost intact ring converts to "raw data" — walls and
+  floor cells render as scrambled ASCII glyph noise (reuse the glitch
+  aesthetic from the boot dissolve) and become impassable void. If the
+  ring containing the player dissolves, the run FAILS (eject back to the
+  main map, no reward).
+- The player navigates with the existing movement controls. Implement
+  the maze as a **mode inside the existing scene** (hide the platform
+  world group, render a maze group, move the rig to the maze entrance;
+  restore on exit). Do NOT spin up a second WebGL context. Multiplayer:
+  while in the maze the network session stays connected and the avatar
+  simply appears parked to others — note this in the devlog as the v1
+  default.
+- Reaching the center: victory screen with time remaining → reward
+  (STOP-AND-ASK defaults): 40 credits base + 1 credit per full second
+  remaining, capped at 100 total. Repeat runs allowed.
+- Minimap: hide/suppress the Starmap while in maze mode (it would leak
+  the layout); restore on exit. ESC aborts the run (no reward) after a
+  confirm.
+- Registry: cartridge key `core_run`, label `core_run`, glyph `⍟`,
+  tint `br`. Lazy chunk.
 
-### P3 — new features
+### 4.6 Double the base map + two interactive landmarks
 
-#### 4.10 Level system (badges → level)
+**What**: double the platform's playable area and add two landmarks that
+invite experimentation. **This is the widest-blast-radius task — do it
+last, in its own PR, and flag the Fly redeploy.**
 
-**Default formula**: `level = number_of_owned_badges` (1 badge = level 1; 20 badges = level 20). Cap at 20. Display as `Lv 7` after the badge glyph on the nametag.
+**Map doubling**:
+- `PLATFORM_HALF` 19 → **38** (`PLATFORM_SIZE` 76) in
+  `packages/shared/src/index.ts`. Client and server both consume the
+  shared constant — verify every use: server room clamps/wrap, scene
+  3×3 tiling, spawn scatter, collider placement, dweller wander bounds.
+- **Fix the duplicated constant**: `apps/web/src/Starmap.tsx` hardcodes
+  its own `PLATFORM_HALF = 19` — change it to import from
+  `@bitrunners/shared` so it can't drift again. Bump the Starmap's
+  `MAP_RANGE` (currently 22) to keep the minimap density readable at
+  the new scale (suggest 30 — flag as taste).
+- Re-scatter the Phase-3 obstacle set + add enough new obstacles that
+  the doubled interior doesn't feel empty (aim ~2× the current count,
+  keep them off the seam). Keep SAMM / obelisk / port / terminal at
+  their current coordinates so existing anchors, missions, and lore
+  stay valid.
+- Verify the ASCII postprocess + fog still read correctly at the new
+  extents; adjust fog distance if the horizon pops.
 
-Devlog the formula choice as a STOP-AND-ASK call — if the owner wants a curve later, easy to swap.
+**Landmark 1 — the glitch switch**:
+- A wall segment with a visible lever/switch mesh somewhere in the new
+  interior. Interacting (walk-up + tap/E, same interaction pattern as
+  SAMM) flips it and triggers a **full-screen glitch burst** for ~2 s —
+  reuse/parameterize the existing boot-dissolve / aether glitch visual.
+  Cosmetic only in v1. 10 s cooldown. Collider so it can't be walked
+  through.
 
-Server-side: add a `level` field to `PlayerState`, computed from `earned_badges` count at join time + on the `'badges-changed'` realtime event. Render in nametag for all players.
-
-#### 4.11 Bot tether dialogues
-
-The 4 NPCs spawned in each sphere (see `DWELLER_ARCHETYPES` in `packages/shared`) need to be tether-chat-able so the system can be smoke-tested without live peers.
-
-**Acceptance criteria**:
-- NPC avatars accept incoming `tether-request` messages → auto-accept with a short delay (1.5–3 s, randomized).
-- Once tethered, the NPC sends 1 message every 8–15 s (jittered) from a pool of lore-safe lines. Use existing lore in `docs/lore/` for the line pool — categories: greetings, observations, fragments, sign-offs.
-- Bot lines must respect `TETHER_MAX_CHARS = 25` and pass `isValidTetherBody`.
-- Closing the tether (player taps `✕` or walks away) cleans up the bot's send loop.
-- Lore source: the four bot personalities map to `dweller.robot`, `dweller.husk`, `dweller.spirit`, and the fourth archetype — give each its own line pool that matches its archetype's vibe (robot = clipped + system-y, spirit = drifting + cryptic, husk = corroded + fragmentary).
-- This is the path to letting the owner test 4.4 / 4.5 / the new cartridge UX without rounding up a second human.
-
-#### 4.12 Emote swap UI in inventory
-
-- Ship the 10 base emotes immediately equipable (currently hard-wired in `apps/web/src/emote.ts` or similar — find it).
-- Add a 10-emote "cooler" set to the shop's new `// emotes` tab from 4.8. Set price to a placeholder (e.g. 100 credits) — flag in devlog as STOP-AND-ASK for final price tuning.
-- Inventory panel gets a `$ emote slots` section with 4 equip slots; tapping a slot opens a picker that lists owned emotes.
-- Persist equipped emotes per-account via Supabase (add an `equipped_emotes JSONB` column to `profiles` + a small RPC). Migration `0013_emote_loadout.sql`.
-
-#### 4.13 Guitar-hero-style protocol (new game)
-
-This is a new minigame. Default name: `// freq_lock` (matches the terminal aesthetic). Owner has not specified mechanics in detail — pick sensible defaults and devlog as a STOP-AND-ASK call:
-
-- 4-lane vertical scroller, glyphs (▲ ▼ ◀ ▶ or numerals) fall from the top.
-- Player taps the matching lane key when the glyph reaches the hit-line.
-- 60-second song (use procedurally generated note pattern, no audio file dependency — visuals + tick-based timing).
-- Score → credits at end, 1 credit per 10 points, cap at 100 credits/run.
-
-Add it to the protocols registry. New file `apps/web/src/FreqLock.tsx` + protocol-registry entry. Lazy-loaded chunk (matches the existing Tiptap-board pattern).
-
-#### 4.14 Nintendo-DS cartridge carousel (protocol menu redesign)
-
-**This is the largest task — staged PRs are FINE**.
-
-**Stage 1 (scaffold)**:
-- Restructure `apps/web/src/Protocols.tsx` carousel: items are now cartridge cards, not list rows.
-- Pointer-drag + touch-drag horizontal scroll. Snap to nearest cartridge on release.
-- Centred cartridge scaled 1.1× and offset up 8 px so the focused item reads as the highlight.
-
-**Stage 2 (visual)**:
-- Cartridge art: worn-tape / peeled-label aesthetic. Use CSS gradients + a noise texture (CC0 SVG, devlog the source).
-- Each protocol gets a distinct band of colour + a 3-letter glyph (matches the existing protocols-registry icons).
-
-**Stage 3 (drop animation)**:
-- 3D ground plane below the carousel with a darker slot.
-- Selecting a cartridge: eased descent 600 ms → "contact" → stepped 4-frame "click in" 80 ms → fullscreen transition to the protocol's screen.
-- Reverse on close. Use `transform: translateY` + `scale` + a CSS `cubic-bezier` for ease; the "click in" is `steps(4, end)`. `prefers-reduced-motion: reduce` → skip the animation and snap.
-
-If stage 3 starts to feel unbounded, STOP and push stage 1 + 2 as a single PR. Open a follow-up TODO for stage 3.
+**Landmark 2 — the pressure-plate vault**:
+- An enclosed roofless "building": 4 walls + a door gap, interior
+  visible from the overhead camera. Inside: 4 floor pressure plates,
+  each with a faint numeral glyph (1–4).
+- Stepping on the plates **in order 1→2→3→4** (wrong plate resets the
+  sequence with a brief flicker) teleports the runner to **the void**:
+  a small, dark, featureless area far outside the platform (black
+  floor, no fog glow, minimal light). The Starmap is hidden while in
+  the void. Somewhere in the void stands a **free-standing door**
+  (doorframe mesh, faintly lit). Walking through it teleports the
+  runner back to just outside the vault on the main map, and the
+  Starmap returns.
+- Per-session only; no persistence. Multiplayer: same parked-avatar
+  default as the maze — devlog it.
+- Both landmarks need colliders in `COLLIDERS` and (if they can occlude
+  the player) a check against the camera angle.
 
 ## 5. Housekeeping
 
-- Update `.claude/handoff.md` at the end of the session with a paragraph per major task: status, PR number, what's left.
-- Append decisions to `.claude/decisions.md` for any non-trivial architectural calls (e.g. "chose `level = badges_count` to start").
-- If you find an obviously broken thing not in this list, fix it ONLY if the fix is < 10 lines and clearly correct. Otherwise add it to the handoff as a future-session item.
+- Update `.claude/handoff.md` at the end: a paragraph per task — status,
+  PR number, what's left, plus the "## proposed migrations" section if
+  anything wanted schema (expected: none; an optional
+  `minigame_scores` leaderboard table is ALREADY sketched in devlog
+  0113 for the owner's Supabase agent — don't build it).
+- Append non-trivial calls to `.claude/decisions.md` (e.g. maze
+  difficulty band, circuit reward numbers).
+- Obvious broken things not in this list: fix only if < 10 lines and
+  clearly correct; otherwise note in the handoff.
 
 ## 6. End of session
 
-When you've completed as many tasks as the budget allowed:
-
-1. Force a final clean build: `pnpm exec biome check --write .` → `pnpm typecheck` → `pnpm build`.
-2. If any of the open draft PRs has a failing build, fix or revert before stopping.
-3. Update `.claude/handoff.md` with what's still outstanding from this list, what was punted to STOP-AND-ASK, and what owner needs to do next.
-4. Print a final summary message to the chat listing every PR opened, by number + title + draft/ready status.
+1. Final clean pass: `pnpm exec biome check --write .` → `pnpm typecheck` → `pnpm build`.
+2. Any open draft PR failing its build: fix or revert before stopping.
+3. Update `.claude/handoff.md` with what's outstanding, what was punted
+   to STOP-AND-ASK, and what the owner needs to do next (including "run
+   the Supabase agent for X" if any migration proposals exist).
+4. Print a final summary listing every PR opened: number + title + status.
 
 Begin with step 0.
