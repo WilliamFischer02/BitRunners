@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { nudgeAccount } from './account-nudge.js';
 import { addCredits } from './economy.js';
 
 // freq_lock — 3-track signal disturbance minigame (devlog 0109 rewrite).
@@ -71,7 +72,11 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const finish = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     const credits = Math.min(CREDITS_CAP, Math.floor(scoreRef.current * CREDITS_PER_POINT));
-    if (credits > 0) addCredits(credits);
+    if (credits > 0) {
+      addCredits(credits);
+      // First minigame credits as a guest → nudge to make an account (4.3).
+      nudgeAccount('minigame');
+    }
     setPhase('done');
   }, []);
 

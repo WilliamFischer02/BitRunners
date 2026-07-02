@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { AccountNudge } from './AccountNudge.js';
 import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
 import { AuthCallback } from './AuthCallback.js';
@@ -19,6 +20,7 @@ import { Starmap } from './Starmap.js';
 import { TetherChat } from './TetherChat.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
+import { startAccountNudge } from './account-nudge.js';
 import { startBadgeMonitor } from './badge-notifications.js';
 import { startLevel } from './level.js';
 import { startMissionServerLoad } from './mission-server-load.js';
@@ -37,6 +39,9 @@ startBadgeMonitor();
 startVisibilityWatcher();
 startSignupGrant();
 startLevel();
+// Account-needed nudge: watches auth so nudgeAccount() knows guest vs signed-in
+// and wires the badge-earned trigger. Idempotent.
+startAccountNudge();
 startMissionSync();
 // Reads server-side mission progress on sign-in and rebuilds local state
 // from it (server is the source of truth — must start after mission-sync so
@@ -251,6 +256,7 @@ function Game({ className }: GameProps): JSX.Element {
         </Suspense>
       )}
       <Samm inRange={sammInRange} />
+      <AccountNudge />
       <Tutorial />
       <Starmap />
       <AdminConsole />

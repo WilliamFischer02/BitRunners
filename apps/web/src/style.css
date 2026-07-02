@@ -1180,6 +1180,45 @@ dialog.panel::backdrop {
   line-height: 1.5;
 }
 
+/* 4.3 — account-needed nudge. Reuses the .panel shell but compact + centred,
+   with a purple make-account CTA. Buttons inherit .panel-action's 44px min
+   touch target. */
+.account-nudge {
+  width: min(400px, 100%);
+}
+.account-nudge-lead {
+  font-size: var(--ui-text-md);
+  color: #c0ffd6;
+  margin-bottom: 8px;
+}
+.account-nudge-body {
+  font-size: var(--ui-text-sm);
+  color: #9db8ab;
+  line-height: 1.6;
+  margin-bottom: 14px;
+}
+.account-nudge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.account-nudge-row .panel-action {
+  flex: 1 1 auto;
+  text-align: center;
+}
+.account-nudge-primary {
+  border-color: #7a56b8;
+  color: #d6b8ff;
+  background: rgba(120, 80, 200, 0.18);
+}
+.account-nudge-primary:hover {
+  border-color: #b07cff;
+  background: rgba(120, 80, 200, 0.3);
+}
+.account-nudge-later:hover {
+  border-color: #93e0b1;
+}
+
 /* ──────────── emote wheel ──────────── */
 .emote {
   position: absolute;
