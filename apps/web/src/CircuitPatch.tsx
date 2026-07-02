@@ -3,8 +3,9 @@ import { LeaderboardList } from './Leaderboard.js';
 import { nudgeAccount } from './account-nudge.js';
 import {
   type Board,
-  CIRCUIT_LEVEL,
+  CIRCUIT_LEVELS,
   type Edge,
+  type Level,
   type PieceKind,
   type PlacedPiece,
   cellAt,
@@ -15,7 +16,13 @@ import {
   pieceForKind,
   setCell,
 } from './circuit-core.js';
-import { addCredits, hasClearedCircuit, markCircuitCleared } from './economy.js';
+import {
+  addCredits,
+  advanceCircuitLevel,
+  getCircuitLevel,
+  hasClearedCircuit,
+  markCircuitCleared,
+} from './economy.js';
 import { submitMinigameScore } from './leaderboard-api.js';
 
 // circuit_patch — circuit-routing puzzle (mega-batch 2 · 4.4). Route POWER
@@ -52,6 +59,19 @@ const KIND_LABEL: Record<PieceKind, string> = {
 
 const EDGE_NAME = ['n', 'e', 's', 'w'] as const;
 
+const LEVEL_COUNT = CIRCUIT_LEVELS.length;
+
+function clampLevel(i: number): number {
+  return Math.min(LEVEL_COUNT - 1, Math.max(0, Math.floor(i)));
+}
+
+/** Stopwatch readout: m:ss (e.g. 0:07, 4:59). */
+function fmtClock(totalS: number): string {
+  const m = Math.floor(totalS / 60);
+  const s = totalS % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -86,7 +106,9 @@ function Wires({ piece }: { piece: PlacedPiece }): JSX.Element {
 }
 
 export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
-  const level = CIRCUIT_LEVEL;
+  // Resume at the level the runner left off on (persisted via economy).
+  const [levelIdx, setLevelIdx] = useState(() => clampLevel(getCircuitLevel()));
+  const level = CIRCUIT_LEVELS[levelIdx] as Level;
   const boardW = PAD * 2 + level.w * CELL + (level.w - 1) * GAP;
   const boardH = PAD * 2 + level.h * CELL + (level.h - 1) * GAP;
 
@@ -101,6 +123,7 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
   const [phase, setPhase] = useState<'play' | 'live' | 'won'>('play');
   const [reward, setReward] = useState(0);
   const [lbScore, setLbScore] = useState(0);
+  const [elapsedS, setElapsedS] = useState(0);
 
   const pressTimer = useRef<number | null>(null);
   const longFired = useRef(false);
@@ -115,11 +138,25 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
     [],
   );
 
+  // Stopwatch: live m:ss readout while playing; freezes on win, cleaned up on
+  // unmount by the effect teardown.
+  useEffect(() => {
+    if (phase !== 'play') return;
+    const id = window.setInterval(() => {
+      setElapsedS(Math.floor((performance.now() - startRef.current) / 1000));
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
   const win = useCallback(() => {
     const first = !hasClearedCircuit();
     const amount = first ? REWARD_FIRST : REWARD_REPEAT;
     addCredits(amount);
     markCircuitCleared();
+    // Persist level progress so the next session resumes further. Only a win
+    // on the frontier level advances — replaying an earlier level via
+    // [ again ] must not skip the runner ahead.
+    if (levelIdx >= getCircuitLevel()) advanceCircuitLevel();
     nudgeAccount('minigame');
     setReward(amount);
     // Leaderboard: seconds under par (faster = higher). Best-effort submit.
@@ -131,7 +168,7 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
     const reveal = (): void => setPhase('won');
     if (REDUCED_MOTION) reveal();
     else liveTimer.current = window.setTimeout(reveal, PULSE_MS);
-  }, []);
+  }, [levelIdx]);
 
   // Apply a board mutation, then run the win check on the result.
   const commit = useCallback(
@@ -201,15 +238,23 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
     else place(x, y);
   };
 
-  const restart = useCallback(() => {
+  // (Re)start on level `idx`: fresh board (with fixed pieces), fresh palette,
+  // and a reset stopwatch. Used by [ again ], [ next level ], and nothing else.
+  const loadLevel = useCallback((idx: number) => {
+    const nextIdx = clampLevel(idx);
+    const nextLevel = CIRCUIT_LEVELS[nextIdx] as Level;
     if (liveTimer.current !== null) window.clearTimeout(liveTimer.current);
-    setBoard(makeBoard(level));
-    setRemaining({ ...level.inventory });
+    setLevelIdx(nextIdx);
+    setBoard(makeBoard(nextLevel));
+    setRemaining({ ...nextLevel.inventory });
     setSelected(null);
     setReward(0);
+    setElapsedS(0);
     startRef.current = performance.now();
     setPhase('play');
-  }, [level]);
+  }, []);
+
+  const restart = useCallback(() => loadLevel(levelIdx), [loadLevel, levelIdx]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -224,7 +269,9 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
       <div className="circ">
         <header className="circ-head">
           <span className="circ-title">{'// circuit_patch'}</span>
-          <span className="circ-sub">route ⚡ power + ⌁ data to the outlets</span>
+          <span className="circ-sub">
+            level {levelIdx + 1} / {LEVEL_COUNT} · route ⚡ power + ⌁ data · {fmtClock(elapsedS)}
+          </span>
           <button type="button" className="panel-close" onClick={onClose} aria-label="close">
             ✕
           </button>
@@ -332,6 +379,11 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
             </div>
             <LeaderboardList game="circuit_patch" myValue={lbScore} />
             <div className="circ-overlay-row">
+              {levelIdx < LEVEL_COUNT - 1 && (
+                <button type="button" className="circ-btn" onClick={() => loadLevel(levelIdx + 1)}>
+                  [ next level ]
+                </button>
+              )}
               <button type="button" className="circ-btn" onClick={restart}>
                 [ again ]
               </button>

@@ -21,6 +21,7 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
   const [phase, setPhase] = useState<Phase>('ready');
   const [timeLeft, setTimeLeft] = useState(90);
   const [rings, setRings] = useState(0);
+  const [nextIn, setNextIn] = useState(-1); // seconds until the next ring dissolves
   const [reward, setReward] = useState(0);
   const [lbScore, setLbScore] = useState(0);
   const phaseRef = useRef<Phase>('ready');
@@ -41,10 +42,11 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
 
   useEffect(() => {
     const onTick = (e: Event): void => {
-      const d = (e as CustomEvent<{ timeLeft: number; rings: number }>).detail;
+      const d = (e as CustomEvent<{ timeLeft: number; rings: number; nextIn?: number }>).detail;
       if (!d) return;
       setTimeLeft(d.timeLeft);
       setRings(d.rings);
+      setNextIn(typeof d.nextIn === 'number' ? d.nextIn : -1);
     };
     const onWin = (e: Event): void => {
       if (phaseRef.current !== 'running') return;
@@ -108,7 +110,15 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
         <div className={`corerun-hud${low ? ' is-low' : ''}`}>
           <span className="corerun-hud-title">{'// core_run'}</span>
           <span className="corerun-hud-timer">{timeLeft}s</span>
-          {rings > 0 && <span className="corerun-hud-rings">data loss ▓{rings}</span>}
+          {nextIn >= 0 && (
+            <span className="corerun-hud-storm">
+              {rings > 0 ? `storm ▓${rings} · ` : 'storm in '}
+              {nextIn}s
+            </span>
+          )}
+          {nextIn < 0 && rings > 0 && (
+            <span className="corerun-hud-storm">storm ▓{rings} closing</span>
+          )}
           <button
             type="button"
             className="corerun-hud-abort"

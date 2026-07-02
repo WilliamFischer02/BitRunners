@@ -65,6 +65,10 @@ export interface EconomyState {
   // Prestige tier reached so far (PR 82). +1 each time the player burns
   // their scrape progress for tokens via the clean-slate trade.
   prestiges: number;
+  // Accumulated permanent +bits/scrape from prestiging. Each prestige adds an
+  // aura-scaled amount (prestigeBuffGain), so it's no longer just prestiges×1.
+  // Old blobs seed this from the legacy `prestiges * PRESTIGE_BUFF_PER_LEVEL`.
+  prestigeBuff: number;
   // Spendable Tokens (premium currency). The proxy-wallet unlock (lore 009)
   // made these real; legacy `lockedTokens` blobs are folded in on load.
   tokens: number;
@@ -88,6 +92,9 @@ export interface EconomyState {
   // solved the puzzle — gates the first-clear (100 cr) vs repeat (20 cr)
   // reward. Additive + defaulted so old blobs load clean.
   circuitFirstClear: boolean;
+  // circuit_patch level progress: index (0–9) of the level the runner resumes
+  // on next session. Wins on the frontier level advance it. Additive.
+  circuitLevel: number;
   updatedAt: number;
 }
 
@@ -127,6 +134,7 @@ function defaultState(): EconomyState {
     lifetimePasscodes: 0,
     lifetimeAuras: 0,
     prestiges: 0,
+    prestigeBuff: 0,
     tokens: 0,
     tutorialDone: false,
     unlocks: [],
@@ -138,6 +146,7 @@ function defaultState(): EconomyState {
     ownedEmotes: [],
     emoteLoadout: [...DEFAULT_LOADOUT],
     circuitFirstClear: false,
+    circuitLevel: 0,
     updatedAt: 0,
   };
 }
@@ -210,6 +219,12 @@ function fin(v: unknown): number {
 
 function normalize(parsed: EconomyState): EconomyState {
   const p = parsed as unknown as Record<string, unknown>;
+  const prestiges = fin(p.prestiges);
+  const upgrades = numRecord(p.upgrades);
+  // Grandfather the retired auto-scrape upgrades (`auto`, `bot_scrape`) into the
+  // new 4-tier `autotap` node so players who bought them keep an auto-tapper.
+  const legacyAuto = (upgrades.auto ?? 0) >= 1 || (upgrades.bot_scrape ?? 0) >= 1;
+  if (legacyAuto) upgrades.autotap = Math.max(upgrades.autotap ?? 0, 1);
   return {
     ...defaultState(),
     ...parsed,
@@ -219,18 +234,24 @@ function normalize(parsed: EconomyState): EconomyState {
     // PR 82 fields are additive too — default to 0 / current values.
     auras: fin(p.auras),
     lifetimeAuras: Math.max(fin(p.lifetimeAuras), fin(p.auras)),
-    prestiges: fin(p.prestiges),
+    prestiges,
+    // Seed the accumulated buff from the legacy prestiges×1 formula so existing
+    // players keep exactly the buff they had; future prestiges add aura-scaled.
+    prestigeBuff: Math.max(fin(p.prestigeBuff), prestiges * PRESTIGE_BUFF_PER_LEVEL),
     tokens: fin(p.tokens) + fin(p.lockedTokens),
     tutorialDone: p.tutorialDone === true,
     unlocks: strArray(p.unlocks),
     owned: strArray(p.owned),
-    upgrades: numRecord(p.upgrades),
+    upgrades,
     slots: normSlots(p.slots),
     equipped: normEquipped(p.equipped),
     appearanceHidden: p.appearanceHidden === true,
     ownedEmotes: strArray(p.ownedEmotes),
     emoteLoadout: normLoadout(p.emoteLoadout),
     circuitFirstClear: p.circuitFirstClear === true,
+    // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
+    // player past the last level.
+    circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
   };
 }
 
@@ -284,9 +305,10 @@ export function subscribeAppearance(cb: () => void): () => void {
   return () => window.removeEventListener(APPEARANCE_EVENT, handler);
 }
 
-/** Path 1 (scrape depth): bits minted per SCRAPE = 1 + level + prestige buff. */
+/** Path 1 (scrape depth): bits minted per SCRAPE = 1 + level + accumulated
+ *  prestige buff (each prestige adds an aura-scaled amount — see prestigeReset). */
 export function scrapeYield(): number {
-  return 1 + (state.upgrades.scrape ?? 0) + state.prestiges * PRESTIGE_BUFF_PER_LEVEL;
+  return 1 + (state.upgrades.scrape ?? 0) + state.prestigeBuff;
 }
 
 /** Calculate the credits awarded for trading one aura (PR 82). Scales with
@@ -311,14 +333,12 @@ export function hasHoldScrape(): boolean {
   return (state.upgrades.hold ?? 0) >= 1;
 }
 
-/** Path 4 (PR 82) bot upgrade levels. Each is a single-level unlock — once
- *  bought, the bot ticks once per BOT_TICK_MS while the scrape panel is
- *  open. The scrape panel owns the timer so the bots stop when the panel is
- *  closed (intentional — bots aren't truly autonomous, they're an active-
- *  panel automation). */
-export function hasBotScrape(): boolean {
-  return (state.upgrades.bot_scrape ?? 0) >= 1;
-}
+/** Path 4 converter bots. Each is a single-level unlock — once bought, the bot
+ *  ticks once per BOT_TICK_MS while the scrape panel is open + bots are enabled.
+ *  The scrape panel owns the timer so bots pause when the panel closes
+ *  (active-panel automation, not true background workers). The SCRAPE-tapping
+ *  bot is now the 4-tier `autoTapLevel`; the Supercomputer capstone drives all
+ *  of these at once (see hasSupercomputer). */
 export function hasBotBitsTab(): boolean {
   return (state.upgrades.bot_bits ?? 0) >= 1;
 }
@@ -333,12 +353,24 @@ export function hasBotPasscodesTab(): boolean {
 }
 
 /**
- * Path 2 unlock: hands-free auto-scrape while the panel is open. Owner-gated
- * as a future premium perk; functional and free in this build (no membership
- * system exists yet — the premium gate is a later, deliberate seam).
+ * Path 4 auto-tapper level (0–4): 0 none, 1 slow, 2 medium, 3 fast, 4 hold-down
+ * (continuous). Replaces the retired single-level `auto`/`bot_scrape` unlocks;
+ * the scrape panel maps the level to a tap interval.
  */
-export function hasAutoScrape(): boolean {
-  return (state.upgrades.auto ?? 0) >= 1;
+export function autoTapLevel(): number {
+  return Math.min(state.upgrades.autotap ?? 0, 4);
+}
+
+/** "Buy Supercomputer" capstone: auto-holds every conversion button for a
+ *  constant scrape→passcode flow (drives all converter bots at once). */
+export function hasSupercomputer(): boolean {
+  return (state.upgrades.supercomputer ?? 0) >= 1;
+}
+
+/** "Corporate Greed Protocol" capstone: a persistent inner-edge screen glow
+ *  while signed in. Cosmetic only. */
+export function hasGreedProtocol(): boolean {
+  return (state.upgrades.greed ?? 0) >= 1;
 }
 
 /** The skill tree unlocks once the player has ever minted a passcode. */
@@ -488,14 +520,27 @@ export function prestigeTokenPayout(): number {
   return PRESTIGE_TOKEN_BASE + Math.floor(state.lifetimePasscodes / PRESTIGE_TOKEN_DIVISOR);
 }
 
+/** Permanent +bits/scrape a prestige will grant, scaled by accrued
+ *  (lifetime) auras. Gradual sqrt curve: ~10 auras → +1, ~5000 → +20; min +1.
+ *  Surfaced so the prestige panel can preview it. */
+export function prestigeBuffGain(): number {
+  return Math.max(1, Math.round(Math.sqrt(state.lifetimeAuras) * 0.28));
+}
+
 /** Prestige reset: burn the scrape buffers + skill-tree levels for tokens
- *  and a permanent scrape-yield buff. Owned items, equipped slots,
- *  reputation, badges, lifetime stats, and the prestige count itself are
- *  preserved. The trade is one-way and idempotent — calling twice with no
- *  fresh progress will still award the base payout. */
+ *  and a permanent, aura-scaled scrape-yield buff (prestigeBuffGain). Owned
+ *  items, equipped slots, reputation, badges, lifetime stats, the prestige
+ *  count, and the two permanent capstones (Supercomputer, Corporate Greed
+ *  Protocol) are preserved. One-way; idempotent (a no-progress re-prestige
+ *  still awards the base payout + at least +1 buff). */
 export function prestigeReset(): boolean {
   if (!isPrestigeUnlocked()) return false;
   const payout = prestigeTokenPayout();
+  // Keep the expensive permanent capstones through the wipe.
+  const keptUpgrades: Record<string, number> = {};
+  if ((state.upgrades.supercomputer ?? 0) >= 1)
+    keptUpgrades.supercomputer = state.upgrades.supercomputer as number;
+  if ((state.upgrades.greed ?? 0) >= 1) keptUpgrades.greed = state.upgrades.greed as number;
   state = {
     ...state,
     bits: 0,
@@ -504,9 +549,10 @@ export function prestigeReset(): boolean {
     passcodes: 0,
     auras: 0,
     credits: 0,
-    upgrades: {},
+    upgrades: keptUpgrades,
     tokens: state.tokens + payout,
     prestiges: state.prestiges + 1,
+    prestigeBuff: state.prestigeBuff + prestigeBuffGain(),
   };
   persist();
   try {
@@ -664,6 +710,20 @@ export function hasClearedCircuit(): boolean {
 export function markCircuitCleared(): void {
   if (state.circuitFirstClear) return;
   state = { ...state, circuitFirstClear: true };
+  persist();
+}
+
+/** circuit_patch: index (0–9) of the level the runner resumes on. */
+export function getCircuitLevel(): number {
+  return state.circuitLevel;
+}
+
+/** Advance circuit_patch progress to the next level (caps at index 9, the
+ *  last of the 10 levels). Idempotent at the cap. */
+export function advanceCircuitLevel(): void {
+  const next = Math.min(9, state.circuitLevel + 1);
+  if (next === state.circuitLevel) return;
+  state = { ...state, circuitLevel: next };
   persist();
 }
 

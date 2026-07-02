@@ -82,16 +82,6 @@ export const SKILL_NODES: readonly SkillNode[] = [
     effect: '+1 ladder tier batched',
   },
   {
-    id: 't.auto',
-    path: 2,
-    name: 'autonomous pull',
-    blurb: 'hands-free auto-scrape while the panel is open (premium later; free now)',
-    upgradeKey: 'auto',
-    maxLevel: 1,
-    costFor: () => 40,
-    effect: 'auto-scrape',
-  },
-  {
     id: 't.yield',
     path: 3,
     name: 'data appreciation',
@@ -101,17 +91,27 @@ export const SKILL_NODES: readonly SkillNode[] = [
     costFor: (level) => 3 + level * 2,
     effect: '+1 Credit / passcode',
   },
-  // Path 4 — auto-converter bots (PR 82). Each unlocks one rung of the
-  // ladder. Bots tick once per BOT_TICK_MS while the scrape panel is open.
   {
-    id: 't.bot.scrape',
-    path: 4,
-    name: 'mining bot',
-    blurb: 'a bot taps SCRAPE for you while the panel is open',
-    upgradeKey: 'bot_scrape',
+    id: 't.greed',
+    path: 3,
+    name: 'corporate greed protocol',
+    blurb: 'the ultimate flex — a persistent inner-edge glow on your account',
+    upgradeKey: 'greed',
     maxLevel: 1,
-    costFor: () => 25,
-    effect: 'bot mines bits',
+    costFor: () => 5_000_000,
+    effect: 'account edge glow',
+  },
+  // Path 4 — the auto-tapper (4 speed tiers) + per-rung converter bots. Bots
+  // tick while the scrape panel is open and obey the on/off toggle.
+  {
+    id: 't.autotap',
+    path: 4,
+    name: 'auto-tapper',
+    blurb: 'a bot taps SCRAPE for you — 4 tiers: slow · medium · fast · hold-down',
+    upgradeKey: 'autotap',
+    maxLevel: 4,
+    costFor: (level) => [25, 60, 140, 400][level] ?? 400,
+    effect: 'faster auto-tap each tier',
   },
   {
     id: 't.bot.bits',
@@ -152,6 +152,16 @@ export const SKILL_NODES: readonly SkillNode[] = [
     maxLevel: 1,
     costFor: () => 140,
     effect: 'bot: passcodes→auras',
+  },
+  {
+    id: 't.supercomputer',
+    path: 4,
+    name: 'buy supercomputer',
+    blurb: 'the big one — auto-holds every conversion for a constant scrape→passcode flow',
+    upgradeKey: 'supercomputer',
+    maxLevel: 1,
+    costFor: () => 2000,
+    effect: 'auto-holds all conversions',
   },
 ];
 

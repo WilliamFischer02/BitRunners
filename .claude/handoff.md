@@ -1,3 +1,35 @@
+# Handoff — 2026-07-02, Round-2 owner fixes (8 items) on top of mega-batch 2
+
+Same branch (`claude/mega-batch-2026-07-01`). 5 more atomic commits addressing
+a fresh list of owner fixes; devlogs 0123–0127. Gates green: typecheck 8/8,
+build 5/5, **test 46/46**. Two isolated items were delegated to `fable`
+subagents (admin skip, circuit 10-levels); everything else done directly
+(heavy `scene.ts` / `economy.ts` / `style.css` coupling made parallel editors
+unsafe). `gh` still unauthed → no PRs opened; same compare URL as below.
+
+| Fix | Commit | Devlog |
+|---|---|---|
+| Guest→account carryover on signup (merge on broad progressScore, not just lifetimeScrapes — fixes minigame-only guests being wiped) | `d54c5b2` | 0123 |
+| Admin dialogue skip button (fable) | `f290414` | 0124 |
+| Scraper tree overhaul: dedup auto-scrape → 4-tier autotap, Supercomputer, Corporate Greed glow, bots on/off, aura-scaled prestige | `db1cca4` | 0125 |
+| circuit_patch 10 escalating levels + per-player progress + stopwatch (fable) | `260cb7e` | 0126 |
+| Maze wider alleys + visible closing storm + countdown; landmark beacons + player-feet arrow + glitch-switch visibility; minimap colors/size/vault-label/fullscreen-joystick; freq_lock 3-corner tesseract + waveform blips | `3e5a850` | 0127 |
+
+**Owner actions (unchanged + note):** still open the PR (compare URL below);
+still apply migration `0017_minigame_leaderboards.sql` (leaderboards). Round-2
+added **no new migrations** and **no new server changes** (all client + additive
+economy-blob fields: `prestigeBuff`, `circuitLevel`, and the `autotap`/
+`supercomputer`/`greed` upgrade keys). The earlier mega-batch-2 Fly redeploys
+(map doubling `packages/shared`, NPCs `apps/server`) still apply when merged.
+
+**STOP-AND-ASK defaults shipped (tune freely):** auto-tap intervals + node
+costs; Supercomputer 2000 pc; prestige buff curve `sqrt(lifetimeAuras)*0.28`
+(uses *accrued* auras); maze cell 1.8 / storm colour; freq_lock lane geometry +
+waveform envelope; minimap MAP_RANGE 26. Corporate Greed is cosmetic-only
+(5,000,000-pc flex, no gameplay effect) per the request.
+
+---
+
 # Handoff — 2026-07-01, Autonomous mega-batch 2 (6 brief tasks + 2 owner-added)
 
 ## What this session was

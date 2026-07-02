@@ -11,6 +11,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
   Fog,
@@ -567,22 +568,34 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const switchWallMat = new MeshStandardMaterial({
     color: 0x2a2440,
     emissive: 0x6a3aff,
-    emissiveIntensity: 0.35,
+    emissiveIntensity: 0.55,
     roughness: 0.7,
   });
   const switchWall = new MeshClass(new BoxGeometry(2.8, 1.8, 0.4), switchWallMat);
   switchWall.position.set(GLITCH_SWITCH.x, 0.9, GLITCH_SWITCH.z);
   worldTile.add(switchWall);
+  // A bright glowing panel on the camera-facing (+Z) side so the switch reads
+  // as interactable from the iso viewport (kept axis-aligned so its collider
+  // footprint still matches).
+  const switchPanelMat = new MeshStandardMaterial({
+    color: 0x1a1030,
+    emissive: 0xb07cff,
+    emissiveIntensity: 1.5,
+    roughness: 0.4,
+  });
+  const switchPanel = new MeshClass(new BoxGeometry(1.6, 1.1, 0.08), switchPanelMat);
+  switchPanel.position.set(GLITCH_SWITCH.x, 1.0, GLITCH_SWITCH.z + 0.22);
+  worldTile.add(switchPanel);
   const leverMat = new MeshStandardMaterial({
     color: 0x101018,
-    emissive: 0xb07cff,
-    emissiveIntensity: 1.1,
+    emissive: 0xffd860,
+    emissiveIntensity: 1.9,
     metalness: 0.6,
     roughness: 0.3,
   });
-  const lever = new MeshClass(new BoxGeometry(0.14, 0.95, 0.14), leverMat);
-  lever.position.set(GLITCH_SWITCH.x, 1.5, GLITCH_SWITCH.z + 0.3);
-  lever.rotation.x = -0.5;
+  const lever = new MeshClass(new BoxGeometry(0.2, 1.05, 0.2), leverMat);
+  lever.position.set(GLITCH_SWITCH.x, 1.55, GLITCH_SWITCH.z + 0.32);
+  lever.rotation.x = -0.6;
   worldTile.add(lever);
 
   // ── Landmark 2: the pressure-plate vault (roofless: 4 walls + door gap) ──
@@ -634,6 +647,27 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       worldTile.add(pip);
     }
   }
+
+  // Hovering, glowing, downward-pointing beacon cones over the key landmarks
+  // (SAMM, the obelisk, the glitch switch) so they're spottable across the
+  // doubled map. Static hover (in worldTile → cloned across the 3x3 tiles).
+  const beaconMat = new MeshStandardMaterial({
+    color: 0x101828,
+    emissive: 0x6cf0ff,
+    emissiveIntensity: 1.7,
+    roughness: 0.35,
+    transparent: true,
+    opacity: 0.9,
+  });
+  const addBeacon = (bx: number, bz: number): void => {
+    const cone = new MeshClass(new ConeGeometry(0.36, 0.8, 10), beaconMat);
+    cone.position.set(bx, 3.0, bz);
+    cone.rotation.x = Math.PI; // tip points down at the landmark
+    worldTile.add(cone);
+  };
+  addBeacon(6.0, -5.5); // SAMM
+  addBeacon(5.5, 5.5); // obelisk / The Admin
+  addBeacon(GLITCH_SWITCH.x, GLITCH_SWITCH.z); // glitch switch
 
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
@@ -2050,7 +2084,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const sec = Math.ceil(timeLeft);
     if (sec !== mazeLastSecond) {
       mazeLastSecond = sec;
-      fireMaze('bitrunners:maze-tick', { timeLeft: sec, rings: dissolvedRings });
+      // Seconds until the next ring dissolves (or until the storm begins), so
+      // the HUD can show the closing-in countdown. -1 once fully closed.
+      const maxRings = (mazeGrid.size - 1) / 2 - 1;
+      let nextIn = -1;
+      if (dissolvedRings < maxRings) {
+        nextIn =
+          t < MAZE_DISSOLVE_START_S
+            ? Math.ceil(MAZE_DISSOLVE_START_S - t)
+            : Math.ceil(
+                MAZE_RING_INTERVAL_S - ((t - MAZE_DISSOLVE_START_S) % MAZE_RING_INTERVAL_S),
+              );
+      }
+      fireMaze('bitrunners:maze-tick', { timeLeft: sec, rings: dissolvedRings, nextIn });
     }
   }
 
@@ -2190,6 +2236,77 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // ── Player-feet landmark arrow (mega-batch 2 fixes) ──────────────────────
+  // A glowing ground arrow at the runner's feet that points at the NEAREST
+  // landmark (SAMM / obelisk / vault / glitch switch / active checkpoint) when
+  // within range; inside the maze it points to the core. Re-aims every frame.
+  const LANDMARK_ARROW_RANGE = 22;
+  const feetArrow = new Group();
+  {
+    const aMat = new MeshStandardMaterial({
+      color: 0x0a1a12,
+      emissive: 0x7effc0,
+      emissiveIntensity: 1.5,
+      roughness: 0.4,
+      transparent: true,
+      opacity: 0.92,
+    });
+    const head = new MeshClass(new ConeGeometry(0.3, 0.7, 4), aMat);
+    head.rotation.x = -Math.PI / 2; // lie flat, tip toward +Z
+    head.position.z = 0.42;
+    feetArrow.add(head);
+    const shaft = new MeshClass(new BoxGeometry(0.16, 0.04, 0.55), aMat);
+    shaft.position.z = -0.02;
+    feetArrow.add(shaft);
+  }
+  feetArrow.visible = false;
+  feetArrow.position.y = 0.08;
+  scene.add(feetArrow);
+
+  function activeCheckpointXZ(): { x: number; z: number } | null {
+    const snap = getActiveMission();
+    if (!snap || snap.state === 'complete' || snap.state === 'final') return null;
+    const cp = snap.mission.checkpoints[snap.nextIdx];
+    return cp ? { x: cp.x, z: cp.z } : null;
+  }
+
+  function updateFeetArrow(): void {
+    let dx = 0;
+    let dz = 0;
+    let show = false;
+    if (mazeActive && mazeArena) {
+      dx = mazeArena.centerWorld.x - rig.root.position.x;
+      dz = mazeArena.centerWorld.z - rig.root.position.z;
+      show = true;
+    } else if (!voidActive) {
+      const targets: Array<{ x: number; z: number }> = [
+        { x: SAMM_X, z: SAMM_Z },
+        { x: OBELISK_X, z: OBELISK_Z },
+        { x: VAULT.x, z: VAULT.z },
+        { x: GLITCH_SWITCH.x, z: GLITCH_SWITCH.z },
+      ];
+      const cp = activeCheckpointXZ();
+      if (cp) targets.push(cp);
+      let best = LANDMARK_ARROW_RANGE;
+      for (const t of targets) {
+        const tdx = wrapDelta(t.x - rig.root.position.x);
+        const tdz = wrapDelta(t.z - rig.root.position.z);
+        const d = Math.hypot(tdx, tdz);
+        if (d < best && d > 0.6) {
+          best = d;
+          dx = tdx;
+          dz = tdz;
+          show = true;
+        }
+      }
+    }
+    feetArrow.visible = show;
+    if (!show) return;
+    feetArrow.position.x = rig.root.position.x;
+    feetArrow.position.z = rig.root.position.z;
+    feetArrow.rotation.y = Math.atan2(dx, dz);
+  }
+
   function tick(now: number): void {
     const sinceLast = now - last;
     if (sinceLast < FRAME_INTERVAL_MS - 1) {
@@ -2310,6 +2427,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
       (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
     }
+
+    updateFeetArrow();
 
     // Camera follow target: locked avatar if any (auto-release on distance),
     // otherwise the local rig. The remote avatar's group.position is already

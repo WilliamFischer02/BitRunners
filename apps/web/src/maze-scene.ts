@@ -20,8 +20,8 @@ import {
 import type { BoxCollider } from './colliders.js';
 import type { Dir, MazeGrid } from './maze-core.js';
 
-export const MAZE_CELL = 1.25; // world units per maze cell
-const WALL_T = 0.22; // wall thickness
+export const MAZE_CELL = 1.8; // world units per maze cell (wide, easy-to-walk alleys)
+const WALL_T = 0.18; // wall thickness (thin walls → wide walkable corridors)
 const WALL_H = 1.35; // wall height
 
 interface WallSpec {
@@ -151,15 +151,17 @@ export class MazeArena {
   }
 
   private buildVoidSlabs(): void {
-    // Four dark slabs framing the border; hidden until dissolve. Their dark,
-    // faintly-emissive surface reads as scrambled "raw data" through the ASCII
-    // post-process. Repositioned per dissolveTo().
+    // Four slabs framing the border; hidden until dissolve. Bright, hot-magenta
+    // "raw data storm" walls that TOWER over the maze (height 2.6×) so the
+    // player plainly sees the storm closing in from the edges. Repositioned per
+    // dissolveTo(). The ASCII post-process renders the bright emissive as dense
+    // scrambled glyphs.
     const geo = new BoxGeometry(1, 1, 1);
     const mat = new MeshStandardMaterial({
-      color: 0x05070a,
-      emissive: 0x1b2b1f,
-      emissiveIntensity: 0.5,
-      roughness: 1,
+      color: 0x2a0a1a,
+      emissive: 0xff2a6a,
+      emissiveIntensity: 1.35,
+      roughness: 0.8,
     });
     for (let i = 0; i < 4; i++) {
       const slab = new Mesh(geo, mat);
@@ -180,8 +182,8 @@ export class MazeArena {
     const fullMax = this.off + MAZE_CELL / 2;
     const bound = this.playableBound(rings);
     const full = fullMax - fullMin;
-    const y = WALL_H * 0.7;
-    const h = WALL_H * 1.4;
+    const h = WALL_H * 2.6; // tower well above the maze walls
+    const y = h / 2;
     const place = (
       slab: Mesh | undefined,
       cx: number,
