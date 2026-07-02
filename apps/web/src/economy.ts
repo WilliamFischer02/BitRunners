@@ -92,6 +92,9 @@ export interface EconomyState {
   // solved the puzzle — gates the first-clear (100 cr) vs repeat (20 cr)
   // reward. Additive + defaulted so old blobs load clean.
   circuitFirstClear: boolean;
+  // circuit_patch level progress: index (0–9) of the level the runner resumes
+  // on next session. Wins on the frontier level advance it. Additive.
+  circuitLevel: number;
   updatedAt: number;
 }
 
@@ -143,6 +146,7 @@ function defaultState(): EconomyState {
     ownedEmotes: [],
     emoteLoadout: [...DEFAULT_LOADOUT],
     circuitFirstClear: false,
+    circuitLevel: 0,
     updatedAt: 0,
   };
 }
@@ -245,6 +249,9 @@ function normalize(parsed: EconomyState): EconomyState {
     ownedEmotes: strArray(p.ownedEmotes),
     emoteLoadout: normLoadout(p.emoteLoadout),
     circuitFirstClear: p.circuitFirstClear === true,
+    // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
+    // player past the last level.
+    circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
   };
 }
 
@@ -703,6 +710,20 @@ export function hasClearedCircuit(): boolean {
 export function markCircuitCleared(): void {
   if (state.circuitFirstClear) return;
   state = { ...state, circuitFirstClear: true };
+  persist();
+}
+
+/** circuit_patch: index (0–9) of the level the runner resumes on. */
+export function getCircuitLevel(): number {
+  return state.circuitLevel;
+}
+
+/** Advance circuit_patch progress to the next level (caps at index 9, the
+ *  last of the 10 levels). Idempotent at the cap. */
+export function advanceCircuitLevel(): void {
+  const next = Math.min(9, state.circuitLevel + 1);
+  if (next === state.circuitLevel) return;
+  state = { ...state, circuitLevel: next };
   persist();
 }
 

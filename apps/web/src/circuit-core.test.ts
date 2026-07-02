@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type Board,
   CIRCUIT_LEVEL,
+  CIRCUIT_LEVELS,
+  CIRCUIT_SOLUTIONS,
   type Edge,
+  type Level,
   circuitSolution,
   connectors,
   isSolved,
@@ -52,6 +55,37 @@ describe('kind <-> piece round-trip', () => {
       expect(kindOf(pieceForKind(kind))).toBe(kind);
     });
   }
+});
+
+describe('CIRCUIT_LEVELS (solution-first)', () => {
+  it('ships 10 levels with a parallel canonical solution each', () => {
+    expect(CIRCUIT_LEVELS).toHaveLength(10);
+    expect(CIRCUIT_SOLUTIONS).toHaveLength(10);
+    // Back-compat alias still points at level 1.
+    expect(CIRCUIT_LEVEL).toBe(CIRCUIT_LEVELS[0]);
+  });
+
+  for (let i = 0; i < 10; i++) {
+    it(`level ${i + 1} — solution solves, dims match, empty board does not`, () => {
+      const level = CIRCUIT_LEVELS[i] as Level;
+      const solution = CIRCUIT_SOLUTIONS[i] as Board;
+      expect(solution).toHaveLength(level.h);
+      for (const row of solution) expect(row).toHaveLength(level.w);
+      expect(isSolved(level, solution)).toBe(true);
+      expect(isSolved(level, makeBoard(level))).toBe(false);
+    });
+  }
+
+  it('every level routes both channels border-to-border with matched ports', () => {
+    for (const level of CIRCUIT_LEVELS) {
+      for (const channel of ['power', 'data'] as const) {
+        const inlet = level.ports.find((p) => p.channel === channel && p.role === 'inlet');
+        const outlet = level.ports.find((p) => p.channel === channel && p.role === 'outlet');
+        expect(inlet).toBeDefined();
+        expect(outlet).toBeDefined();
+      }
+    }
+  });
 });
 
 describe('CIRCUIT_LEVEL validator', () => {
