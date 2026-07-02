@@ -12,6 +12,7 @@ import {
   type Faction,
   type RefinableTier,
   STEP,
+  autoTapLevel,
   calculate,
   calculateAura,
   canCalculate,
@@ -27,17 +28,17 @@ import {
   getEmoteLoadout,
   getEquipped,
   getOwnedEmotes,
-  hasAutoScrape,
   hasBotBitsTab,
   hasBotPasscodesTab,
-  hasBotScrape,
   hasBotSerialsTab,
   hasBotStringsTab,
   hasHoldScrape,
+  hasSupercomputer,
   isAppearanceHidden,
   isPrestigeUnlocked,
   isTreeUnlocked,
   ownsPremiumEmote,
+  prestigeBuffGain,
   prestigeReset,
   prestigeTokenPayout,
   purchaseEmote,
@@ -97,7 +98,10 @@ const REDUCED_MOTION =
     : false;
 
 const HOLD_MS = 110;
-const AUTO_MS = 650;
+// Auto-tapper tap interval by tier: [off, slow, medium, fast, hold-down].
+// The Supercomputer capstone forces the top (continuous) tier.
+const AUTO_TAP_MS = [0, 900, 500, 220, 90] as const;
+const BOTS_KEY = 'bitrunners.settings.bots';
 
 const TIER_STEPS: { from: RefinableTier; label: string }[] = [
   { from: 'bits', label: 'bits → string' },
@@ -624,34 +628,51 @@ export function InventoryView(): JSX.Element {
   );
 }
 
-function BotsStatus(): JSX.Element | null {
-  // Reflects which bots are currently humming. Re-renders on economy updates
-  // since buying a bot in the tree view flips its flag.
+const AUTO_TAP_TIER_LABEL = ['off', 'slow', 'medium', 'fast', 'hold-down'];
+
+function BotsStatus({
+  botsOn,
+  onToggle,
+}: { botsOn: boolean; onToggle(): void }): JSX.Element | null {
+  // Reflects the active automation. Re-renders on economy updates since buying
+  // a node in the tree flips its flag.
   const [, force] = useState(0);
   useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
 
+  const sc = hasSupercomputer();
+  const tap = sc ? 4 : autoTapLevel();
   const bots = [
-    { on: hasBotScrape(), label: 'mining bot · SCRAPE' },
-    { on: hasBotBitsTab(), label: 'bits → strings' },
-    { on: hasBotStringsTab(), label: 'strings → serials' },
-    { on: hasBotSerialsTab(), label: 'serials → passcodes' },
-    { on: hasBotPasscodesTab(), label: 'passcodes → auras' },
+    { on: tap > 0, label: `auto-tapper · ${AUTO_TAP_TIER_LABEL[tap]}` },
+    { on: sc || hasBotBitsTab(), label: 'bits → strings' },
+    { on: sc || hasBotStringsTab(), label: 'strings → serials' },
+    { on: sc || hasBotSerialsTab(), label: 'serials → passcodes' },
+    { on: sc || hasBotPasscodesTab(), label: 'passcodes → auras' },
   ];
-  const anyOn = bots.some((b) => b.on);
-  if (!anyOn) return null;
+  const active = bots.filter((b) => b.on);
+  if (active.length === 0 && !sc) return null;
 
   return (
     <section className="panel-section scrape-bots">
-      <div className="panel-section-title">$ bots · tick every {BOT_TICK_MS}ms</div>
-      {bots
-        .filter((b) => b.on)
-        .map((b) => (
-          <div className="panel-row" key={b.label}>
-            <span className="panel-key">{b.label}</span>
-            <span className="scrape-hud-val">▶</span>
-          </div>
-        ))}
-      <div className="panel-stub">─── bots pause when this panel is closed.</div>
+      <div className="panel-row">
+        <span className="panel-section-title">$ bots{sc ? ' · SUPERCOMPUTER' : ''}</span>
+        <button
+          type="button"
+          className={botsOn ? 'panel-toggle is-on' : 'panel-toggle'}
+          onClick={onToggle}
+          aria-pressed={botsOn}
+        >
+          {botsOn ? '[ on ]' : '[ off ]'}
+        </button>
+      </div>
+      {active.map((b) => (
+        <div className="panel-row" key={b.label}>
+          <span className="panel-key">{b.label}</span>
+          <span className="scrape-hud-val">{botsOn ? '▶' : '⏸'}</span>
+        </div>
+      ))}
+      <div className="panel-stub">
+        ─── bots tick every {BOT_TICK_MS}ms and pause when this panel is closed.
+      </div>
     </section>
   );
 }
@@ -665,6 +686,26 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [view, setView] = useState<View>(initialView);
   const [closing, setClosing] = useState(false);
   const [lbOpen, setLbOpen] = useState(false);
+  const [botsOn, setBotsOn] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(BOTS_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const botsOnRef = useRef(botsOn);
+  botsOnRef.current = botsOn;
+  const toggleBots = (): void => {
+    setBotsOn((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(BOTS_KEY, String(next));
+      } catch {
+        // storage unavailable — keep in-memory
+      }
+      return next;
+    });
+  };
   const timers = useRef<number[]>([]);
   const holdTimer = useRef<number | null>(null);
 
@@ -740,28 +781,34 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     holdTimer.current = window.setInterval(() => scrapeRef.current(false), HOLD_MS);
   };
 
-  // Auto-scrape (Path 2 unlock): hands-free while the panel is open.
-  const autoOn = hasAutoScrape();
+  // Auto-tapper (Path 4): taps SCRAPE at a tier-dependent interval while the
+  // panel is open + bots enabled. The Supercomputer capstone forces the top
+  // (continuous) tier. Interval recomputed when the tier or the toggle changes.
+  const autoTier = hasSupercomputer() ? 4 : autoTapLevel();
+  const tapMs = AUTO_TAP_MS[autoTier] ?? 0;
+  const autoOn = botsOn && tapMs > 0; // drives the scrape-button "is-auto" glow
   useEffect(() => {
-    if (!autoOn) return;
-    const id = window.setInterval(() => scrapeRef.current(false), AUTO_MS);
+    if (!botsOn || tapMs <= 0) return;
+    const id = window.setInterval(() => {
+      if (botsOnRef.current) scrapeRef.current(false);
+    }, tapMs);
     return () => window.clearInterval(id);
-  }, [autoOn]);
+  }, [botsOn, tapMs]);
 
-  // Auto-converter bots (Path 4 unlocks — PR 82). One shared interval walks
-  // the bits→strings→serials→passcodes→auras ladder once per tick. Each
-  // upgrade flag gates one rung; an unbought rung is just skipped. Closing
-  // the panel stops the loop — bots are active-panel automation, not truly
-  // background workers.
+  // Auto-converter bots (Path 4). One shared interval walks the
+  // bits→strings→serials→passcodes→auras ladder once per tick. Each upgrade
+  // flag gates one rung; the Supercomputer capstone drives every rung at once
+  // for a constant scrape→passcode flow. Obeys the bots on/off toggle and
+  // pauses when the panel closes (active-panel automation).
   useEffect(() => {
     const id = window.setInterval(() => {
-      // Re-check the upgrade flags every tick so a level bought in the tree
-      // view turns the matching bot on without a panel reopen.
-      if (hasBotScrape()) scrapeRef.current(false);
-      if (hasBotBitsTab()) tabulate('bits');
-      if (hasBotStringsTab()) tabulate('strings');
-      if (hasBotSerialsTab()) tabulate('serials');
-      if (hasBotPasscodesTab()) tabulateAura();
+      if (!botsOnRef.current) return;
+      const sc = hasSupercomputer();
+      if (sc) scrapeRef.current(false);
+      if (sc || hasBotBitsTab()) tabulate('bits');
+      if (sc || hasBotStringsTab()) tabulate('strings');
+      if (sc || hasBotSerialsTab()) tabulate('serials');
+      if (sc || hasBotPasscodesTab()) tabulateAura();
     }, BOT_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
@@ -993,12 +1040,16 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
                 <div className="panel-section-title">$ prestige · clean slate</div>
                 <div className="panel-stub">
                   ─── trade your scrape buffers + skill levels for tokens. cosmetics, equipped
-                  items, reputation, and badges stay. each prestige adds +{1} permanent bit /
-                  SCRAPE.
+                  items, reputation, badges, and the Supercomputer / Corporate Greed capstones stay.
+                  the permanent scrape buff each prestige grants scales with your accrued auras.
                 </div>
                 <div className="panel-row">
-                  <span className="panel-key">current tier · {eco.prestiges}</span>
-                  <span className="scrape-hud-val">+{eco.prestiges} bits / SCRAPE</span>
+                  <span className="panel-key">current buff · tier {eco.prestiges}</span>
+                  <span className="scrape-hud-val">+{eco.prestigeBuff} bits / SCRAPE</span>
+                </div>
+                <div className="panel-row">
+                  <span className="panel-key">this prestige adds</span>
+                  <span className="scrape-hud-val">+{prestigeBuffGain()} bits / SCRAPE</span>
                 </div>
                 <div className="panel-row">
                   <span className="panel-key">reset payout · {prestigeTokenPayout()} tk</span>
@@ -1013,7 +1064,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
               </section>
             )}
 
-            <BotsStatus />
+            <BotsStatus botsOn={botsOn} onToggle={toggleBots} />
           </>
         )}
 

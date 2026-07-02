@@ -2279,6 +2279,28 @@ dialog.panel::backdrop {
   background: rgba(120, 80, 200, 0.16);
 }
 
+/* ── Corporate Greed Protocol glow (data-scraper capstone) ── */
+.greed-glow {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 35;
+  box-shadow: inset 0 0 60px 12px rgba(255, 216, 96, 0.28), inset 0 0 150px 34px
+    rgba(255, 216, 96, 0.12);
+  animation: greed-pulse 4s ease-in-out infinite;
+}
+@keyframes greed-pulse {
+  50% {
+    box-shadow: inset 0 0 84px 18px rgba(255, 216, 96, 0.42), inset 0 0 190px 44px
+      rgba(255, 216, 96, 0.16);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .greed-glow {
+    animation: none;
+  }
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;
