@@ -9,6 +9,7 @@ import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { CreditsHud } from './CreditsHud.js';
 import { EmoteWheel } from './EmoteWheel.js';
+import { Landmarks } from './Landmarks.js';
 import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
@@ -289,6 +290,7 @@ function Game({ className }: GameProps): JSX.Element {
       )}
       <Samm inRange={sammInRange} />
       <AccountNudge />
+      <Landmarks />
       <Tutorial />
       <Starmap />
       <AdminConsole />

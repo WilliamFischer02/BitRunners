@@ -2103,6 +2103,88 @@ dialog.panel::backdrop {
   }
 }
 
+/* ──────────── landmarks: glitch switch + vault (mega-batch 2 · 4.6) ──────── */
+.glitch-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: max(96px, calc(env(safe-area-inset-bottom, 0px) + 96px));
+  transform: translateX(-50%);
+  z-index: 40;
+}
+.glitch-prompt-btn {
+  appearance: none;
+  min-height: 44px;
+  padding: 8px 18px;
+  border: 1px solid #7a56b8;
+  border-radius: 4px;
+  background: rgba(20, 12, 32, 0.85);
+  color: #d6b8ff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(176, 124, 255, 0.35);
+}
+.glitch-prompt-btn:hover:not(:disabled) {
+  border-color: #b07cff;
+}
+.glitch-prompt-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+  color: #8a7aa8;
+}
+/* Full-screen cosmetic glitch burst — pointer-events off so play continues. */
+.glitch-burst {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: repeating-linear-gradient(
+      0deg,
+      rgba(176, 124, 255, 0) 0px,
+      rgba(176, 124, 255, 0) 2px,
+      rgba(176, 124, 255, 0.14) 3px,
+      rgba(108, 240, 255, 0.1) 4px
+    ), radial-gradient(circle at 50% 45%, rgba(176, 124, 255, 0.22), transparent 65%);
+  animation: glitch-burst 2s steps(8, end) forwards;
+}
+.glitch-burst--short {
+  animation-duration: 0.45s;
+}
+@keyframes glitch-burst {
+  0% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+  8% {
+    opacity: 1;
+    transform: translateX(-6px);
+  }
+  22% {
+    transform: translateX(5px) skewX(2deg);
+  }
+  46% {
+    opacity: 0.85;
+    transform: translateX(-3px);
+  }
+  70% {
+    opacity: 0.9;
+    transform: translateX(4px) skewX(-2deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .glitch-burst {
+    animation: none;
+    opacity: 0;
+  }
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;

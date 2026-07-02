@@ -226,11 +226,16 @@ export function Starmap(): JSX.Element {
       setExpanded(false);
     };
     const onExit = (): void => setMazeHidden(false);
+    // maze mode (4.5) and the vault's void room (4.6) both hide the minimap.
     window.addEventListener('bitrunners:maze-enter', onEnter);
     window.addEventListener('bitrunners:maze-exit', onExit);
+    window.addEventListener('bitrunners:void-enter', onEnter);
+    window.addEventListener('bitrunners:void-exit', onExit);
     return () => {
       window.removeEventListener('bitrunners:maze-enter', onEnter);
       window.removeEventListener('bitrunners:maze-exit', onExit);
+      window.removeEventListener('bitrunners:void-enter', onEnter);
+      window.removeEventListener('bitrunners:void-exit', onExit);
     };
   }, []);
 
