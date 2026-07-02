@@ -1,3 +1,4 @@
+import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
 import { useEffect, useRef, useState } from 'react';
 import {
   MINIMAP_ANCHORS,
@@ -16,9 +17,12 @@ import { getActiveCheckpointAnchor, subscribeMissionChanges } from './missions.j
 //   • Tap-to-expand: opens a 2x larger overlay where details + labels are
 //     comfortably readable on a phone screen.
 
-const MAP_RANGE = 22; // world units of half-extent the minimap covers
-const PLATFORM_HALF = 19;
-const PLATFORM_SIZE = PLATFORM_HALF * 2;
+// World units of half-extent the minimap covers. Bumped 22 -> 34 alongside the
+// mega-batch-2 map doubling (PLATFORM_HALF 19 -> 38) so the minimap keeps a
+// readable density at the new scale (taste — tune if it reads too sparse/dense).
+// PLATFORM_HALF / PLATFORM_SIZE now import from @bitrunners/shared so this
+// component can't drift from the world size again.
+const MAP_RANGE = 34;
 
 // Wrap delta into (-PLATFORM_HALF, +PLATFORM_HALF] — same logic as scene.ts.
 function wrapDelta(v: number): number {

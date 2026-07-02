@@ -132,6 +132,17 @@ const COLLIDERS: readonly BoxCollider[] = [
   { x: -10, z: -12, hx: 0.6, hz: 0.6 }, // crate cluster
   { x: 0, z: 14, hx: 1.6, hz: 0.3 }, // wall slab (long X)
   { x: 14, z: 0, hx: 0.3, hz: 1.2 }, // standing slab (long Z)
+  // mega-batch 2 (devlog 0119): fill the doubled interior (PLATFORM_HALF 38).
+  // All comfortably off the seam (|coord| <= 30 < 34) so wrap-collision corner
+  // cases don't matter. Keep in sync with the obstacle meshes below.
+  { x: -24, z: -20, hx: 0.6, hz: 0.6 }, // outer rust pillar
+  { x: 22, z: 18, hx: 0.95, hz: 0.75 }, // outer debris
+  { x: -28, z: 10, hx: 0.4, hz: 0.4 }, // far broken column
+  { x: 26, z: -26, hx: 0.7, hz: 0.7 }, // far crate cluster
+  { x: -6, z: -24, hx: 1.8, hz: 0.25 }, // long wall slab (X)
+  { x: -30, z: -6, hx: 0.25, hz: 1.4 }, // standing slab (Z)
+  { x: 20, z: 30, hx: 0.55, hz: 0.55 }, // pillar NE
+  { x: 8, z: 30, hx: 1.0, hz: 0.6 }, // debris N
 ];
 
 // Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
@@ -501,6 +512,33 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   standingSlab.position.set(14, 0.8, 0);
   worldTile.add(standingSlab);
 
+  // mega-batch 2: extra obstacles filling the doubled interior (see COLLIDERS).
+  const rustPillar2 = new MeshClass(new BoxGeometry(1.2, 2.8, 1.2), obstacleRustMat);
+  rustPillar2.position.set(-24, 1.4, -20);
+  worldTile.add(rustPillar2);
+  const debrisStack2 = new MeshClass(new BoxGeometry(1.9, 1.1, 1.5), obstacleStoneMat);
+  debrisStack2.position.set(22, 0.55, 18);
+  worldTile.add(debrisStack2);
+  const brokenColumn2 = new MeshClass(new BoxGeometry(0.8, 3.4, 0.8), obstacleStoneMat);
+  brokenColumn2.position.set(-28, 1.7, 10);
+  brokenColumn2.rotation.z = -0.1;
+  worldTile.add(brokenColumn2);
+  const crateCluster2 = new MeshClass(new BoxGeometry(1.4, 1.0, 1.4), obstacleRustMat);
+  crateCluster2.position.set(26, 0.5, -26);
+  worldTile.add(crateCluster2);
+  const wallSlab2 = new MeshClass(new BoxGeometry(3.6, 1.3, 0.5), obstacleStoneMat);
+  wallSlab2.position.set(-6, 0.65, -24);
+  worldTile.add(wallSlab2);
+  const standingSlab2 = new MeshClass(new BoxGeometry(0.5, 1.8, 2.8), obstacleStoneMat);
+  standingSlab2.position.set(-30, 0.9, -6);
+  worldTile.add(standingSlab2);
+  const rustPillar3 = new MeshClass(new BoxGeometry(1.1, 2.4, 1.1), obstacleRustMat);
+  rustPillar3.position.set(20, 1.2, 30);
+  worldTile.add(rustPillar3);
+  const debrisStack3 = new MeshClass(new BoxGeometry(2.0, 0.9, 1.2), obstacleStoneMat);
+  debrisStack3.position.set(8, 0.45, 30);
+  worldTile.add(debrisStack3);
+
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
     emissive: 0x2a4818,
@@ -749,7 +787,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     depthWrite: false,
     depthTest: true,
   });
-  const skybox = new MeshClass(new CylinderGeometry(45, 45, 32, 48, 1, true), skyboxMaterial);
+  // Radius bumped 45 -> 90 with the mega-batch-2 map doubling so the backdrop
+  // still encloses the visible near-field (it follows the player each frame).
+  const skybox = new MeshClass(new CylinderGeometry(90, 90, 44, 48, 1, true), skyboxMaterial);
   skybox.position.y = 8;
   scene.add(skybox);
   worldToggle.push(skybox);

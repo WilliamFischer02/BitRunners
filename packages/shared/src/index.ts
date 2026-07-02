@@ -4,10 +4,14 @@
 export const PROTOCOL_VERSION = 3;
 
 // Square play area, torus-wrapped (3x3 visible tile grid). Doubled in Phase 3
-// (devlog 0057) from 9.5 -> 19 to give room for obstacles + dwellers without
-// shrinking the existing decoration layout. CLIENT and SERVER both import
-// these — defining them in two places previously courted desync.
-export const PLATFORM_HALF = 19;
+// (devlog 0057) from 9.5 -> 19, then again in mega-batch 2 (devlog 0119) from
+// 19 -> 38 to open up the interior for the new landmarks (glitch switch,
+// pressure-plate vault). CLIENT and SERVER both import these — defining them in
+// two places previously courted desync. The server derives its wrap + spawn +
+// dweller-wander bounds from these, so a change here retunes both sides on the
+// next coordinated deploy (no PROTOCOL_VERSION bump — the wire shape is
+// unchanged; positions are plain floats).
+export const PLATFORM_HALF = 38;
 export const PLATFORM_SIZE = PLATFORM_HALF * 2;
 
 // Dweller archetypes the server tags NPC PlayerState rows with via className.
