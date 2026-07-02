@@ -47,32 +47,37 @@ interface PainterOpts {
   big: boolean;
 }
 
-function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts): void {
+function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: PainterOpts): void {
   const tick = getMinimapTick();
-  const cx = pxSize / 2;
-  const cy = pxSize / 2;
-  const px = pxSize / (MAP_RANGE * 2);
+  // Draw a CENTERED SQUARE using the smaller dimension, so the map graphic is
+  // never stretched even if the canvas element ends up non-square (e.g. the
+  // fullscreen overlay). Everything projects off (cx, cy) with a uniform `px`.
+  const cx = pxW / 2;
+  const cy = pxH / 2;
+  const size = Math.min(pxW, pxH);
+  const px = size / (MAP_RANGE * 2);
   const scale = opts.big ? 1.4 : 1.0;
   const fontPx = opts.big ? 12 : 9;
   const markerSize = opts.big ? 5 : 3;
+  const half = size / 2;
 
   // backdrop
-  ctx.clearRect(0, 0, pxSize, pxSize);
+  ctx.clearRect(0, 0, pxW, pxH);
   ctx.fillStyle = 'rgba(8, 12, 14, 0.6)';
-  ctx.fillRect(0, 0, pxSize, pxSize);
+  ctx.fillRect(0, 0, pxW, pxH);
 
   // crosshair grid with mid-ring + corner ticks for better orientation cues
   ctx.strokeStyle = 'rgba(140, 200, 170, 0.22)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(0, cy);
-  ctx.lineTo(pxSize, cy);
-  ctx.moveTo(cx, 0);
-  ctx.lineTo(cx, pxSize);
+  ctx.moveTo(cx - half, cy);
+  ctx.lineTo(cx + half, cy);
+  ctx.moveTo(cx, cy - half);
+  ctx.lineTo(cx, cy + half);
   ctx.stroke();
   ctx.strokeStyle = 'rgba(140, 200, 170, 0.12)';
   ctx.beginPath();
-  ctx.arc(cx, cy, pxSize * 0.32, 0, Math.PI * 2);
+  ctx.arc(cx, cy, size * 0.32, 0, Math.PI * 2);
   ctx.stroke();
 
   // compass labels — N is -Z, E is +X (matches scene world frame)
@@ -80,7 +85,7 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
   ctx.font = `bold ${fontPx}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  const compassR = pxSize / 2 - fontPx - 2;
+  const compassR = half - fontPx - 2;
   ctx.fillText('N', cx, cy - compassR);
   ctx.fillText('S', cx, cy + compassR);
   ctx.fillText('E', cx + compassR, cy);
@@ -97,10 +102,15 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     let my = cy + dz * px;
     let onScreen = true;
     const pad = 8 * scale;
-    if (mx < pad || mx > pxSize - pad || my < pad || my > pxSize - pad) {
+    if (
+      mx < cx - half + pad ||
+      mx > cx + half - pad ||
+      my < cy - half + pad ||
+      my > cy + half - pad
+    ) {
       onScreen = false;
       const ang = Math.atan2(dz, dx);
-      const r = pxSize / 2 - pad;
+      const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
     }
@@ -132,10 +142,15 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     let my = cy + dz * px;
     let onScreen = true;
     const pad = 10 * scale;
-    if (mx < pad || mx > pxSize - pad || my < pad || my > pxSize - pad) {
+    if (
+      mx < cx - half + pad ||
+      mx > cx + half - pad ||
+      my < cy - half + pad ||
+      my > cy + half - pad
+    ) {
       onScreen = false;
       const ang = Math.atan2(dz, dx);
-      const r = pxSize / 2 - pad;
+      const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
     }
@@ -169,10 +184,15 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     let my = cy + dz * px;
     let onScreen = true;
     const pad = 6 * scale;
-    if (mx < pad || mx > pxSize - pad || my < pad || my > pxSize - pad) {
+    if (
+      mx < cx - half + pad ||
+      mx > cx + half - pad ||
+      my < cy - half + pad ||
+      my > cy + half - pad
+    ) {
       onScreen = false;
       const ang = Math.atan2(dz, dx);
-      const r = pxSize / 2 - pad;
+      const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
     }
@@ -216,7 +236,7 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
   ctx.fillStyle = 'rgba(140, 200, 170, 0.7)';
   const xs = tick.playerX.toFixed(0).padStart(3, ' ');
   const zs = tick.playerZ.toFixed(0).padStart(3, ' ');
-  ctx.fillText(`x ${xs}  z ${zs}`, 4, pxSize - 3);
+  ctx.fillText(`x ${xs}  z ${zs}`, cx - half + 4, cy + half - 3);
 }
 
 export function Starmap(): JSX.Element {
@@ -268,11 +288,13 @@ export function Starmap(): JSX.Element {
     if (!ctx) return;
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    let pxSize = canvas.clientWidth || 132;
+    let pw = canvas.clientWidth || 132;
+    let ph = canvas.clientHeight || 132;
     const sizeCanvas = (): void => {
-      pxSize = canvas.clientWidth || pxSize;
-      canvas.width = pxSize * dpr;
-      canvas.height = pxSize * dpr;
+      pw = canvas.clientWidth || pw;
+      ph = canvas.clientHeight || ph;
+      canvas.width = pw * dpr;
+      canvas.height = ph * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       dirtyRef.current = true;
@@ -286,7 +308,7 @@ export function Starmap(): JSX.Element {
       raf = requestAnimationFrame(loop);
       if (!dirtyRef.current) return;
       dirtyRef.current = false;
-      paint(ctx, pxSize, { big: false });
+      paint(ctx, pw, ph, { big: false });
     };
     raf = requestAnimationFrame(loop);
     dirtyRef.current = true;
@@ -340,11 +362,13 @@ function StarmapExpanded({ onClose }: { onClose(): void }): JSX.Element {
     if (!ctx) return;
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    let pxSize = canvas.clientWidth || 280;
+    let pw = canvas.clientWidth || 280;
+    let ph = canvas.clientHeight || 280;
     const sizeCanvas = (): void => {
-      pxSize = canvas.clientWidth || pxSize;
-      canvas.width = pxSize * dpr;
-      canvas.height = pxSize * dpr;
+      pw = canvas.clientWidth || pw;
+      ph = canvas.clientHeight || ph;
+      canvas.width = pw * dpr;
+      canvas.height = ph * dpr;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.scale(dpr, dpr);
       dirtyRef.current = true;
@@ -358,7 +382,7 @@ function StarmapExpanded({ onClose }: { onClose(): void }): JSX.Element {
       raf = requestAnimationFrame(loop);
       if (!dirtyRef.current) return;
       dirtyRef.current = false;
-      paint(ctx, pxSize, { big: true });
+      paint(ctx, pw, ph, { big: true });
     };
     raf = requestAnimationFrame(loop);
     dirtyRef.current = true;

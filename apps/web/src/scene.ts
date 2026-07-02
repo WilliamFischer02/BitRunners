@@ -2252,7 +2252,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       opacity: 0.92,
     });
     const head = new MeshClass(new ConeGeometry(0.3, 0.7, 4), aMat);
-    head.rotation.x = -Math.PI / 2; // lie flat, tip toward +Z
+    // Cone tip is +Y; +90° about X lays it flat with the TIP toward +Z (the
+    // aim axis, rotation.y = atan2(dx,dz)). −90° would aim the tip at −Z, i.e.
+    // back at the player — which was the bug.
+    head.rotation.x = Math.PI / 2;
     head.position.z = 0.42;
     feetArrow.add(head);
     const shaft = new MeshClass(new BoxGeometry(0.16, 0.04, 0.55), aMat);
