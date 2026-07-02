@@ -213,6 +213,22 @@ export function Starmap(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dirtyRef = useRef(true);
   const [expanded, setExpanded] = useState(false);
+  // Hidden during core_run maze mode (4.5) so the minimap can't leak the layout.
+  const [mazeHidden, setMazeHidden] = useState(false);
+
+  useEffect(() => {
+    const onEnter = (): void => {
+      setMazeHidden(true);
+      setExpanded(false);
+    };
+    const onExit = (): void => setMazeHidden(false);
+    window.addEventListener('bitrunners:maze-enter', onEnter);
+    window.addEventListener('bitrunners:maze-exit', onExit);
+    return () => {
+      window.removeEventListener('bitrunners:maze-enter', onEnter);
+      window.removeEventListener('bitrunners:maze-exit', onExit);
+    };
+  }, []);
 
   useEffect(
     () =>
@@ -271,12 +287,13 @@ export function Starmap(): JSX.Element {
       <button
         type="button"
         className="starmap"
+        style={mazeHidden ? { display: 'none' } : undefined}
         aria-label="spectrum navigator — tap to expand"
         onClick={() => setExpanded(true)}
       >
         <canvas ref={canvasRef} className="starmap-canvas" />
       </button>
-      {expanded && <StarmapExpanded onClose={() => setExpanded(false)} />}
+      {expanded && !mazeHidden && <StarmapExpanded onClose={() => setExpanded(false)} />}
     </>
   );
 }

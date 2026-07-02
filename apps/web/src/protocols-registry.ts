@@ -15,10 +15,12 @@ export type ProtocolKey =
   | 'shop'
   | 'tether_chat'
   | 'freq_lock'
-  | 'circuit_patch';
+  | 'circuit_patch'
+  | 'core_run';
 
 export const FREQ_LOCK_OPEN_EVENT = 'bitrunners:open-freq-lock';
 export const CIRCUIT_PATCH_OPEN_EVENT = 'bitrunners:open-circuit-patch';
+export const CORE_RUN_OPEN_EVENT = 'bitrunners:open-core-run';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -102,6 +104,14 @@ function launchCircuitPatch(): void {
   }
 }
 
+function launchCoreRun(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(CORE_RUN_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
@@ -156,5 +166,14 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'neutral',
     available: true,
     launch: launchCircuitPatch,
+  },
+  {
+    key: 'core_run',
+    label: 'core_run',
+    flavor: 'reach the core · beat the dissolve',
+    glyph: '⍟',
+    tint: 'br',
+    available: true,
+    launch: launchCoreRun,
   },
 ];

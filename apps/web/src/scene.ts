@@ -50,6 +50,8 @@ import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { getLevel, subscribeLevel } from './level.js';
+import { type MazeGrid, generateMaze } from './maze-core.js';
+import { MazeArena } from './maze-scene.js';
 import { type MinimapRemote, publishMinimapRemotes, publishMinimapTick } from './minimap-state.js';
 import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
@@ -558,14 +560,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
   worldTile.add(tufts);
 
+  // Objects hidden while in core_run maze mode (4.5). The 3x3 world tiles +
+  // mission markers + skybox are toggled off so only the maze arena renders.
+  const worldToggle: { visible: boolean }[] = [];
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
       if (dx === 0 && dz === 0) {
         scene.add(worldTile);
+        worldToggle.push(worldTile);
       } else {
         const tile = worldTile.clone();
         tile.position.set(dx * PLATFORM_SIZE, 0, dz * PLATFORM_SIZE);
         scene.add(tile);
+        worldToggle.push(tile);
       }
     }
   }
@@ -577,6 +584,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // Mesh halo, no DepthTexture / OutlinePass.
   const missionGroup = new Group();
   scene.add(missionGroup);
+  worldToggle.push(missionGroup);
 
   interface CheckpointMarker {
     group: Group;
@@ -744,6 +752,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const skybox = new MeshClass(new CylinderGeometry(45, 45, 32, 48, 1, true), skyboxMaterial);
   skybox.position.y = 8;
   scene.add(skybox);
+  worldToggle.push(skybox);
 
   const rig = buildClassRig(className);
   rig.root.traverse((obj) => {
@@ -1773,6 +1782,152 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const tempTag = new Vector3();
   const tempEmote = new Vector3();
 
+  // ── core_run maze mode (mega-batch 2 · 4.5) ──────────────────────────────
+  // A self-contained arena rendered in the same scene: the world tiles hide,
+  // a MazeArena group shows, and the rig teleports to the maze entrance. The
+  // tick swaps in the maze colliders + a shrinking clamp while `mazeActive`,
+  // and skips all world proximity / network / minimap work. Driven by window
+  // events so the React overlay (CoreRun.tsx) stays decoupled from the scene.
+  const MAZE_DURATION_S = 90;
+  const MAZE_DISSOLVE_START_S = 30; // dissolve begins at 60 s remaining
+  const MAZE_RING_INTERVAL_S = 8;
+  const mazeGroup = new Group();
+  mazeGroup.visible = false;
+  scene.add(mazeGroup);
+  let mazeActive = false;
+  let mazeArena: MazeArena | null = null;
+  let mazeGrid: MazeGrid | null = null;
+  let mazeColliders: readonly BoxCollider[] = [];
+  let mazeStartElapsed = 0;
+  let dissolvedRings = 0;
+  let mazeLastSecond = -1;
+  let savedRigX = 0;
+  let savedRigZ = 0;
+  let savedFacing = 0;
+
+  function fireMaze(name: string, detail?: unknown): void {
+    try {
+      window.dispatchEvent(
+        detail === undefined ? new CustomEvent(name) : new CustomEvent(name, { detail }),
+      );
+    } catch {
+      // non-DOM env — ignore
+    }
+  }
+
+  function setWorldVisibleForMaze(visible: boolean): void {
+    for (const o of worldToggle) o.visible = visible;
+    for (const ra of remoteAvatars.values()) {
+      ra.group.visible = visible;
+      ra.tagEl.style.display = visible ? '' : 'none';
+    }
+  }
+
+  function clampToMaze(pos: Vector3): void {
+    if (!mazeArena) return;
+    const b = mazeArena.playableBound(dissolvedRings);
+    const lo = b.min + PLAYER_RADIUS;
+    const hi = b.max - PLAYER_RADIUS;
+    pos.x = Math.max(lo, Math.min(hi, pos.x));
+    pos.z = Math.max(lo, Math.min(hi, pos.z));
+  }
+
+  function enterMaze(): void {
+    if (mazeActive) return;
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    mazeGrid = generateMaze(seed);
+    mazeArena = new MazeArena(mazeGrid);
+    mazeGroup.add(mazeArena.group);
+    mazeColliders = mazeArena.colliders;
+    savedRigX = rig.root.position.x;
+    savedRigZ = rig.root.position.z;
+    savedFacing = facing;
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
+    rig.root.position.x = mazeArena.entranceWorld.x;
+    rig.root.position.z = mazeArena.entranceWorld.z;
+    facing = 0;
+    dissolvedRings = 0;
+    mazeArena.dissolveTo(0);
+    mazeStartElapsed = elapsed;
+    mazeLastSecond = -1;
+    setWorldVisibleForMaze(false);
+    skybox.visible = false;
+    mazeGroup.visible = true;
+    mazeActive = true;
+    fireMaze('bitrunners:maze-enter');
+  }
+
+  function exitMaze(): void {
+    if (!mazeActive) return;
+    mazeActive = false;
+    mazeGroup.visible = false;
+    if (mazeArena) {
+      mazeGroup.remove(mazeArena.group);
+      mazeArena.dispose();
+      mazeArena = null;
+    }
+    mazeColliders = [];
+    mazeGrid = null;
+    setWorldVisibleForMaze(true);
+    skybox.visible = true;
+    rig.root.position.x = savedRigX;
+    rig.root.position.z = savedRigZ;
+    facing = savedFacing;
+    fireMaze('bitrunners:maze-exit');
+  }
+
+  function updateMaze(): void {
+    if (!mazeArena || !mazeGrid) return;
+    const t = elapsed - mazeStartElapsed;
+    const timeLeft = Math.max(0, MAZE_DURATION_S - t);
+    // After the grace period, one outer ring dissolves per interval — but never
+    // the innermost rings around the goal (else it'd be unreachable).
+    let targetRings = 0;
+    if (t >= MAZE_DISSOLVE_START_S) {
+      targetRings = Math.floor((t - MAZE_DISSOLVE_START_S) / MAZE_RING_INTERVAL_S) + 1;
+    }
+    targetRings = Math.min(targetRings, (mazeGrid.size - 1) / 2 - 1);
+    if (targetRings > dissolvedRings) {
+      dissolvedRings = targetRings;
+      mazeArena.dissolveTo(dissolvedRings);
+      if (mazeArena.isInVoid(rig.root.position.x, rig.root.position.z, dissolvedRings)) {
+        exitMaze();
+        fireMaze('bitrunners:maze-fail');
+        return;
+      }
+    }
+    const cell = mazeArena.worldToCell(rig.root.position.x, rig.root.position.z);
+    if (cell.cx === mazeGrid.center.x && cell.cy === mazeGrid.center.y) {
+      const secondsLeft = Math.ceil(timeLeft);
+      exitMaze();
+      fireMaze('bitrunners:maze-win', { secondsLeft });
+      return;
+    }
+    if (timeLeft <= 0) {
+      exitMaze();
+      fireMaze('bitrunners:maze-fail');
+      return;
+    }
+    const sec = Math.ceil(timeLeft);
+    if (sec !== mazeLastSecond) {
+      mazeLastSecond = sec;
+      fireMaze('bitrunners:maze-tick', { timeLeft: sec, rings: dissolvedRings });
+    }
+  }
+
+  const onCoreRunEnter = (): void => enterMaze();
+  const onCoreRunAbort = (): void => {
+    if (mazeActive) {
+      exitMaze();
+      fireMaze('bitrunners:maze-abort');
+    }
+  };
+  window.addEventListener('bitrunners:core-run-enter', onCoreRunEnter);
+  window.addEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+
   function tick(now: number): void {
     const sinceLast = now - last;
     if (sinceLast < FRAME_INTERVAL_MS - 1) {
@@ -1798,12 +1953,17 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         rig.root.position.x + tempMove.x * speed,
         rig.root.position.z + tempMove.z * speed,
         PLAYER_RADIUS,
-        COLLIDERS,
+        mazeActive ? mazeColliders : COLLIDERS,
       );
-      if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
-      else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
-      if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
-      else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+      if (mazeActive) {
+        // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
+        clampToMaze(rig.root.position);
+      } else {
+        if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
+        else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
+        if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
+        else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+      }
       facing = Math.atan2(tempMove.x, tempMove.z);
     }
     rig.root.rotation.y = facing;
@@ -1836,46 +1996,51 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (petMesh) applyPetBehaviour(petId, rig.petAnchor, petMesh, elapsed);
 
     updateTendrils(dt, moving || hoverY > 0.05);
-    checkObeliskApproach();
-    checkSammApproach();
-    checkMissionApproach();
-    // Pulse the active checkpoint's emissive intensity so the runner reads
-    // the "next" target without staring. Cheap — one material mutation per
-    // active checkpoint per frame.
-    if (checkpointMarkers.length > 0) {
-      const activeIdx = getActiveMission()?.nextIdx ?? -1;
-      const t = elapsed;
-      for (const m of checkpointMarkers) {
-        if (m.idx === activeIdx) {
-          const pulse = 1.1 + Math.sin(t * 3.6) * 0.35;
-          m.coreMat.emissiveIntensity = pulse;
-          m.glowMat.emissiveIntensity = pulse * 0.7;
+
+    if (mazeActive) {
+      updateMaze();
+    } else {
+      checkObeliskApproach();
+      checkSammApproach();
+      checkMissionApproach();
+      // Pulse the active checkpoint's emissive intensity so the runner reads
+      // the "next" target without staring. Cheap — one material mutation per
+      // active checkpoint per frame.
+      if (checkpointMarkers.length > 0) {
+        const activeIdx = getActiveMission()?.nextIdx ?? -1;
+        const t = elapsed;
+        for (const m of checkpointMarkers) {
+          if (m.idx === activeIdx) {
+            const pulse = 1.1 + Math.sin(t * 3.6) * 0.35;
+            m.coreMat.emissiveIntensity = pulse;
+            m.glowMat.emissiveIntensity = pulse * 0.7;
+          }
         }
       }
+
+      // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
+      const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
+      const sammDz = wrapDelta(rig.root.position.z - SAMM_Z);
+      const sammProx = Math.max(
+        0,
+        Math.min(1, 1 - Math.sqrt(sammDx * sammDx + sammDz * sammDz) / SAMM_TRIGGER_DIST),
+      );
+      (vendingScreen.material as MeshStandardMaterialType).emissiveIntensity =
+        0.7 + sammProx * (0.85 + Math.sin(elapsed * 3.1) * 0.22);
+
+      const portRelX = rig.root.position.x - port.position.x;
+      const portRelZ = rig.root.position.z - port.position.z;
+      const wrappedDx =
+        ((((portRelX + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+        PLATFORM_HALF;
+      const wrappedDz =
+        ((((portRelZ + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+        PLATFORM_HALF;
+      const portDist = Math.sqrt(wrappedDx * wrappedDx + wrappedDz * wrappedDz);
+      const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
+      const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
+      (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
     }
-
-    // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
-    const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
-    const sammDz = wrapDelta(rig.root.position.z - SAMM_Z);
-    const sammProx = Math.max(
-      0,
-      Math.min(1, 1 - Math.sqrt(sammDx * sammDx + sammDz * sammDz) / SAMM_TRIGGER_DIST),
-    );
-    (vendingScreen.material as MeshStandardMaterialType).emissiveIntensity =
-      0.7 + sammProx * (0.85 + Math.sin(elapsed * 3.1) * 0.22);
-
-    const portRelX = rig.root.position.x - port.position.x;
-    const portRelZ = rig.root.position.z - port.position.z;
-    const wrappedDx =
-      ((((portRelX + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
-      PLATFORM_HALF;
-    const wrappedDz =
-      ((((portRelZ + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
-      PLATFORM_HALF;
-    const portDist = Math.sqrt(wrappedDx * wrappedDx + wrappedDz * wrappedDz);
-    const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
-    const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
-    (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
 
     // Camera follow target: locked avatar if any (auto-release on distance),
     // otherwise the local rig. The remote avatar's group.position is already
@@ -1914,7 +2079,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
     // bigger than half the board is a seam wrap by either player — snap, since
     // the 3x3 tiles are visually identical there anyway.
-    if (remoteAvatars.size > 0) {
+    if (!mazeActive && remoteAvatars.size > 0) {
       const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
       for (const ra of remoteAvatars.values()) {
         const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
@@ -1933,14 +2098,16 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
     }
 
-    if (netSession && now - lastNetSend >= NET_SEND_MS) {
+    // In maze mode we freeze outbound moves so the avatar stays parked in the
+    // shared world (the rig is off in the maze arena's coordinate space).
+    if (!mazeActive && netSession && now - lastNetSend >= NET_SEND_MS) {
       netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
       lastNetSend = now;
     }
 
     // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the
     // HUD updates at the same cadence as outbound moves — once per ~67 ms.
-    if (now - lastMinimapEmit >= NET_SEND_MS) {
+    if (!mazeActive && now - lastMinimapEmit >= NET_SEND_MS) {
       publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
       // Push live remote positions for the minimap dots. Re-using one
       // scratch array — at a full sphere we publish at most 40 entries
@@ -2015,7 +2182,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
-    if (remoteAvatars.size > 0) {
+    if (!mazeActive && remoteAvatars.size > 0) {
       const hw = host.clientWidth || 1;
       const hh = host.clientHeight || 1;
       for (const ra of remoteAvatars.values()) {
@@ -2086,6 +2253,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
     standbyCleanups.length = 0;
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
+    window.removeEventListener('bitrunners:core-run-enter', onCoreRunEnter);
+    window.removeEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+    if (mazeArena) {
+      mazeArena.dispose();
+      mazeArena = null;
+    }
     unsubscribeAppearance();
     petGeom?.dispose();
     petMat?.dispose();
