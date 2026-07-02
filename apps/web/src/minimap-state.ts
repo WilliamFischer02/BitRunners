@@ -15,6 +15,8 @@ export const MINIMAP_ANCHORS = {
   samm: { x: 6.0, z: -5.5, label: 'SAMM', tint: '#ffd860' },
   // The Admin obelisk (scene.ts OBELISK_X / OBELISK_Z).
   admin: { x: 5.5, z: 5.5, label: 'ADMIN', tint: '#b07cff' },
+  // The pressure-plate vault (scene.ts VAULT.x / VAULT.z, mega-batch 2).
+  vault: { x: 26, z: -18, label: 'VAULT', tint: '#6cf0ff' },
 } as const;
 
 export type MinimapAnchorKey = keyof typeof MINIMAP_ANCHORS;

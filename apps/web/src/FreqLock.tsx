@@ -4,29 +4,38 @@ import { nudgeAccount } from './account-nudge.js';
 import { addCredits } from './economy.js';
 import { submitMinigameScore } from './leaderboard-api.js';
 
-// freq_lock — 3-track signal disturbance minigame (devlog 0109 rewrite).
+// freq_lock — "tesseract of audio signals" (mega-batch 2 rewrite).
 //
-// Three "audio tracks" recede toward a vanishing point. Each is normally a
-// straight beam of light. Disturbances — bright bumps that deflect the
-// beam — spawn at the horizon and travel toward the player. When a
-// disturbance enters the hit zone at the bottom, tap the matching lane
-// (J / K / L on keyboard, or touch the pad) to lock the signal.
-//
-// Defaults are tuned for "you can read it from a glance" — wider hit
-// window than the prior DDR-style minigame because reading deflection
-// takes longer than reading a falling glyph. STOP-AND-ASK on feel.
+// Three signal lanes converge on the runner from three directions: one from
+// the top-right (angling down-left), one from the top-left (down-right), and
+// one straight up from center-bottom. A waveform blip travels down each lane
+// from its far end toward the lane's hit target, swelling from silent to loud.
+// Tap the matching lane the instant the waveform reaches the target for max
+// points ( J / K / L, or touch the target ). Reading a swelling waveform takes
+// a beat, so the hit window is generous. STOP-AND-ASK on feel.
 
 const LANES = 3;
 const LANE_KEYS = ['j', 'k', 'l'];
-const LANE_LABELS = ['L', 'C', 'R'];
+const LANE_LABELS = ['TR', 'C', 'TL'];
+
+// Lane geometry in stage-percent: `far` = spawn (edge), `hit` = tap target.
+// Index order matches the keys J/K/L → the three targets cluster low-center
+// (the "user"), beams fanning out to top-right, top-center, top-left.
+const LANE_GEO: { far: { x: number; y: number }; hit: { x: number; y: number } }[] = [
+  { far: { x: 95, y: 6 }, hit: { x: 68, y: 74 } }, // top-right → down-left
+  { far: { x: 50, y: 3 }, hit: { x: 50, y: 86 } }, // top-center → straight down
+  { far: { x: 5, y: 6 }, hit: { x: 32, y: 74 } }, // top-left → down-right
+];
+
+const WAVE_BARS = 9;
 
 const SONG_MS = 60_000;
-const LEAD_IN_MS = 2_400;
-const TRAVEL_MS = 2_600;
-const HIT_WINDOW_MS = 220;
-const PERFECT_WINDOW_MS = 80;
-const NOTE_GAP_MIN = 720;
-const NOTE_GAP_MAX = 1_400;
+const LEAD_IN_MS = 2_600;
+const TRAVEL_MS = 2_800;
+const HIT_WINDOW_MS = 240;
+const PERFECT_WINDOW_MS = 90;
+const NOTE_GAP_MIN = 760;
+const NOTE_GAP_MAX = 1_450;
 
 const POINTS_PERFECT = 100;
 const POINTS_GOOD = 50;
@@ -38,19 +47,40 @@ interface Note {
   lane: number;
   hitTime: number; // ms from song start
   state: 'pending' | 'hit' | 'missed';
+  bars: number[]; // per-blip faux-waveform bar heights (0..1)
 }
 
 type Phase = 'ready' | 'playing' | 'done';
+
+function randomBars(): number[] {
+  // A faux, randomly-generated waveform envelope (symmetric-ish, DAW-blip feel).
+  const bars: number[] = [];
+  for (let i = 0; i < WAVE_BARS; i++) {
+    const centered = 1 - Math.abs(i - (WAVE_BARS - 1) / 2) / ((WAVE_BARS - 1) / 2);
+    bars.push(0.25 + centered * 0.55 + Math.random() * 0.35);
+  }
+  return bars;
+}
 
 function buildChart(): Note[] {
   const notes: Note[] = [];
   let t = LEAD_IN_MS;
   let id = 0;
   while (t < SONG_MS - 500) {
-    notes.push({ id: id++, lane: Math.floor(Math.random() * LANES), hitTime: t, state: 'pending' });
+    notes.push({
+      id: id++,
+      lane: Math.floor(Math.random() * LANES),
+      hitTime: t,
+      state: 'pending',
+      bars: randomBars(),
+    });
     t += NOTE_GAP_MIN + Math.random() * (NOTE_GAP_MAX - NOTE_GAP_MIN);
   }
   return notes;
+}
+
+function lerp(a: number, b: number, p: number): number {
+  return a + (b - a) * p;
 }
 
 export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
@@ -59,7 +89,6 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const [combo, setCombo] = useState(0);
   const [hits, setHits] = useState(0);
   const [judgement, setJudgement] = useState<string>('');
-  // Drives the per-frame re-render while playing.
   const [songMs, setSongMs] = useState(0);
 
   const notesRef = useRef<Note[]>([]);
@@ -76,10 +105,8 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
     const credits = Math.min(CREDITS_CAP, Math.floor(scoreRef.current * CREDITS_PER_POINT));
     if (credits > 0) {
       addCredits(credits);
-      // First minigame credits as a guest → nudge to make an account (4.3).
       nudgeAccount('minigame');
     }
-    // Leaderboard: submit the raw point score (server clamps). Best-effort.
     void submitMinigameScore('freq_lock', scoreRef.current);
     setPhase('done');
   }, []);
@@ -99,7 +126,6 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
     const loop = (): void => {
       const now = performance.now() - startRef.current;
       setSongMs(now);
-      // Auto-miss disturbances that fell past the hit window.
       for (const n of notesRef.current) {
         if (n.state === 'pending' && now - n.hitTime > HIT_WINDOW_MS) {
           n.state = 'missed';
@@ -119,7 +145,6 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const tapLane = useCallback((lane: number) => {
     if (phaseRef.current !== 'playing') return;
     const now = performance.now() - startRef.current;
-    // Nearest pending disturbance in this lane within the window.
     let best: Note | null = null;
     let bestDelta = HIT_WINDOW_MS + 1;
     for (const n of notesRef.current) {
@@ -147,15 +172,8 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
     setJudgement(perfect ? 'locked' : 'good');
   }, []);
 
-  // Keyboard input. J / K / L for the three lanes; A / S / D as an alt for
-  // left-handed players; arrows still work (left / down / right → L / C / R).
   useEffect(() => {
-    const altKeys = ['a', 's', 'd'];
-    const arrowMap: Record<string, number> = {
-      arrowleft: 0,
-      arrowdown: 1,
-      arrowright: 2,
-    };
+    const arrowMap: Record<string, number> = { arrowright: 0, arrowup: 1, arrowleft: 2 };
     const onKey = (e: KeyboardEvent): void => {
       const k = e.key.toLowerCase();
       if (k === 'escape') {
@@ -163,9 +181,8 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
         return;
       }
       const lane = LANE_KEYS.indexOf(k);
-      const alt = altKeys.indexOf(k);
       const arrow = arrowMap[k];
-      const target = lane >= 0 ? lane : alt >= 0 ? alt : arrow;
+      const target = lane >= 0 ? lane : arrow;
       if (target !== undefined && target >= 0) {
         e.preventDefault();
         tapLane(target);
@@ -197,9 +214,10 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
           <div className="freqlock-overlay">
             <div className="freqlock-overlay-title">lock the signal</div>
             <div className="freqlock-overlay-sub">
-              three audio tracks recede into the cloud. when a disturbance bends a track,
+              three audio signals converge on you from the corners. a waveform swells as it travels
+              each lane —
               <br />
-              tap the matching lane ( J K L / A S D / arrows / touch ) before it passes you.
+              tap the matching lane ( J K L / arrows / touch ) the instant it reaches the target.
               <br />
               60 seconds · 1 credit per 10 points · max {CREDITS_CAP} credits.
             </div>
@@ -230,52 +248,77 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
           </div>
         )}
 
-        <div className="freqlock-stage" aria-hidden={phase !== 'playing'}>
-          <div className="freqlock-floor">
-            {Array.from({ length: LANES }, (_, lane) => lane).map((lane) => (
-              <div key={`track-${lane}`} className="freqlock-track">
-                <div className="freqlock-beam" aria-hidden="true" />
-                {phase === 'playing' &&
-                  notesRef.current
-                    .filter(
-                      (n) =>
-                        n.lane === lane &&
-                        n.state === 'pending' &&
-                        n.hitTime - songMs <= TRAVEL_MS &&
-                        n.hitTime - songMs > -HIT_WINDOW_MS,
-                    )
-                    .map((n) => {
-                      // 0 at horizon, 1 at the hit-line.
-                      const pos = Math.min(1, 1 - (n.hitTime - songMs) / TRAVEL_MS);
-                      return (
-                        <div
-                          key={n.id}
-                          className="freqlock-disturb"
-                          style={{ top: `${(pos * 100).toFixed(2)}%` }}
-                        />
-                      );
-                    })}
-              </div>
-            ))}
-          </div>
-
-          <div className="freqlock-hit-row">
-            {LANE_KEYS.map((key, lane) => (
-              <button
-                type="button"
-                key={key}
-                className="freqlock-hit"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  tapLane(lane);
+        <div className="freqlock-tess" aria-hidden={phase !== 'playing'}>
+          {/* faint lane beams from each far-end to its target */}
+          {LANE_GEO.map((g, lane) => {
+            const dx = g.hit.x - g.far.x;
+            const dy = g.hit.y - g.far.y;
+            const len = Math.hypot(dx, dy);
+            const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+            return (
+              <div
+                key={`beam-${LANE_KEYS[lane]}`}
+                className="freqlock-beamline"
+                style={{
+                  left: `${g.far.x}%`,
+                  top: `${g.far.y}%`,
+                  width: `${len}%`,
+                  transform: `rotate(${ang}deg)`,
                 }}
-                aria-label={`tap ${LANE_LABELS[lane]} lane`}
-              >
-                <span className="freqlock-hit-key">{key.toUpperCase()}</span>
-                <span className="freqlock-hit-label">{LANE_LABELS[lane]}</span>
-              </button>
-            ))}
-          </div>
+              />
+            );
+          })}
+
+          {/* travelling waveform blips */}
+          {phase === 'playing' &&
+            notesRef.current
+              .filter(
+                (n) =>
+                  n.state === 'pending' &&
+                  n.hitTime - songMs <= TRAVEL_MS &&
+                  n.hitTime - songMs > -HIT_WINDOW_MS,
+              )
+              .map((n) => {
+                const g = LANE_GEO[n.lane];
+                if (!g) return null;
+                const p = Math.min(1, Math.max(0, 1 - (n.hitTime - songMs) / TRAVEL_MS));
+                const env = p ** 0.7; // silent → loud toward the target
+                const x = lerp(g.far.x, g.hit.x, p);
+                const y = lerp(g.far.y, g.hit.y, p);
+                return (
+                  <div
+                    key={n.id}
+                    className={`freqlock-blip freqlock-blip--${LANE_KEYS[n.lane]}`}
+                    style={{ left: `${x}%`, top: `${y}%`, opacity: 0.35 + env * 0.65 }}
+                  >
+                    {n.bars.map((h, i) => (
+                      <span
+                        // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length bar set, positional
+                        key={i}
+                        className="freqlock-bar"
+                        style={{ height: `${Math.max(8, h * env * 100)}%` }}
+                      />
+                    ))}
+                  </div>
+                );
+              })}
+
+          {/* hit targets */}
+          {LANE_GEO.map((g, lane) => (
+            <button
+              type="button"
+              key={`hit-${LANE_KEYS[lane]}`}
+              className={`freqlock-target freqlock-target--${LANE_KEYS[lane]}`}
+              style={{ left: `${g.hit.x}%`, top: `${g.hit.y}%` }}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                tapLane(lane);
+              }}
+              aria-label={`lane ${LANE_LABELS[lane]}`}
+            >
+              <span className="freqlock-target-key">{LANE_KEYS[lane]?.toUpperCase()}</span>
+            </button>
+          ))}
         </div>
 
         <div className="freqlock-judge" data-j={judgement}>

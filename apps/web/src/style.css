@@ -112,12 +112,21 @@ body,
 .starmap-expanded-back {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
+  background: rgba(0, 0, 0, 0.55);
   z-index: 60;
+  /* pointer-events off so the on-screen joystick (and other HUD controls)
+     stay usable while the map is maximized on mobile — the map is a display
+     overlay, closed via the ✕ card or ESC, not a tap-outside modal. */
+  pointer-events: none;
+}
+.starmap-expanded-head,
+.starmap-expanded-close {
+  pointer-events: auto;
 }
 .starmap-expanded {
   position: absolute;
   inset: 0;
+  pointer-events: none; /* full-screen wrapper must not block the joystick */
   display: flex;
   align-items: center;
   justify-content: center;
@@ -178,6 +187,7 @@ body,
 }
 .starmap-expanded-canvas {
   display: block;
+  pointer-events: none;
   /* Always a square — sized to the SMALLER of available viewport width
      and (viewport height − bottom-card reserve − padding). Guarantees
      undistorted aspect on both portrait and landscape. */
@@ -1664,6 +1674,81 @@ dialog.panel::backdrop {
   border-color: #5a9878;
 }
 
+/* freq_lock v2 — 3-corner "tesseract" layout with waveform blips (mega-batch 2) */
+.freqlock-tess {
+  position: relative;
+  flex: 1;
+  margin: 8px;
+  min-height: 300px;
+  border: 1px solid #1a2a24;
+  border-radius: 4px;
+  background: radial-gradient(circle at 50% 80%, rgba(124, 255, 160, 0.07), transparent 62%);
+  overflow: hidden;
+}
+.freqlock-beamline {
+  position: absolute;
+  height: 2px;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, rgba(132, 216, 164, 0.04), rgba(132, 216, 164, 0.3));
+  pointer-events: none;
+}
+.freqlock-blip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 5px currentColor);
+}
+.freqlock-blip--j {
+  color: #6cf0ff;
+}
+.freqlock-blip--k {
+  color: #ffd860;
+}
+.freqlock-blip--l {
+  color: #b07cff;
+}
+.freqlock-bar {
+  width: 3px;
+  background: currentColor;
+  border-radius: 1px;
+  align-self: center;
+}
+.freqlock-target {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 52px;
+  height: 52px;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: rgba(8, 12, 14, 0.62);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 12px currentColor, inset 0 0 8px rgba(255, 255, 255, 0.08);
+  appearance: none;
+}
+.freqlock-target--j {
+  color: #6cf0ff;
+}
+.freqlock-target--k {
+  color: #ffd860;
+}
+.freqlock-target--l {
+  color: #b07cff;
+}
+.freqlock-target-key {
+  font-size: 15px;
+  font-weight: 700;
+  color: #eafff2;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .freqlock-disturb {
     animation: none;
@@ -1997,10 +2082,23 @@ dialog.panel::backdrop {
     opacity: 0.45;
   }
 }
-.corerun-hud-rings {
-  font-size: 10px;
-  color: #ff9d5a;
+.corerun-hud-storm {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff2a6a;
   letter-spacing: 0.04em;
+  text-shadow: 0 0 8px rgba(255, 42, 106, 0.6);
+  animation: corerun-storm 1.1s ease-in-out infinite;
+}
+@keyframes corerun-storm {
+  50% {
+    opacity: 0.5;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .corerun-hud-storm {
+    animation: none;
+  }
 }
 .corerun-hud-abort {
   appearance: none;

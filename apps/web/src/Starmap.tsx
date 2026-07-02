@@ -17,12 +17,11 @@ import { getActiveCheckpointAnchor, subscribeMissionChanges } from './missions.j
 //   • Tap-to-expand: opens a 2x larger overlay where details + labels are
 //     comfortably readable on a phone screen.
 
-// World units of half-extent the minimap covers. Bumped 22 -> 34 alongside the
-// mega-batch-2 map doubling (PLATFORM_HALF 19 -> 38) so the minimap keeps a
-// readable density at the new scale (taste — tune if it reads too sparse/dense).
-// PLATFORM_HALF / PLATFORM_SIZE now import from @bitrunners/shared so this
-// component can't drift from the world size again.
-const MAP_RANGE = 34;
+// World units of half-extent the minimap covers. After the map doubling this
+// sits at 26 — a local-navigation window (not the whole ±38 world) so markers +
+// labels stay legible rather than cramped. PLATFORM_HALF / PLATFORM_SIZE import
+// from @bitrunners/shared so this component can't drift from the world size.
+const MAP_RANGE = 26;
 
 // Wrap delta into (-PLATFORM_HALF, +PLATFORM_HALF] — same logic as scene.ts.
 function wrapDelta(v: number): number {
@@ -38,7 +37,11 @@ interface AnchorRender {
   tint: string;
 }
 
-const ANCHORS: AnchorRender[] = [{ ...MINIMAP_ANCHORS.samm }, { ...MINIMAP_ANCHORS.admin }];
+const ANCHORS: AnchorRender[] = [
+  { ...MINIMAP_ANCHORS.samm },
+  { ...MINIMAP_ANCHORS.admin },
+  { ...MINIMAP_ANCHORS.vault },
+];
 
 interface PainterOpts {
   big: boolean;
@@ -154,10 +157,11 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     ctx.globalAlpha = 1;
   }
 
-  // remote runners — small dots, drawn underneath the local player so
-  // the centre marker reads as "you". Offscreen runners get clamped to
-  // the disc's edge so they're still discoverable.
-  const remoteDotSize = opts.big ? 2.6 : 1.8;
+  // remote runners — small dots, drawn underneath the local player so the
+  // centre marker reads as "you". NPCs (id `npc:*`) are PURPLE; human players
+  // are GREEN, so the two read apart at a glance. Dots are kept thin. Offscreen
+  // runners clamp to the disc's edge so they're still discoverable.
+  const remoteDotSize = opts.big ? 2.0 : 1.3;
   for (const rem of getMinimapRemotes()) {
     const dx = wrapDelta(rem.x - tick.playerX);
     const dz = wrapDelta(rem.z - tick.playerZ);
@@ -172,12 +176,12 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
     }
-    ctx.fillStyle = 'rgba(176, 124, 255, 0.95)';
-    ctx.globalAlpha = onScreen ? 1 : 0.5;
+    const isNpc = rem.id.startsWith('npc:');
+    ctx.fillStyle = isNpc ? 'rgba(176, 124, 255, 0.95)' : 'rgba(124, 255, 160, 0.95)';
     // halo
-    ctx.beginPath();
-    ctx.arc(mx, my, remoteDotSize + 1.4, 0, Math.PI * 2);
     ctx.globalAlpha = onScreen ? 0.25 : 0.15;
+    ctx.beginPath();
+    ctx.arc(mx, my, remoteDotSize + 1.2, 0, Math.PI * 2);
     ctx.fill();
     // core
     ctx.globalAlpha = onScreen ? 1 : 0.55;
@@ -187,10 +191,12 @@ function paint(ctx: CanvasRenderingContext2D, pxSize: number, opts: PainterOpts)
     ctx.globalAlpha = 1;
   }
 
-  // player — center dot with facing arrow (heavier in big mode)
+  // player — center dot with facing arrow (heavier in big mode). Kept small +
+  // green ("you").
+  const playerDot = Math.max(1.6, markerSize - 1.2);
   ctx.fillStyle = '#c0ffd6';
   ctx.beginPath();
-  ctx.arc(cx, cy, markerSize - 0.5, 0, Math.PI * 2);
+  ctx.arc(cx, cy, playerDot, 0, Math.PI * 2);
   ctx.fill();
   const ang = tick.facing;
   const tipLen = opts.big ? 14 : 9;
