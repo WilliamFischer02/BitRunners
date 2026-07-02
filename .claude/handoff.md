@@ -14,6 +14,13 @@ unsafe). `gh` still unauthed → no PRs opened; same compare URL as below.
 | Scraper tree overhaul: dedup auto-scrape → 4-tier autotap, Supercomputer, Corporate Greed glow, bots on/off, aura-scaled prestige | `db1cca4` | 0125 |
 | circuit_patch 10 escalating levels + per-player progress + stopwatch (fable) | `260cb7e` | 0126 |
 | Maze wider alleys + visible closing storm + countdown; landmark beacons + player-feet arrow + glitch-switch visibility; minimap colors/size/vault-label/fullscreen-joystick; freq_lock 3-corner tesseract + waveform blips | `3e5a850` | 0127 |
+| Feet-arrow aim (was pointing back at the player) + fullscreen minimap square (was stretched) | `03b7692` | 0128 |
+
+**⚠️ `main` has advanced:** the owner merged mega-batch 2 via **PR #122**, so
+`main` now holds the round-1 work. All round-2 fixes (devlogs 0123–0128) sit on
+`claude/mega-batch-2026-07-01` on top of that — open a **fresh PR** from the
+branch for round-2 (GitHub shows only the new commits). The env was briefly on
+`main`; switched back to the branch to continue — nothing lost.
 
 **Owner actions (unchanged + note):** still open the PR (compare URL below);
 still apply migration `0017_minigame_leaderboards.sql` (leaderboards). Round-2
