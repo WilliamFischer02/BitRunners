@@ -2185,6 +2185,100 @@ dialog.panel::backdrop {
   }
 }
 
+/* ──────────── leaderboards (mega-batch 2, owner-requested) ──────────── */
+.lb {
+  width: 100%;
+  margin: 4px 0 2px;
+  text-align: left;
+}
+.lb-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.lb-title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #b07cff;
+}
+.lb-you {
+  font-size: 10px;
+  color: #a8f0c0;
+}
+.lb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+.lb-row {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 6px;
+  font-size: 11.5px;
+  background: rgba(20, 26, 32, 0.5);
+  border-radius: 3px;
+}
+.lb-rank {
+  color: #6e7a86;
+  text-align: right;
+}
+.lb-name {
+  color: #d4ecdd;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lb-val {
+  color: #ffd860;
+  font-variant-numeric: tabular-nums;
+}
+.lb-empty {
+  font-size: 10.5px;
+  color: #6e7a86;
+  line-height: 1.5;
+  padding: 6px 4px;
+}
+.scrape-lb-row {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0 2px;
+}
+.lb-modal {
+  width: min(420px, 100%);
+}
+.lb-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.lb-tab {
+  appearance: none;
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  background: rgba(20, 26, 32, 0.6);
+  color: #9db8ab;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.lb-tab.is-on {
+  border-color: #b07cff;
+  color: #d6b8ff;
+  background: rgba(120, 80, 200, 0.16);
+}
+
 /* ──────────── tether_chat (PR 83) ──────────── */
 .tether-tos-row {
   display: flex;

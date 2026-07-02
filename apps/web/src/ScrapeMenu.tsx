@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { EmoticonSubmission } from './EmoticonSubmission.js';
+import { LeaderboardModal } from './Leaderboard.js';
 import { ThemeView } from './ThemeShop.js';
 import { nudgeAccount } from './account-nudge.js';
 import {
@@ -663,6 +664,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [gain, setGain] = useState<{ n: number; k: number } | null>(null);
   const [view, setView] = useState<View>(initialView);
   const [closing, setClosing] = useState(false);
+  const [lbOpen, setLbOpen] = useState(false);
   const timers = useRef<number[]>([]);
   const holdTimer = useRef<number | null>(null);
 
@@ -873,6 +875,11 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
             </section>
 
             <DataHud eco={eco} auto={autoOn} />
+            <div className="scrape-lb-row">
+              <button type="button" className="panel-action" onClick={() => setLbOpen(true)}>
+                [ leaderboards ]
+              </button>
+            </div>
 
             <section className="panel-section">
               <div className="panel-section-title">$ tabulate</div>
@@ -1020,6 +1027,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
           press [esc] or click outside to close · progress saved on this device
         </footer>
       </dialog>
+      {lbOpen && <LeaderboardModal onClose={() => setLbOpen(false)} />}
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LeaderboardList } from './Leaderboard.js';
 import { nudgeAccount } from './account-nudge.js';
 import { addCredits } from './economy.js';
+import { submitMinigameScore } from './leaderboard-api.js';
 
 // core_run — shrinking-maze minigame overlay (mega-batch 2 · 4.5). The maze
 // itself lives in the three.js scene (scene.ts maze mode); this component is a
@@ -20,6 +22,7 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
   const [timeLeft, setTimeLeft] = useState(90);
   const [rings, setRings] = useState(0);
   const [reward, setReward] = useState(0);
+  const [lbScore, setLbScore] = useState(0);
   const phaseRef = useRef<Phase>('ready');
   phaseRef.current = phase;
 
@@ -50,6 +53,9 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
       addCredits(amount);
       nudgeAccount('minigame');
       setReward(amount);
+      // Leaderboard: seconds remaining is the score (more = better). Best-effort.
+      setLbScore(Math.max(0, secondsLeft));
+      void submitMinigameScore('core_run', Math.max(0, secondsLeft));
       setPhase('won');
     };
     const onFail = (): void => {
@@ -165,6 +171,7 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
               earned <span className="corerun-credits">{reward}</span> credits
               {reward >= REWARD_CAP ? ' (max)' : ''}
             </div>
+            <LeaderboardList game="core_run" myValue={lbScore} />
             <div className="corerun-row">
               <button type="button" className="corerun-btn corerun-btn--go" onClick={enter}>
                 [ again ]
@@ -179,6 +186,7 @@ export function CoreRun({ onClose }: { onClose(): void }): JSX.Element {
           <>
             <div className="corerun-title corerun-title--fail">run lost</div>
             <div className="corerun-body">the data caught up with you. no reward this time.</div>
+            <LeaderboardList game="core_run" />
             <div className="corerun-row">
               <button type="button" className="corerun-btn corerun-btn--go" onClick={enter}>
                 [ again ]

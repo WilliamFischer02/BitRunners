@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LeaderboardList } from './Leaderboard.js';
 import { nudgeAccount } from './account-nudge.js';
 import {
   type Board,
@@ -15,6 +16,7 @@ import {
   setCell,
 } from './circuit-core.js';
 import { addCredits, hasClearedCircuit, markCircuitCleared } from './economy.js';
+import { submitMinigameScore } from './leaderboard-api.js';
 
 // circuit_patch — circuit-routing puzzle (mega-batch 2 · 4.4). Route POWER
 // (thick amber) and DATA (thin cyan) from their border inlets to the opposite
@@ -28,6 +30,9 @@ const PULSE_MS = 900; // "circuit live" flourish before the reward screen
 
 const REWARD_FIRST = 100;
 const REWARD_REPEAT = 20;
+// Leaderboard score = seconds under par (faster solve → higher). Server clamps
+// to 300 (see migration 0017).
+const CIRCUIT_PAR_S = 300;
 
 const PALETTE_ORDER: readonly PieceKind[] = [
   'power_straight',
@@ -95,10 +100,12 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
   const [selected, setSelected] = useState<PieceKind | null>(null);
   const [phase, setPhase] = useState<'play' | 'live' | 'won'>('play');
   const [reward, setReward] = useState(0);
+  const [lbScore, setLbScore] = useState(0);
 
   const pressTimer = useRef<number | null>(null);
   const longFired = useRef(false);
   const liveTimer = useRef<number | null>(null);
+  const startRef = useRef(performance.now());
 
   useEffect(
     () => () => {
@@ -115,6 +122,11 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
     markCircuitCleared();
     nudgeAccount('minigame');
     setReward(amount);
+    // Leaderboard: seconds under par (faster = higher). Best-effort submit.
+    const solveS = (performance.now() - startRef.current) / 1000;
+    const score = Math.max(0, Math.round(CIRCUIT_PAR_S - solveS));
+    setLbScore(score);
+    void submitMinigameScore('circuit_patch', score);
     setPhase('live');
     const reveal = (): void => setPhase('won');
     if (REDUCED_MOTION) reveal();
@@ -195,6 +207,7 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
     setRemaining({ ...level.inventory });
     setSelected(null);
     setReward(0);
+    startRef.current = performance.now();
     setPhase('play');
   }, [level]);
 
@@ -317,6 +330,7 @@ export function CircuitPatch({ onClose }: { onClose(): void }): JSX.Element {
               both flows locked · earned <span className="circ-credits">{reward}</span> credits
               {reward === REWARD_FIRST ? ' (first clear!)' : ''}
             </div>
+            <LeaderboardList game="circuit_patch" myValue={lbScore} />
             <div className="circ-overlay-row">
               <button type="button" className="circ-btn" onClick={restart}>
                 [ again ]
