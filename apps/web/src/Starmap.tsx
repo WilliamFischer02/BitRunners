@@ -1,3 +1,4 @@
+import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
 import { useEffect, useRef, useState } from 'react';
 import {
   MINIMAP_ANCHORS,
@@ -16,9 +17,12 @@ import { getActiveCheckpointAnchor, subscribeMissionChanges } from './missions.j
 //   • Tap-to-expand: opens a 2x larger overlay where details + labels are
 //     comfortably readable on a phone screen.
 
-const MAP_RANGE = 22; // world units of half-extent the minimap covers
-const PLATFORM_HALF = 19;
-const PLATFORM_SIZE = PLATFORM_HALF * 2;
+// World units of half-extent the minimap covers. Bumped 22 -> 34 alongside the
+// mega-batch-2 map doubling (PLATFORM_HALF 19 -> 38) so the minimap keeps a
+// readable density at the new scale (taste — tune if it reads too sparse/dense).
+// PLATFORM_HALF / PLATFORM_SIZE now import from @bitrunners/shared so this
+// component can't drift from the world size again.
+const MAP_RANGE = 34;
 
 // Wrap delta into (-PLATFORM_HALF, +PLATFORM_HALF] — same logic as scene.ts.
 function wrapDelta(v: number): number {
@@ -213,6 +217,27 @@ export function Starmap(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const dirtyRef = useRef(true);
   const [expanded, setExpanded] = useState(false);
+  // Hidden during core_run maze mode (4.5) so the minimap can't leak the layout.
+  const [mazeHidden, setMazeHidden] = useState(false);
+
+  useEffect(() => {
+    const onEnter = (): void => {
+      setMazeHidden(true);
+      setExpanded(false);
+    };
+    const onExit = (): void => setMazeHidden(false);
+    // maze mode (4.5) and the vault's void room (4.6) both hide the minimap.
+    window.addEventListener('bitrunners:maze-enter', onEnter);
+    window.addEventListener('bitrunners:maze-exit', onExit);
+    window.addEventListener('bitrunners:void-enter', onEnter);
+    window.addEventListener('bitrunners:void-exit', onExit);
+    return () => {
+      window.removeEventListener('bitrunners:maze-enter', onEnter);
+      window.removeEventListener('bitrunners:maze-exit', onExit);
+      window.removeEventListener('bitrunners:void-enter', onEnter);
+      window.removeEventListener('bitrunners:void-exit', onExit);
+    };
+  }, []);
 
   useEffect(
     () =>
@@ -271,12 +296,13 @@ export function Starmap(): JSX.Element {
       <button
         type="button"
         className="starmap"
+        style={mazeHidden ? { display: 'none' } : undefined}
         aria-label="spectrum navigator — tap to expand"
         onClick={() => setExpanded(true)}
       >
         <canvas ref={canvasRef} className="starmap-canvas" />
       </button>
-      {expanded && <StarmapExpanded onClose={() => setExpanded(false)} />}
+      {expanded && !mazeHidden && <StarmapExpanded onClose={() => setExpanded(false)} />}
     </>
   );
 }

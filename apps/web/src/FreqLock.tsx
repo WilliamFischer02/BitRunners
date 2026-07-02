@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LeaderboardList } from './Leaderboard.js';
+import { nudgeAccount } from './account-nudge.js';
 import { addCredits } from './economy.js';
+import { submitMinigameScore } from './leaderboard-api.js';
 
 // freq_lock — 3-track signal disturbance minigame (devlog 0109 rewrite).
 //
@@ -71,7 +74,13 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const finish = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
     const credits = Math.min(CREDITS_CAP, Math.floor(scoreRef.current * CREDITS_PER_POINT));
-    if (credits > 0) addCredits(credits);
+    if (credits > 0) {
+      addCredits(credits);
+      // First minigame credits as a guest → nudge to make an account (4.3).
+      nudgeAccount('minigame');
+    }
+    // Leaderboard: submit the raw point score (server clamps). Best-effort.
+    void submitMinigameScore('freq_lock', scoreRef.current);
     setPhase('done');
   }, []);
 
@@ -209,6 +218,7 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
               earned <span className="freqlock-credits">{credits}</span> credits
               {credits >= CREDITS_CAP ? ' (max)' : ''}
             </div>
+            <LeaderboardList game="freq_lock" myValue={score} />
             <div className="freqlock-overlay-row">
               <button type="button" className="freqlock-btn" onClick={start}>
                 [ again ]

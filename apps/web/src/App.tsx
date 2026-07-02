@@ -1,4 +1,5 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { AccountNudge } from './AccountNudge.js';
 import { AdminConsole } from './AdminConsole.js';
 import { AdminDialogue } from './AdminDialogue.js';
 import { AuthCallback } from './AuthCallback.js';
@@ -8,6 +9,7 @@ import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
 import { CreditsHud } from './CreditsHud.js';
 import { EmoteWheel } from './EmoteWheel.js';
+import { Landmarks } from './Landmarks.js';
 import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
@@ -19,12 +21,17 @@ import { Starmap } from './Starmap.js';
 import { TetherChat } from './TetherChat.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
+import { startAccountNudge } from './account-nudge.js';
 import { startBadgeMonitor } from './badge-notifications.js';
 import { startLevel } from './level.js';
 import { startMissionServerLoad } from './mission-server-load.js';
 import { startMissionSync } from './mission-sync.js';
 import { startIdentity } from './profile.js';
-import { FREQ_LOCK_OPEN_EVENT } from './protocols-registry.js';
+import {
+  CIRCUIT_PATCH_OPEN_EVENT,
+  CORE_RUN_OPEN_EVENT,
+  FREQ_LOCK_OPEN_EVENT,
+} from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
@@ -37,6 +44,9 @@ startBadgeMonitor();
 startVisibilityWatcher();
 startSignupGrant();
 startLevel();
+// Account-needed nudge: watches auth so nudgeAccount() knows guest vs signed-in
+// and wires the badge-earned trigger. Idempotent.
+startAccountNudge();
 startMissionSync();
 // Reads server-side mission progress on sign-in and rebuilds local state
 // from it (server is the source of truth — must start after mission-sync so
@@ -49,6 +59,10 @@ const BoardsLanding = lazy(() =>
 );
 // freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
 const FreqLock = lazy(() => import('./FreqLock.js'));
+// circuit_patch routing minigame — lazy chunk (mega-batch 2 · 4.4).
+const CircuitPatch = lazy(() => import('./CircuitPatch.js'));
+// core_run shrinking-maze minigame overlay — lazy chunk (mega-batch 2 · 4.5).
+const CoreRun = lazy(() => import('./CoreRun.js'));
 
 const BOARD_HASH_PREFIX = '#board/';
 const BOARD_HOSTNAME = 'write.bitrunners.app';
@@ -188,12 +202,26 @@ function Game({ className }: GameProps): JSX.Element {
   const [sammInRange, setSammInRange] = useState(false);
   const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
   const [freqLockOpen, setFreqLockOpen] = useState(false);
+  const [circuitOpen, setCircuitOpen] = useState(false);
+  const [coreRunOpen, setCoreRunOpen] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
     const onOpen = (): void => setFreqLockOpen(true);
     window.addEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (): void => setCircuitOpen(true);
+    window.addEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (): void => setCoreRunOpen(true);
+    window.addEventListener(CORE_RUN_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(CORE_RUN_OPEN_EVENT, onOpen);
   }, []);
 
   useEffect(() => {
@@ -250,7 +278,19 @@ function Game({ className }: GameProps): JSX.Element {
           <FreqLock onClose={() => setFreqLockOpen(false)} />
         </Suspense>
       )}
+      {circuitOpen && (
+        <Suspense fallback={null}>
+          <CircuitPatch onClose={() => setCircuitOpen(false)} />
+        </Suspense>
+      )}
+      {coreRunOpen && (
+        <Suspense fallback={null}>
+          <CoreRun onClose={() => setCoreRunOpen(false)} />
+        </Suspense>
+      )}
       <Samm inRange={sammInRange} />
+      <AccountNudge />
+      <Landmarks />
       <Tutorial />
       <Starmap />
       <AdminConsole />

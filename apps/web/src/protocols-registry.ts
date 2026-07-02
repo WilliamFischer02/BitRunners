@@ -9,9 +9,18 @@
 //
 // Phase 3 will add `tether_hop`; for now we ship Scrape and Objectives.
 
-export type ProtocolKey = 'scrape' | 'objectives' | 'shop' | 'tether_chat' | 'freq_lock';
+export type ProtocolKey =
+  | 'scrape'
+  | 'objectives'
+  | 'shop'
+  | 'tether_chat'
+  | 'freq_lock'
+  | 'circuit_patch'
+  | 'core_run';
 
 export const FREQ_LOCK_OPEN_EVENT = 'bitrunners:open-freq-lock';
+export const CIRCUIT_PATCH_OPEN_EVENT = 'bitrunners:open-circuit-patch';
+export const CORE_RUN_OPEN_EVENT = 'bitrunners:open-core-run';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -87,6 +96,22 @@ function launchFreqLock(): void {
   }
 }
 
+function launchCircuitPatch(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(CIRCUIT_PATCH_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
+function launchCoreRun(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(CORE_RUN_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
@@ -132,5 +157,23 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'neutral',
     available: true,
     launch: launchFreqLock,
+  },
+  {
+    key: 'circuit_patch',
+    label: 'circuit_patch',
+    flavor: 'route power + data · earn credits',
+    glyph: '⌗',
+    tint: 'neutral',
+    available: true,
+    launch: launchCircuitPatch,
+  },
+  {
+    key: 'core_run',
+    label: 'core_run',
+    flavor: 'reach the core · beat the dissolve',
+    glyph: '⍟',
+    tint: 'br',
+    available: true,
+    launch: launchCoreRun,
   },
 ];

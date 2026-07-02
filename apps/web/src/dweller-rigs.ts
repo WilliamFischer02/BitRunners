@@ -176,12 +176,113 @@ function buildSpirit(): Group {
   return g;
 }
 
+// ── 4V4 — a small, squat "dwarf-robot" (mega-batch 2, owner-authored). Amber
+// shell, single big cyan eye, stubby treads. Reads as short + friendly.
+function build4V4(): Group {
+  const g = new Group();
+  const shell = new MeshStandardMaterial({
+    color: 0xc0a040,
+    roughness: 0.5,
+    metalness: 0.6,
+    emissive: 0x3a2e0a,
+    emissiveIntensity: 0.5,
+  });
+  const dark = new MeshStandardMaterial({ color: 0x3a3320, roughness: 0.7, metalness: 0.4 });
+  const eyeMat = new MeshStandardMaterial({
+    color: 0x40a0a0,
+    roughness: 0.3,
+    metalness: 0.5,
+    emissive: 0x6cf0ff,
+    emissiveIntensity: 1.8,
+  });
+  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), shell);
+  head.position.y = 0.95;
+  head.scale.set(1, 0.8, 1);
+  g.add(head);
+  const eye = new MeshClass(new SphereGeometry(0.14, 10, 8), eyeMat);
+  eye.position.set(0, 0.98, 0.28);
+  g.add(eye);
+  const antenna = new MeshClass(new BoxGeometry(0.04, 0.16, 0.04), dark);
+  antenna.position.set(0, 1.22, 0);
+  g.add(antenna);
+  const bulb = new MeshClass(new SphereGeometry(0.05, 8, 6), eyeMat);
+  bulb.position.set(0, 1.32, 0);
+  g.add(bulb);
+  const body = new MeshClass(new BoxGeometry(0.8, 0.5, 0.6), shell);
+  body.position.y = 0.5;
+  g.add(body);
+  const belt = new MeshClass(new BoxGeometry(0.84, 0.1, 0.64), dark);
+  belt.position.y = 0.28;
+  g.add(belt);
+  const treadL = new MeshClass(new BoxGeometry(0.3, 0.2, 0.7), dark);
+  treadL.position.set(-0.26, 0.1, 0);
+  g.add(treadL);
+  const treadR = new MeshClass(new BoxGeometry(0.3, 0.2, 0.7), dark);
+  treadR.position.set(0.26, 0.1, 0);
+  g.add(treadR);
+  return g;
+}
+
+// ── JJJJ — a very tall, skinny humanoid (mega-batch 2, owner-authored). Small
+// head high up, long thin torso + limbs. Reads as lanky + gangly.
+function buildJJJJ(): Group {
+  const g = new Group();
+  const skin = new MeshStandardMaterial({
+    color: 0x8a7a5a,
+    roughness: 0.8,
+    metalness: 0.05,
+    emissive: 0x141008,
+    emissiveIntensity: 0.3,
+  });
+  const cloth = new MeshStandardMaterial({ color: 0x2a3a4a, roughness: 0.85, metalness: 0.1 });
+  const eyeMat = new MeshStandardMaterial({
+    color: 0x50a050,
+    roughness: 0.4,
+    emissive: 0x8cf08c,
+    emissiveIntensity: 1.2,
+  });
+  const head = new MeshClass(new BoxGeometry(0.26, 0.34, 0.26), skin);
+  head.position.y = 2.05;
+  g.add(head);
+  const eyeL = new MeshClass(new BoxGeometry(0.05, 0.05, 0.03), eyeMat);
+  eyeL.position.set(-0.06, 2.08, 0.14);
+  g.add(eyeL);
+  const eyeR = new MeshClass(new BoxGeometry(0.05, 0.05, 0.03), eyeMat);
+  eyeR.position.set(0.06, 2.08, 0.14);
+  g.add(eyeR);
+  const neck = new MeshClass(new BoxGeometry(0.1, 0.3, 0.1), skin);
+  neck.position.y = 1.78;
+  g.add(neck);
+  const torso = new MeshClass(new BoxGeometry(0.34, 1.0, 0.26), cloth);
+  torso.position.y = 1.25;
+  g.add(torso);
+  const armL = new MeshClass(new BoxGeometry(0.08, 0.95, 0.08), skin);
+  armL.position.set(-0.26, 1.2, 0);
+  armL.rotation.z = 0.08;
+  g.add(armL);
+  const armR = new MeshClass(new BoxGeometry(0.08, 0.95, 0.08), skin);
+  armR.position.set(0.26, 1.2, 0);
+  armR.rotation.z = -0.08;
+  g.add(armR);
+  const legL = new MeshClass(new BoxGeometry(0.1, 0.8, 0.1), cloth);
+  legL.position.set(-0.1, 0.4, 0);
+  g.add(legL);
+  const legR = new MeshClass(new BoxGeometry(0.1, 0.8, 0.1), cloth);
+  legR.position.set(0.1, 0.4, 0);
+  g.add(legR);
+  return g;
+}
+
 export function buildDweller(kind: string): Group {
   switch (kind) {
     case 'dweller.husk':
       return buildHusk();
     case 'dweller.spirit':
       return buildSpirit();
+    case '4V4':
+      return build4V4();
+    case 'JJJJ':
+      return buildJJJJ();
     default:
       return buildRobot();
   }

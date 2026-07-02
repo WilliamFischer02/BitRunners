@@ -73,7 +73,21 @@ const BOT_LINES: Record<string, readonly string[]> = {
     'i recall light..',
     'the space sings',
   ],
+  // Named NPCs (mega-batch 2, owner-authored dialogue). These replies are
+  // curated server-authored strings (exempt from the no-free-text rule, like
+  // Admin dialogue). JJJJ's second line exceeds TETHER_MAX_CHARS on purpose —
+  // botSay sends bot lines without the incoming-body length gate since they are
+  // trusted constants, not user input.
+  '4V4': ['glenderskygleen'],
+  JJJJ: ["i'm hungry", "i'm jimmy john jone james, ya'll!"],
 };
+
+// Named, hand-authored NPCs with a fixed identity + shape (client renders them
+// via buildDweller(className)). They wander + are tetherable like the dwellers.
+const NAMED_NPCS: ReadonlyArray<{ id: string; className: string }> = [
+  { id: 'npc:4v4', className: '4V4' },
+  { id: 'npc:jjjj', className: 'JJJJ' },
+];
 const BOT_ACCEPT_MIN_MS = 1500;
 const BOT_ACCEPT_MAX_MS = 3000;
 const BOT_SAY_MIN_MS = 8000;
@@ -156,6 +170,9 @@ export class SphereRoom extends Room<SphereState> {
   // npcId → its pending auto-accept / active chatter timer (one per NPC, since
   // an NPC tethers at most one peer at a time). Cleared on tether end + dispose.
   private botTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  // Per-NPC round-robin cursor into its BOT_LINES pool, so multi-line NPCs
+  // (e.g. JJJJ) alternate their replies in order instead of repeating randomly.
+  private botLineIdx = new Map<string, number>();
 
   override onCreate(_options: unknown): void {
     this.state = new SphereState();
@@ -462,6 +479,7 @@ export class SphereRoom extends Room<SphereState> {
     this.pendingFrom.delete(requesterId);
     this.activeTethers.set(npcId, requesterId);
     this.activeTethers.set(requesterId, npcId);
+    this.botLineIdx.set(npcId, 0); // fresh conversation → start at the first line
     const npc = this.state.players.get(npcId);
     requester.send('tether-accepted', {
       from: npcId,
@@ -484,9 +502,16 @@ export class SphereRoom extends Room<SphereState> {
     }
     const npc = this.state.players.get(npcId);
     const pool = botLinesFor(npc?.className ?? 'dweller.robot');
-    const body = pool[Math.floor(Math.random() * pool.length)];
-    if (body && isValidTetherBody(body)) {
-      requester.send('tether-message', { from: npcId, body, isEmote: false });
+    // Round-robin so multi-line NPCs alternate in order. Bot lines are trusted
+    // server-authored constants, so they bypass the incoming-body length gate
+    // (isValidTetherBody) — that gate is for free-text client input only.
+    if (pool.length > 0) {
+      const idx = this.botLineIdx.get(npcId) ?? 0;
+      const body = pool[idx % pool.length];
+      this.botLineIdx.set(npcId, idx + 1);
+      if (body) {
+        requester.send('tether-message', { from: npcId, body, isEmote: false });
+      }
     }
     this.scheduleBot(npcId, randMs(BOT_SAY_MIN_MS, BOT_SAY_MAX_MS), () =>
       this.botSay(npcId, requesterId),
@@ -627,6 +652,21 @@ export class SphereRoom extends Room<SphereState> {
         tx: randCoord(),
         tz: randCoord(),
         emoteAt: Date.now() + 4000 + Math.random() * 8000,
+      });
+    }
+    // Named NPCs (4V4, JJJJ) — fixed identity + shape; wander + tetherable.
+    for (const named of NAMED_NPCS) {
+      const p = new PlayerState();
+      p.id = named.id;
+      p.className = named.className;
+      p.x = randCoord();
+      p.z = randCoord();
+      this.state.players.set(named.id, p);
+      this.npcs.push({
+        id: named.id,
+        tx: randCoord(),
+        tz: randCoord(),
+        emoteAt: Date.now() + 5000 + Math.random() * 8000,
       });
     }
   }

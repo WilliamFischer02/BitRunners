@@ -5,6 +5,43 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-07-01 — core_run maze difficulty band uses a room-edge metric [30,70], not the brief's [55,85] (devlog 0118)
+
+**Decision:** The mega-batch-2 brief suggested normalising `core_run` mazes to a
+shortest entrance→center path of **[55,85] cells**, assuming a wall-inclusive
+(2n+1) grid representation. `maze-core.ts` instead models the maze as a 21×21
+grid of **rooms** with per-edge walls and measures the path in **room-to-room
+edges** — a different, ~half-scale metric. Measured raw distribution: median
+~52. Shipped band = **[30,70]** (`BAND_MIN`/`BAND_MAX`), which accepts ~100 % of
+seeds within 24 reject-sample attempts (measured over 500 seeds) while still
+rejecting the trivial-short and marathon tails (real difficulty normalisation).
+
+**Why it matters:** the two numbers look contradictory but describe the same
+intent under different units. Recorded so a future session doesn't "fix" the
+band back to [55,85] against this metric (which would reject almost everything).
+Tune `BAND_MIN`/`BAND_MAX`/`MAX_ATTEMPTS` together in `maze-core.ts`.
+
+**Also (maze mode isolation):** the maze runs *inside* the existing scene — no
+second WebGL context. Every scene-tick change is guarded behind `mazeActive`,
+so the multiplayer/render hot path is unchanged when not in a maze; outbound
+network moves are frozen in-maze so the avatar parks in the shared world.
+
+---
+
+## 2026-07-01 — Minigame reward flags ride the economy blob; leaderboards need a migration (owner-authored)
+
+**Decision:** `circuit_patch`'s first-clear reward gate is an additive
+`circuitFirstClear` boolean on the economy blob (defaulted in `normalize()`),
+consistent with the emote-loadout precedent — no migration. `core_run` awards
+per-run with no persisted field. **Cross-account leaderboards (owner request,
+task a) cannot ride the blob** — RLS forbids a client reading other users'
+rows, so ranking requires SECURITY DEFINER RPCs, i.e. a migration. The owner
+explicitly authorised authoring migrations for this. The migration *file* is
+authored in-repo (`0017_*`) but NOT applied to prod — the owner's Supabase
+agent applies it; the client degrades gracefully (empty leaderboard) until then.
+
+---
+
 ## 2026-06-16 — Emote loadout rides the account-synced economy blob; no profiles column / 0013 migration (devlog 0100)
 
 **Decision:** Mega-batch task 4.12 specified persisting the emote loadout via a new `profiles.equipped_emotes` JSONB column + RPC (`0013_emote_loadout.sql`). Instead, `ownedEmotes` (premium ids) and `emoteLoadout` (4 slots) were added as **additive fields on the device-local economy blob** (`economy.ts`), exactly like clothing `owned`/`equipped`. That blob already syncs per-account via `player_economy` (migration 0002, `economy-sync.ts`), so the loadout follows the account **with no new migration and no owner SQL step**.

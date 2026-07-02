@@ -34,6 +34,7 @@ Plot beats that **must not surface in player-facing text** until released by the
 | `014-emoticron-dictionary.md` | ~100-word dictionary for emoticron + username composition |
 | `015-chat-policy.md` | Proximity DM with moderation (canon reversal of no-free-text rule) |
 | `016-company-npc.md` | The Company NPC: suited patrolling humanoid + kiosk |
+| `017-4v4-and-jjjj.md` | Two dweller NPCs: 4V4 (dwarf-robot) + JJJJ (tall/skinny), tether replies |
 | `_sealed/web-pullers.md` | ⚠️ SEALED future-event plot beat |
 
 ## Glossary (canonical names)

@@ -9,6 +9,7 @@
 //
 // Idempotent. Started once from App.tsx alongside startIdentity / etc.
 
+import { nudgeAccount } from './account-nudge.js';
 import {
   advanceActiveIdx,
   getProgress,
@@ -66,6 +67,8 @@ export function startMissionSync(): void {
       // source of truth for the award). Here we only mirror it locally,
       // recording the faction so the objectives panel can label it later.
       markCompleted(key, snap.factionChoice ?? undefined);
+      // First objective completed as a guest → nudge to make an account (4.3).
+      nudgeAccount('mission');
       // Queue the next chain mission as the new active one (if any
       // remain). Drops to null when the runner has cleared the chain.
       const progress = getProgress();

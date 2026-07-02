@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { EmoticonSubmission } from './EmoticonSubmission.js';
+import { LeaderboardModal } from './Leaderboard.js';
 import { ThemeView } from './ThemeShop.js';
+import { nudgeAccount } from './account-nudge.js';
 import {
   BOT_TICK_MS,
   CREDITS_PER_TOKEN,
@@ -227,7 +229,7 @@ function ShopRow({ item }: { item: ShopItem }): JSX.Element {
         className={disabled ? 'shop-buy' : 'shop-buy is-ready'}
         disabled={disabled}
         onClick={() => {
-          buy(item);
+          if (buy(item)) nudgeAccount('shop');
         }}
       >
         {label}
@@ -273,7 +275,7 @@ function OutfitsTab({ eco }: { eco: EconomyState }): JSX.Element {
             className={eco.credits >= CREDITS_PER_TOKEN ? 'scrape-mini is-ready' : 'scrape-mini'}
             disabled={eco.credits < CREDITS_PER_TOKEN}
             onClick={() => {
-              exchangeCreditsForTokens(1);
+              if (exchangeCreditsForTokens(1).ok) nudgeAccount('shop');
             }}
           >
             [ +1 ]
@@ -285,7 +287,7 @@ function OutfitsTab({ eco }: { eco: EconomyState }): JSX.Element {
             }
             disabled={eco.credits < CREDITS_PER_TOKEN * 5}
             onClick={() => {
-              exchangeCreditsForTokens(5);
+              if (exchangeCreditsForTokens(5).ok) nudgeAccount('shop');
             }}
           >
             [ +5 ]
@@ -335,7 +337,7 @@ function EmotesTab({ eco }: { eco: EconomyState }): JSX.Element {
                 className={canBuy ? 'shop-buy is-ready' : 'shop-buy'}
                 disabled={!canBuy}
                 onClick={() => {
-                  purchaseEmote(e.id, e.price);
+                  if (purchaseEmote(e.id, e.price).ok) nudgeAccount('shop');
                 }}
               >
                 {owned ? '[ owned ]' : `[ ${e.price} cr ]`}
@@ -489,6 +491,7 @@ function EmoteSlotsSection(): JSX.Element {
               onClick={() => {
                 setEmoteSlot(picker, null);
                 setPicker(null);
+                nudgeAccount('emote');
               }}
             >
               <span className="emote-slot-glyph">·</span>
@@ -505,6 +508,7 @@ function EmoteSlotsSection(): JSX.Element {
                   onClick={() => {
                     setEmoteSlot(picker, id);
                     setPicker(null);
+                    nudgeAccount('emote');
                   }}
                 >
                   <span className="emote-slot-glyph">{def.glyph}</span>
@@ -660,6 +664,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [gain, setGain] = useState<{ n: number; k: number } | null>(null);
   const [view, setView] = useState<View>(initialView);
   const [closing, setClosing] = useState(false);
+  const [lbOpen, setLbOpen] = useState(false);
   const timers = useRef<number[]>([]);
   const holdTimer = useRef<number | null>(null);
 
@@ -870,6 +875,11 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
             </section>
 
             <DataHud eco={eco} auto={autoOn} />
+            <div className="scrape-lb-row">
+              <button type="button" className="panel-action" onClick={() => setLbOpen(true)}>
+                [ leaderboards ]
+              </button>
+            </div>
 
             <section className="panel-section">
               <div className="panel-section-title">$ tabulate</div>
@@ -1017,6 +1027,7 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
           press [esc] or click outside to close · progress saved on this device
         </footer>
       </dialog>
+      {lbOpen && <LeaderboardModal onClose={() => setLbOpen(false)} />}
     </div>
   );
 }

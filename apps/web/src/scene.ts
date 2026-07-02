@@ -50,6 +50,8 @@ import { type BoxCollider, slideMoveInto } from './colliders.js';
 import { buildDweller } from './dweller-rigs.js';
 import { createInput } from './input.js';
 import { getLevel, subscribeLevel } from './level.js';
+import { type MazeGrid, generateMaze } from './maze-core.js';
+import { MazeArena } from './maze-scene.js';
 import { type MinimapRemote, publishMinimapRemotes, publishMinimapTick } from './minimap-state.js';
 import { getProgress as getMissionProgressLocal } from './mission-progress-local.js';
 import {
@@ -111,11 +113,27 @@ const PLAYER_RADIUS = 0.35;
 // the platform but tight enough that they don't drag the camera over the seam.
 const LOCK_RELEASE_DISTANCE = 14;
 
+// ── mega-batch 2 landmarks (devlog 0120) ────────────────────────────────
+// Coords shared by the meshes (worldTile) + tick logic (proximity/sequence).
+const GLITCH_SWITCH = { x: -22, z: 24 };
+const VAULT = { x: 26, z: -18, half: 3.5 };
+// Where the runner returns to after leaving the void — just south of the door.
+const VAULT_RETURN = { x: 26, z: -13 };
+// The four pressure plates, in the order they must be stepped (1→2→3→4).
+const VAULT_PLATES: ReadonlyArray<{ x: number; z: number; pips: number }> = [
+  { x: VAULT.x - 1.8, z: VAULT.z - 1.8, pips: 1 },
+  { x: VAULT.x + 1.8, z: VAULT.z - 1.8, pips: 2 },
+  { x: VAULT.x + 1.8, z: VAULT.z + 1.2, pips: 3 },
+  { x: VAULT.x - 1.8, z: VAULT.z + 1.2, pips: 4 },
+];
+const PLATE_TRIGGER_DIST = 0.85;
+
 // Solid colliders the local player slides against. AABBs in canonical world
 // coords; collision is wrap-aware (colliders.ts uses wrapDelta). The four
-// original decoration props get a footprint each, plus six new Phase 3
-// obstacles scattered through the doubled interior. Keep this list in sync
-// with the obstacle meshes added to `worldTile` below.
+// original decoration props get a footprint each, plus Phase 3 obstacles, the
+// mega-batch-2 interior fill, and the two new landmarks (glitch switch + vault
+// walls, door gap left open). Keep this list in sync with the meshes in
+// `worldTile` below.
 const COLLIDERS: readonly BoxCollider[] = [
   // existing decorations
   { x: -6.5, z: -6.5, hx: 0.8, hz: 0.3 }, // port
@@ -130,6 +148,25 @@ const COLLIDERS: readonly BoxCollider[] = [
   { x: -10, z: -12, hx: 0.6, hz: 0.6 }, // crate cluster
   { x: 0, z: 14, hx: 1.6, hz: 0.3 }, // wall slab (long X)
   { x: 14, z: 0, hx: 0.3, hz: 1.2 }, // standing slab (long Z)
+  // mega-batch 2 (devlog 0119): fill the doubled interior (PLATFORM_HALF 38).
+  // All comfortably off the seam (|coord| <= 30 < 34) so wrap-collision corner
+  // cases don't matter. Keep in sync with the obstacle meshes below.
+  { x: -24, z: -20, hx: 0.6, hz: 0.6 }, // outer rust pillar
+  { x: 22, z: 18, hx: 0.95, hz: 0.75 }, // outer debris
+  { x: -28, z: 10, hx: 0.4, hz: 0.4 }, // far broken column
+  { x: 26, z: -26, hx: 0.7, hz: 0.7 }, // far crate cluster
+  { x: -6, z: -24, hx: 1.8, hz: 0.25 }, // long wall slab (X)
+  { x: -30, z: -6, hx: 0.25, hz: 1.4 }, // standing slab (Z)
+  { x: 20, z: 30, hx: 0.55, hz: 0.55 }, // pillar NE
+  { x: 8, z: 30, hx: 1.0, hz: 0.6 }, // debris N
+  // Landmark 1 — glitch switch wall (walk-up interactable; blocks passage).
+  { x: GLITCH_SWITCH.x, z: GLITCH_SWITCH.z, hx: 1.4, hz: 0.2 },
+  // Landmark 2 — vault walls (N, E, W solid; S split with a door gap at x=VAULT.x).
+  { x: VAULT.x, z: VAULT.z - VAULT.half, hx: VAULT.half, hz: 0.2 }, // north
+  { x: VAULT.x + VAULT.half, z: VAULT.z, hx: 0.2, hz: VAULT.half }, // east
+  { x: VAULT.x - VAULT.half, z: VAULT.z, hx: 0.2, hz: VAULT.half }, // west
+  { x: VAULT.x - 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-left
+  { x: VAULT.x + 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-right
 ];
 
 // Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
@@ -499,6 +536,105 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   standingSlab.position.set(14, 0.8, 0);
   worldTile.add(standingSlab);
 
+  // mega-batch 2: extra obstacles filling the doubled interior (see COLLIDERS).
+  const rustPillar2 = new MeshClass(new BoxGeometry(1.2, 2.8, 1.2), obstacleRustMat);
+  rustPillar2.position.set(-24, 1.4, -20);
+  worldTile.add(rustPillar2);
+  const debrisStack2 = new MeshClass(new BoxGeometry(1.9, 1.1, 1.5), obstacleStoneMat);
+  debrisStack2.position.set(22, 0.55, 18);
+  worldTile.add(debrisStack2);
+  const brokenColumn2 = new MeshClass(new BoxGeometry(0.8, 3.4, 0.8), obstacleStoneMat);
+  brokenColumn2.position.set(-28, 1.7, 10);
+  brokenColumn2.rotation.z = -0.1;
+  worldTile.add(brokenColumn2);
+  const crateCluster2 = new MeshClass(new BoxGeometry(1.4, 1.0, 1.4), obstacleRustMat);
+  crateCluster2.position.set(26, 0.5, -26);
+  worldTile.add(crateCluster2);
+  const wallSlab2 = new MeshClass(new BoxGeometry(3.6, 1.3, 0.5), obstacleStoneMat);
+  wallSlab2.position.set(-6, 0.65, -24);
+  worldTile.add(wallSlab2);
+  const standingSlab2 = new MeshClass(new BoxGeometry(0.5, 1.8, 2.8), obstacleStoneMat);
+  standingSlab2.position.set(-30, 0.9, -6);
+  worldTile.add(standingSlab2);
+  const rustPillar3 = new MeshClass(new BoxGeometry(1.1, 2.4, 1.1), obstacleRustMat);
+  rustPillar3.position.set(20, 1.2, 30);
+  worldTile.add(rustPillar3);
+  const debrisStack3 = new MeshClass(new BoxGeometry(2.0, 0.9, 1.2), obstacleStoneMat);
+  debrisStack3.position.set(8, 0.45, 30);
+  worldTile.add(debrisStack3);
+
+  // ── Landmark 1: the glitch switch (walk-up interactable) ─────────────────
+  const switchWallMat = new MeshStandardMaterial({
+    color: 0x2a2440,
+    emissive: 0x6a3aff,
+    emissiveIntensity: 0.35,
+    roughness: 0.7,
+  });
+  const switchWall = new MeshClass(new BoxGeometry(2.8, 1.8, 0.4), switchWallMat);
+  switchWall.position.set(GLITCH_SWITCH.x, 0.9, GLITCH_SWITCH.z);
+  worldTile.add(switchWall);
+  const leverMat = new MeshStandardMaterial({
+    color: 0x101018,
+    emissive: 0xb07cff,
+    emissiveIntensity: 1.1,
+    metalness: 0.6,
+    roughness: 0.3,
+  });
+  const lever = new MeshClass(new BoxGeometry(0.14, 0.95, 0.14), leverMat);
+  lever.position.set(GLITCH_SWITCH.x, 1.5, GLITCH_SWITCH.z + 0.3);
+  lever.rotation.x = -0.5;
+  worldTile.add(lever);
+
+  // ── Landmark 2: the pressure-plate vault (roofless: 4 walls + door gap) ──
+  const vaultWallMat = new MeshStandardMaterial({
+    color: 0x3a4048,
+    emissive: 0x141820,
+    emissiveIntensity: 0.3,
+    roughness: 0.85,
+  });
+  const VAULT_WALL_H = 1.6;
+  const addVaultWall = (x: number, z: number, w: number, d: number): void => {
+    const seg = new MeshClass(new BoxGeometry(w, VAULT_WALL_H, d), vaultWallMat);
+    seg.position.set(x, VAULT_WALL_H / 2, z);
+    worldTile.add(seg);
+  };
+  addVaultWall(VAULT.x, VAULT.z - VAULT.half, VAULT.half * 2, 0.4); // north
+  addVaultWall(VAULT.x + VAULT.half, VAULT.z, 0.4, VAULT.half * 2); // east
+  addVaultWall(VAULT.x - VAULT.half, VAULT.z, 0.4, VAULT.half * 2); // west
+  addVaultWall(VAULT.x - 2.25, VAULT.z + VAULT.half, 2.5, 0.4); // south-left
+  addVaultWall(VAULT.x + 2.25, VAULT.z + VAULT.half, 2.5, 0.4); // south-right
+  // Plates: emissive floor tiles + 1..4 pip cubes. Materials kept so the tick
+  // can brighten a plate as the sequence advances (clones share the material).
+  const plateMats: MeshStandardMaterialType[] = [];
+  const plateGeom = new BoxGeometry(1.2, 0.08, 1.2);
+  const pipGeom = new BoxGeometry(0.16, 0.1, 0.16);
+  const pipMat = new MeshStandardMaterial({
+    color: 0x0a0a10,
+    emissive: 0xffd860,
+    emissiveIntensity: 1.0,
+  });
+  for (const plate of VAULT_PLATES) {
+    const mat = new MeshStandardMaterial({
+      color: 0x1a2230,
+      emissive: 0x2a3a50,
+      emissiveIntensity: 0.5,
+      roughness: 0.6,
+    });
+    plateMats.push(mat);
+    const tile = new MeshClass(plateGeom, mat);
+    tile.position.set(plate.x, 0.04, plate.z);
+    worldTile.add(tile);
+    for (let p = 0; p < plate.pips; p++) {
+      const pip = new MeshClass(pipGeom, pipMat);
+      pip.position.set(
+        plate.x - 0.2 + (p % 2) * 0.4,
+        0.12,
+        plate.z - 0.2 + Math.floor(p / 2) * 0.4,
+      );
+      worldTile.add(pip);
+    }
+  }
+
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
     emissive: 0x2a4818,
@@ -558,14 +694,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
   worldTile.add(tufts);
 
+  // Objects hidden while in core_run maze mode (4.5). The 3x3 world tiles +
+  // mission markers + skybox are toggled off so only the maze arena renders.
+  const worldToggle: { visible: boolean }[] = [];
   for (let dx = -1; dx <= 1; dx++) {
     for (let dz = -1; dz <= 1; dz++) {
       if (dx === 0 && dz === 0) {
         scene.add(worldTile);
+        worldToggle.push(worldTile);
       } else {
         const tile = worldTile.clone();
         tile.position.set(dx * PLATFORM_SIZE, 0, dz * PLATFORM_SIZE);
         scene.add(tile);
+        worldToggle.push(tile);
       }
     }
   }
@@ -577,6 +718,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // Mesh halo, no DepthTexture / OutlinePass.
   const missionGroup = new Group();
   scene.add(missionGroup);
+  worldToggle.push(missionGroup);
 
   interface CheckpointMarker {
     group: Group;
@@ -741,9 +883,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     depthWrite: false,
     depthTest: true,
   });
-  const skybox = new MeshClass(new CylinderGeometry(45, 45, 32, 48, 1, true), skyboxMaterial);
+  // Radius bumped 45 -> 90 with the mega-batch-2 map doubling so the backdrop
+  // still encloses the visible near-field (it follows the player each frame).
+  const skybox = new MeshClass(new CylinderGeometry(90, 90, 44, 48, 1, true), skyboxMaterial);
   skybox.position.y = 8;
   scene.add(skybox);
+  worldToggle.push(skybox);
 
   const rig = buildClassRig(className);
   rig.root.traverse((obj) => {
@@ -1773,6 +1918,278 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const tempTag = new Vector3();
   const tempEmote = new Vector3();
 
+  // ── core_run maze mode (mega-batch 2 · 4.5) ──────────────────────────────
+  // A self-contained arena rendered in the same scene: the world tiles hide,
+  // a MazeArena group shows, and the rig teleports to the maze entrance. The
+  // tick swaps in the maze colliders + a shrinking clamp while `mazeActive`,
+  // and skips all world proximity / network / minimap work. Driven by window
+  // events so the React overlay (CoreRun.tsx) stays decoupled from the scene.
+  const MAZE_DURATION_S = 90;
+  const MAZE_DISSOLVE_START_S = 30; // dissolve begins at 60 s remaining
+  const MAZE_RING_INTERVAL_S = 8;
+  const mazeGroup = new Group();
+  mazeGroup.visible = false;
+  scene.add(mazeGroup);
+  let mazeActive = false;
+  let mazeArena: MazeArena | null = null;
+  let mazeGrid: MazeGrid | null = null;
+  let mazeColliders: readonly BoxCollider[] = [];
+  let mazeStartElapsed = 0;
+  let dissolvedRings = 0;
+  let mazeLastSecond = -1;
+  let savedRigX = 0;
+  let savedRigZ = 0;
+  let savedFacing = 0;
+
+  function fireMaze(name: string, detail?: unknown): void {
+    try {
+      window.dispatchEvent(
+        detail === undefined ? new CustomEvent(name) : new CustomEvent(name, { detail }),
+      );
+    } catch {
+      // non-DOM env — ignore
+    }
+  }
+
+  function setWorldVisibleForMaze(visible: boolean): void {
+    for (const o of worldToggle) o.visible = visible;
+    for (const ra of remoteAvatars.values()) {
+      ra.group.visible = visible;
+      ra.tagEl.style.display = visible ? '' : 'none';
+    }
+  }
+
+  function clampToMaze(pos: Vector3): void {
+    if (!mazeArena) return;
+    const b = mazeArena.playableBound(dissolvedRings);
+    const lo = b.min + PLAYER_RADIUS;
+    const hi = b.max - PLAYER_RADIUS;
+    pos.x = Math.max(lo, Math.min(hi, pos.x));
+    pos.z = Math.max(lo, Math.min(hi, pos.z));
+  }
+
+  function enterMaze(): void {
+    if (mazeActive) return;
+    const seed = Math.floor(Math.random() * 0xffffffff);
+    mazeGrid = generateMaze(seed);
+    mazeArena = new MazeArena(mazeGrid);
+    mazeGroup.add(mazeArena.group);
+    mazeColliders = mazeArena.colliders;
+    savedRigX = rig.root.position.x;
+    savedRigZ = rig.root.position.z;
+    savedFacing = facing;
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
+    rig.root.position.x = mazeArena.entranceWorld.x;
+    rig.root.position.z = mazeArena.entranceWorld.z;
+    facing = 0;
+    dissolvedRings = 0;
+    mazeArena.dissolveTo(0);
+    mazeStartElapsed = elapsed;
+    mazeLastSecond = -1;
+    setWorldVisibleForMaze(false);
+    skybox.visible = false;
+    mazeGroup.visible = true;
+    mazeActive = true;
+    fireMaze('bitrunners:maze-enter');
+  }
+
+  function exitMaze(): void {
+    if (!mazeActive) return;
+    mazeActive = false;
+    mazeGroup.visible = false;
+    if (mazeArena) {
+      mazeGroup.remove(mazeArena.group);
+      mazeArena.dispose();
+      mazeArena = null;
+    }
+    mazeColliders = [];
+    mazeGrid = null;
+    setWorldVisibleForMaze(true);
+    skybox.visible = true;
+    rig.root.position.x = savedRigX;
+    rig.root.position.z = savedRigZ;
+    facing = savedFacing;
+    fireMaze('bitrunners:maze-exit');
+  }
+
+  function updateMaze(): void {
+    if (!mazeArena || !mazeGrid) return;
+    const t = elapsed - mazeStartElapsed;
+    const timeLeft = Math.max(0, MAZE_DURATION_S - t);
+    // After the grace period, one outer ring dissolves per interval — but never
+    // the innermost rings around the goal (else it'd be unreachable).
+    let targetRings = 0;
+    if (t >= MAZE_DISSOLVE_START_S) {
+      targetRings = Math.floor((t - MAZE_DISSOLVE_START_S) / MAZE_RING_INTERVAL_S) + 1;
+    }
+    targetRings = Math.min(targetRings, (mazeGrid.size - 1) / 2 - 1);
+    if (targetRings > dissolvedRings) {
+      dissolvedRings = targetRings;
+      mazeArena.dissolveTo(dissolvedRings);
+      if (mazeArena.isInVoid(rig.root.position.x, rig.root.position.z, dissolvedRings)) {
+        exitMaze();
+        fireMaze('bitrunners:maze-fail');
+        return;
+      }
+    }
+    const cell = mazeArena.worldToCell(rig.root.position.x, rig.root.position.z);
+    if (cell.cx === mazeGrid.center.x && cell.cy === mazeGrid.center.y) {
+      const secondsLeft = Math.ceil(timeLeft);
+      exitMaze();
+      fireMaze('bitrunners:maze-win', { secondsLeft });
+      return;
+    }
+    if (timeLeft <= 0) {
+      exitMaze();
+      fireMaze('bitrunners:maze-fail');
+      return;
+    }
+    const sec = Math.ceil(timeLeft);
+    if (sec !== mazeLastSecond) {
+      mazeLastSecond = sec;
+      fireMaze('bitrunners:maze-tick', { timeLeft: sec, rings: dissolvedRings });
+    }
+  }
+
+  const onCoreRunEnter = (): void => enterMaze();
+  const onCoreRunAbort = (): void => {
+    if (mazeActive) {
+      exitMaze();
+      fireMaze('bitrunners:maze-abort');
+    }
+  };
+  window.addEventListener('bitrunners:core-run-enter', onCoreRunEnter);
+  window.addEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+
+  // ── Landmarks: glitch switch + pressure-plate vault → void (4.6 part 2) ──
+  const VOID_HALF = 14;
+  const VOID_DOOR = { x: 0, z: 0 };
+  const VOID_START = { x: 0, z: 6 };
+  const voidGroup = new Group();
+  voidGroup.visible = false;
+  {
+    const floorMat = new MeshStandardMaterial({ color: 0x040507, roughness: 1, metalness: 0 });
+    const floor = new MeshClass(new PlaneGeometry(VOID_HALF * 2 + 6, VOID_HALF * 2 + 6), floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    voidGroup.add(floor);
+    const frameMat = new MeshStandardMaterial({
+      color: 0x0a0a12,
+      emissive: 0x6cf0ff,
+      emissiveIntensity: 0.9,
+      roughness: 0.4,
+    });
+    const postGeom = new BoxGeometry(0.2, 2.6, 0.2);
+    const postL = new MeshClass(postGeom, frameMat);
+    postL.position.set(VOID_DOOR.x - 0.9, 1.3, VOID_DOOR.z);
+    const postR = new MeshClass(postGeom, frameMat);
+    postR.position.set(VOID_DOOR.x + 0.9, 1.3, VOID_DOOR.z);
+    const lintel = new MeshClass(new BoxGeometry(2.0, 0.2, 0.2), frameMat);
+    lintel.position.set(VOID_DOOR.x, 2.5, VOID_DOOR.z);
+    voidGroup.add(postL, postR, lintel);
+  }
+  scene.add(voidGroup);
+  const voidColliders: BoxCollider[] = [];
+  let voidActive = false;
+
+  function clampToVoid(pos: Vector3): void {
+    pos.x = Math.max(-VOID_HALF, Math.min(VOID_HALF, pos.x));
+    pos.z = Math.max(-VOID_HALF, Math.min(VOID_HALF, pos.z));
+  }
+
+  let plateNext = 0;
+  let plateOn = -1;
+  function setPlateLit(i: number, lit: boolean): void {
+    const mat = plateMats[i];
+    if (mat) mat.emissiveIntensity = lit ? 1.7 : 0.5;
+  }
+  function resetPlateLights(): void {
+    for (let i = 0; i < plateMats.length; i++) setPlateLit(i, false);
+  }
+
+  function enterVoid(): void {
+    if (voidActive || mazeActive) return;
+    savedRigX = rig.root.position.x;
+    savedRigZ = rig.root.position.z;
+    savedFacing = facing;
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
+    rig.root.position.x = VOID_START.x;
+    rig.root.position.z = VOID_START.z;
+    facing = Math.PI; // face the door (toward −z)
+    setWorldVisibleForMaze(false);
+    skybox.visible = false;
+    voidGroup.visible = true;
+    voidActive = true;
+    fireMaze('bitrunners:void-enter');
+  }
+  function exitVoid(): void {
+    if (!voidActive) return;
+    voidActive = false;
+    voidGroup.visible = false;
+    setWorldVisibleForMaze(true);
+    skybox.visible = true;
+    rig.root.position.x = VAULT_RETURN.x;
+    rig.root.position.z = VAULT_RETURN.z;
+    facing = savedFacing;
+    plateNext = 0;
+    plateOn = -1;
+    resetPlateLights();
+    fireMaze('bitrunners:void-exit');
+  }
+  function updateVoid(): void {
+    const dx = rig.root.position.x - VOID_DOOR.x;
+    const dz = rig.root.position.z - VOID_DOOR.z;
+    if (dx * dx + dz * dz < 1.4 * 1.4) exitVoid();
+  }
+
+  const GLITCH_TRIGGER = 2.4;
+  let glitchInRange = false;
+  function checkGlitchSwitch(): void {
+    const dx = wrapDelta(rig.root.position.x - GLITCH_SWITCH.x);
+    const dz = wrapDelta(rig.root.position.z - GLITCH_SWITCH.z);
+    const near = dx * dx + dz * dz < GLITCH_TRIGGER * GLITCH_TRIGGER;
+    if (near !== glitchInRange) {
+      glitchInRange = near;
+      fireMaze('bitrunners:glitch-switch-range', { inRange: near });
+    }
+  }
+
+  function checkVaultPlates(): void {
+    let on = -1;
+    for (let i = 0; i < VAULT_PLATES.length; i++) {
+      const plate = VAULT_PLATES[i];
+      if (!plate) continue;
+      const dx = wrapDelta(rig.root.position.x - plate.x);
+      const dz = wrapDelta(rig.root.position.z - plate.z);
+      if (dx * dx + dz * dz < PLATE_TRIGGER_DIST * PLATE_TRIGGER_DIST) {
+        on = i;
+        break;
+      }
+    }
+    if (on === plateOn) return; // no transition — avoid re-triggering while standing
+    plateOn = on;
+    if (on < 0) return;
+    if (on === plateNext) {
+      setPlateLit(on, true);
+      plateNext++;
+      if (plateNext >= VAULT_PLATES.length) {
+        plateNext = 0;
+        resetPlateLights();
+        enterVoid();
+      }
+    } else {
+      // Wrong plate — reset the sequence and signal a brief screen flicker.
+      plateNext = 0;
+      resetPlateLights();
+      fireMaze('bitrunners:vault-reset');
+    }
+  }
+
   function tick(now: number): void {
     const sinceLast = now - last;
     if (sinceLast < FRAME_INTERVAL_MS - 1) {
@@ -1798,12 +2215,20 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         rig.root.position.x + tempMove.x * speed,
         rig.root.position.z + tempMove.z * speed,
         PLAYER_RADIUS,
-        COLLIDERS,
+        mazeActive ? mazeColliders : voidActive ? voidColliders : COLLIDERS,
       );
-      if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
-      else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
-      if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
-      else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+      if (mazeActive) {
+        // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
+        clampToMaze(rig.root.position);
+      } else if (voidActive) {
+        // Void room is a bounded dark area (no wrap); clamp to its extent.
+        clampToVoid(rig.root.position);
+      } else {
+        if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
+        else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
+        if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
+        else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+      }
       facing = Math.atan2(tempMove.x, tempMove.z);
     }
     rig.root.rotation.y = facing;
@@ -1836,46 +2261,55 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (petMesh) applyPetBehaviour(petId, rig.petAnchor, petMesh, elapsed);
 
     updateTendrils(dt, moving || hoverY > 0.05);
-    checkObeliskApproach();
-    checkSammApproach();
-    checkMissionApproach();
-    // Pulse the active checkpoint's emissive intensity so the runner reads
-    // the "next" target without staring. Cheap — one material mutation per
-    // active checkpoint per frame.
-    if (checkpointMarkers.length > 0) {
-      const activeIdx = getActiveMission()?.nextIdx ?? -1;
-      const t = elapsed;
-      for (const m of checkpointMarkers) {
-        if (m.idx === activeIdx) {
-          const pulse = 1.1 + Math.sin(t * 3.6) * 0.35;
-          m.coreMat.emissiveIntensity = pulse;
-          m.glowMat.emissiveIntensity = pulse * 0.7;
+
+    if (mazeActive) {
+      updateMaze();
+    } else if (voidActive) {
+      updateVoid();
+    } else {
+      checkObeliskApproach();
+      checkSammApproach();
+      checkMissionApproach();
+      checkGlitchSwitch();
+      checkVaultPlates();
+      // Pulse the active checkpoint's emissive intensity so the runner reads
+      // the "next" target without staring. Cheap — one material mutation per
+      // active checkpoint per frame.
+      if (checkpointMarkers.length > 0) {
+        const activeIdx = getActiveMission()?.nextIdx ?? -1;
+        const t = elapsed;
+        for (const m of checkpointMarkers) {
+          if (m.idx === activeIdx) {
+            const pulse = 1.1 + Math.sin(t * 3.6) * 0.35;
+            m.coreMat.emissiveIntensity = pulse;
+            m.glowMat.emissiveIntensity = pulse * 0.7;
+          }
         }
       }
+
+      // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
+      const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
+      const sammDz = wrapDelta(rig.root.position.z - SAMM_Z);
+      const sammProx = Math.max(
+        0,
+        Math.min(1, 1 - Math.sqrt(sammDx * sammDx + sammDz * sammDz) / SAMM_TRIGGER_DIST),
+      );
+      (vendingScreen.material as MeshStandardMaterialType).emissiveIntensity =
+        0.7 + sammProx * (0.85 + Math.sin(elapsed * 3.1) * 0.22);
+
+      const portRelX = rig.root.position.x - port.position.x;
+      const portRelZ = rig.root.position.z - port.position.z;
+      const wrappedDx =
+        ((((portRelX + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+        PLATFORM_HALF;
+      const wrappedDz =
+        ((((portRelZ + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
+        PLATFORM_HALF;
+      const portDist = Math.sqrt(wrappedDx * wrappedDx + wrappedDz * wrappedDz);
+      const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
+      const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
+      (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
     }
-
-    // SAMM proximity glow: vending screen brightens + pulses as the player approaches.
-    const sammDx = wrapDelta(rig.root.position.x - SAMM_X);
-    const sammDz = wrapDelta(rig.root.position.z - SAMM_Z);
-    const sammProx = Math.max(
-      0,
-      Math.min(1, 1 - Math.sqrt(sammDx * sammDx + sammDz * sammDz) / SAMM_TRIGGER_DIST),
-    );
-    (vendingScreen.material as MeshStandardMaterialType).emissiveIntensity =
-      0.7 + sammProx * (0.85 + Math.sin(elapsed * 3.1) * 0.22);
-
-    const portRelX = rig.root.position.x - port.position.x;
-    const portRelZ = rig.root.position.z - port.position.z;
-    const wrappedDx =
-      ((((portRelX + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
-      PLATFORM_HALF;
-    const wrappedDz =
-      ((((portRelZ + PLATFORM_HALF) % PLATFORM_SIZE) + PLATFORM_SIZE) % PLATFORM_SIZE) -
-      PLATFORM_HALF;
-    const portDist = Math.sqrt(wrappedDx * wrappedDx + wrappedDz * wrappedDz);
-    const proximity = Math.max(0, Math.min(1, (5 - portDist) / 4));
-    const pulse = 0.6 + Math.sin(elapsed * 2.4) * 0.12;
-    (portInside.material as MeshStandardMaterialType).emissiveIntensity = pulse + proximity * 0.5;
 
     // Camera follow target: locked avatar if any (auto-release on distance),
     // otherwise the local rig. The remote avatar's group.position is already
@@ -1914,7 +2348,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
     // bigger than half the board is a seam wrap by either player — snap, since
     // the 3x3 tiles are visually identical there anyway.
-    if (remoteAvatars.size > 0) {
+    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
       const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
       for (const ra of remoteAvatars.values()) {
         const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
@@ -1933,14 +2367,16 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
     }
 
-    if (netSession && now - lastNetSend >= NET_SEND_MS) {
+    // In maze mode we freeze outbound moves so the avatar stays parked in the
+    // shared world (the rig is off in the maze arena's coordinate space).
+    if (!mazeActive && !voidActive && netSession && now - lastNetSend >= NET_SEND_MS) {
       netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
       lastNetSend = now;
     }
 
     // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the
     // HUD updates at the same cadence as outbound moves — once per ~67 ms.
-    if (now - lastMinimapEmit >= NET_SEND_MS) {
+    if (!mazeActive && !voidActive && now - lastMinimapEmit >= NET_SEND_MS) {
       publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
       // Push live remote positions for the minimap dots. Re-using one
       // scratch array — at a full sphere we publish at most 40 entries
@@ -2015,7 +2451,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
-    if (remoteAvatars.size > 0) {
+    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
       const hw = host.clientWidth || 1;
       const hh = host.clientHeight || 1;
       for (const ra of remoteAvatars.values()) {
@@ -2086,6 +2522,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
     standbyCleanups.length = 0;
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
+    window.removeEventListener('bitrunners:core-run-enter', onCoreRunEnter);
+    window.removeEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+    if (mazeArena) {
+      mazeArena.dispose();
+      mazeArena = null;
+    }
+    voidGroup.traverse((o) => {
+      if (o instanceof MeshClass) {
+        o.geometry.dispose();
+        (o.material as MeshStandardMaterialType).dispose();
+      }
+    });
     unsubscribeAppearance();
     petGeom?.dispose();
     petMat?.dispose();

@@ -58,7 +58,8 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
         type="button"
         className="profile"
         onClick={() => setOpen((v) => !v)}
-        title="open profile"
+        title="open menu"
+        aria-label="open menu"
       >
         <div className="profile-rain" aria-hidden="true">
           {rain.map((l, i) => (
@@ -68,8 +69,11 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
           ))}
         </div>
         <div className="profile-box">
-          <div className="profile-label">{'// profile'}</div>
-          <div className="profile-class">{className}</div>
+          {/* 4.1: the pill reads as the main-menu affordance ("Menu"), not the
+              class name. The class still shows in the panel below (opened) and in
+              the in-game .hint line, so it's not lost from the HUD. */}
+          <div className="profile-label">{'// menu'}</div>
+          <div className="profile-class">Menu</div>
           <div className="profile-status">
             {`// ${identity.displayName}`}
             {identity.signedIn && !identity.approved ? ' ·' : ''}
