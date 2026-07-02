@@ -25,6 +25,36 @@ let userId: string | null = null;
 let saveTimer: number | null = null;
 let loading = false;
 
+/**
+ * Heuristic "how much has this blob accomplished" score, used to decide which
+ * of local vs remote to keep on load. Keying on lifetimeScrapes ALONE (the old
+ * rule) lost the progress of a guest who only played the minigames — they earn
+ * credits / items / emotes but never scrape, so lifetimeScrapes stays 0 and a
+ * fresh (empty) account row tied at 0 and clobbered them on signup. This folds
+ * in every earning dimension so a guest with ANY progress out-scores an empty
+ * account and is pushed up instead of wiped. Cumulative/monotonic counters are
+ * weighted heaviest; credits/tokens fluctuate but still count so pure-minigame
+ * progress registers. Not a security measure — the blob stays client-authored.
+ */
+function progressScore(s: Partial<EconomyState>): number {
+  const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
+  const len = (v: unknown): number => (Array.isArray(v) ? v.length : 0);
+  return (
+    n(s.lifetimeScrapes) +
+    n(s.lifetimePasscodes) * 8 +
+    n(s.lifetimeAuras) * 64 +
+    n(s.prestiges) * 500 +
+    n(s.credits) +
+    n(s.tokens) * 100 +
+    len(s.owned) * 50 +
+    len(s.ownedEmotes) * 50 +
+    len(s.unlocks) * 25 +
+    n(s.repCorporate) +
+    n(s.repBitrunner) +
+    (s.circuitFirstClear ? 100 : 0)
+  );
+}
+
 // Lets the account UI confirm progress is persisting (continuity check).
 function emitSynced(): void {
   try {
@@ -46,20 +76,22 @@ async function loadFromAccount(uid: string): Promise<void> {
     }
     const remote = data?.blob as Partial<EconomyState> | undefined;
     const hasRemote = !!remote && remote.v === 1;
-    const remoteScrapes = typeof remote?.lifetimeScrapes === 'number' ? remote.lifetimeScrapes : -1;
-    // Merge on lifetimeScrapes (monotonic, clock-independent), NOT updatedAt.
-    // One rule fixes BOTH clobbers:
+    // Merge on a broad progressScore (clock-independent), NOT updatedAt and NOT
+    // lifetimeScrapes alone. One rule fixes every clobber:
     //  * shared-device (devlog 0093): a poorer/other-account local blob carries
-    //    a recent updatedAt; keying on lifetimeScrapes stops it overwriting a
-    //    richer remote account.
-    //  * guest→signup (devlog 0112): a guest's real offline progress has a
-    //    higher lifetimeScrapes than a fresh/empty account row, so it is pushed
-    //    up instead of clobbered by the server-fresh blob.
-    if (hasRemote && remoteScrapes >= getEconomy().lifetimeScrapes) {
+    //    a recent updatedAt; keying on progress stops it overwriting a richer
+    //    remote account (remote scores higher → adopt remote).
+    //  * guest→signup (devlog 0112/0123): a guest's real progress out-scores a
+    //    fresh/empty account row and is pushed up instead of clobbered. This now
+    //    covers minigame-only guests (credits/items but lifetimeScrapes 0), who
+    //    the old lifetimeScrapes-only tie WIPED on signup.
+    const localScore = progressScore(getEconomy());
+    const remoteScore = hasRemote ? progressScore(remote) : -1;
+    if (hasRemote && remoteScore >= localScore) {
       importProgress(remote); // account has >= progress (or new device) → adopt it
       emitSynced();
     } else {
-      await saveNow(uid); // no remote (first save) or local is strictly more progressed
+      await saveNow(uid); // no remote (first save) or local is more progressed
     }
     // Apply grants WHILE `loading` is still true so the addCredits/addTokens
     // calls don't trigger the debounce listener. The saveNow inside
