@@ -102,6 +102,43 @@ const HOLD_MS = 110;
 // The Supercomputer capstone forces the top (continuous) tier.
 const AUTO_TAP_MS = [0, 900, 500, 220, 90] as const;
 const BOTS_KEY = 'bitrunners.settings.bots';
+// Per-bot enable map (device-local, like the master). Additive on top of the
+// master toggle: a bot runs only when master && its own flag && unlocked.
+const BOTS_SEL_KEY = 'bitrunners.settings.bots-sel';
+
+type BotKey = 'tapper' | 'bits' | 'strings' | 'serials' | 'passcodes';
+type BotSelection = Record<BotKey, boolean>;
+
+const DEFAULT_BOT_SEL: BotSelection = {
+  tapper: true,
+  bits: true,
+  strings: true,
+  serials: true,
+  passcodes: true,
+};
+
+function loadBotSelection(): BotSelection {
+  try {
+    const raw = localStorage.getItem(BOTS_SEL_KEY);
+    if (!raw) return { ...DEFAULT_BOT_SEL };
+    const parsed = JSON.parse(raw) as Partial<Record<BotKey, unknown>>;
+    const out = { ...DEFAULT_BOT_SEL };
+    for (const k of Object.keys(out) as BotKey[]) {
+      if (typeof parsed[k] === 'boolean') out[k] = parsed[k] as boolean;
+    }
+    return out;
+  } catch {
+    return { ...DEFAULT_BOT_SEL };
+  }
+}
+
+function saveBotSelection(sel: BotSelection): void {
+  try {
+    localStorage.setItem(BOTS_SEL_KEY, JSON.stringify(sel));
+  } catch {
+    // storage unavailable — keep in-memory
+  }
+}
 
 const TIER_STEPS: { from: RefinableTier; label: string }[] = [
   { from: 'bits', label: 'bits → string' },
@@ -633,7 +670,14 @@ const AUTO_TAP_TIER_LABEL = ['off', 'slow', 'medium', 'fast', 'hold-down'];
 function BotsStatus({
   botsOn,
   onToggle,
-}: { botsOn: boolean; onToggle(): void }): JSX.Element | null {
+  sel,
+  onToggleBot,
+}: {
+  botsOn: boolean;
+  onToggle(): void;
+  sel: BotSelection;
+  onToggleBot(key: BotKey): void;
+}): JSX.Element | null {
   // Reflects the active automation. Re-renders on economy updates since buying
   // a node in the tree flips its flag.
   const [, force] = useState(0);
@@ -641,15 +685,15 @@ function BotsStatus({
 
   const sc = hasSupercomputer();
   const tap = sc ? 4 : autoTapLevel();
-  const bots = [
-    { on: tap > 0, label: `auto-tapper · ${AUTO_TAP_TIER_LABEL[tap]}` },
-    { on: sc || hasBotBitsTab(), label: 'bits → strings' },
-    { on: sc || hasBotStringsTab(), label: 'strings → serials' },
-    { on: sc || hasBotSerialsTab(), label: 'serials → passcodes' },
-    { on: sc || hasBotPasscodesTab(), label: 'passcodes → auras' },
+  const bots: { key: BotKey; unlocked: boolean; label: string }[] = [
+    { key: 'tapper', unlocked: tap > 0, label: `auto-tapper · ${AUTO_TAP_TIER_LABEL[tap]}` },
+    { key: 'bits', unlocked: sc || hasBotBitsTab(), label: 'bits → strings' },
+    { key: 'strings', unlocked: sc || hasBotStringsTab(), label: 'strings → serials' },
+    { key: 'serials', unlocked: sc || hasBotSerialsTab(), label: 'serials → passcodes' },
+    { key: 'passcodes', unlocked: sc || hasBotPasscodesTab(), label: 'passcodes → auras' },
   ];
-  const active = bots.filter((b) => b.on);
-  if (active.length === 0 && !sc) return null;
+  const unlocked = bots.filter((b) => b.unlocked);
+  if (unlocked.length === 0 && !sc) return null;
 
   return (
     <section className="panel-section scrape-bots">
@@ -660,18 +704,32 @@ function BotsStatus({
           className={botsOn ? 'panel-toggle is-on' : 'panel-toggle'}
           onClick={onToggle}
           aria-pressed={botsOn}
+          aria-label="all bots master switch"
         >
-          {botsOn ? '[ on ]' : '[ off ]'}
+          {botsOn ? '[ all on ]' : '[ all off ]'}
         </button>
       </div>
-      {active.map((b) => (
-        <div className="panel-row" key={b.label}>
-          <span className="panel-key">{b.label}</span>
-          <span className="scrape-hud-val">{botsOn ? '▶' : '⏸'}</span>
-        </div>
-      ))}
+      {unlocked.map((b) => {
+        const running = botsOn && sel[b.key];
+        return (
+          <div className="panel-row" key={b.key}>
+            <span className="panel-key">{b.label}</span>
+            <span className="scrape-hud-val">{running ? '▶' : '⏸'}</span>
+            <button
+              type="button"
+              className={sel[b.key] ? 'panel-toggle is-on' : 'panel-toggle'}
+              onClick={() => onToggleBot(b.key)}
+              aria-pressed={sel[b.key]}
+              aria-label={`toggle ${b.label}`}
+            >
+              {sel[b.key] ? '[ on ]' : '[ off ]'}
+            </button>
+          </div>
+        );
+      })}
       <div className="panel-stub">
-        ─── bots tick every {BOT_TICK_MS}ms and pause when this panel is closed.
+        ─── each bot has its own switch; the master pauses everything at once. bots tick every{' '}
+        {BOT_TICK_MS}ms and pause when this panel is closed.
       </div>
     </section>
   );
@@ -703,6 +761,18 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
       } catch {
         // storage unavailable — keep in-memory
       }
+      return next;
+    });
+  };
+  // Per-bot selection (e.g. run the ladder bots but keep passcodes→auras
+  // paused). Persisted per device alongside the master.
+  const [botSel, setBotSel] = useState<BotSelection>(loadBotSelection);
+  const botSelRef = useRef(botSel);
+  botSelRef.current = botSel;
+  const toggleBot = (key: BotKey): void => {
+    setBotSel((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      saveBotSelection(next);
       return next;
     });
   };
@@ -786,29 +856,33 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   // (continuous) tier. Interval recomputed when the tier or the toggle changes.
   const autoTier = hasSupercomputer() ? 4 : autoTapLevel();
   const tapMs = AUTO_TAP_MS[autoTier] ?? 0;
-  const autoOn = botsOn && tapMs > 0; // drives the scrape-button "is-auto" glow
+  // drives the scrape-button "is-auto" glow
+  const autoOn = botsOn && botSel.tapper && tapMs > 0;
   useEffect(() => {
-    if (!botsOn || tapMs <= 0) return;
+    if (!botsOn || !botSel.tapper || tapMs <= 0) return;
     const id = window.setInterval(() => {
-      if (botsOnRef.current) scrapeRef.current(false);
+      if (botsOnRef.current && botSelRef.current.tapper) scrapeRef.current(false);
     }, tapMs);
     return () => window.clearInterval(id);
-  }, [botsOn, tapMs]);
+  }, [botsOn, botSel.tapper, tapMs]);
 
   // Auto-converter bots (Path 4). One shared interval walks the
   // bits→strings→serials→passcodes→auras ladder once per tick. Each upgrade
   // flag gates one rung; the Supercomputer capstone drives every rung at once
-  // for a constant scrape→passcode flow. Obeys the bots on/off toggle and
-  // pauses when the panel closes (active-panel automation).
+  // for a constant scrape→passcode flow. Obeys the master toggle AND each
+  // bot's own switch, and pauses when the panel closes (active-panel
+  // automation). The Supercomputer's continuous scrape rides the tapper's
+  // switch so "pause scraping, keep converting" works on capstone accounts.
   useEffect(() => {
     const id = window.setInterval(() => {
       if (!botsOnRef.current) return;
+      const sel = botSelRef.current;
       const sc = hasSupercomputer();
-      if (sc) scrapeRef.current(false);
-      if (sc || hasBotBitsTab()) tabulate('bits');
-      if (sc || hasBotStringsTab()) tabulate('strings');
-      if (sc || hasBotSerialsTab()) tabulate('serials');
-      if (sc || hasBotPasscodesTab()) tabulateAura();
+      if (sc && sel.tapper) scrapeRef.current(false);
+      if (sel.bits && (sc || hasBotBitsTab())) tabulate('bits');
+      if (sel.strings && (sc || hasBotStringsTab())) tabulate('strings');
+      if (sel.serials && (sc || hasBotSerialsTab())) tabulate('serials');
+      if (sel.passcodes && (sc || hasBotPasscodesTab())) tabulateAura();
     }, BOT_TICK_MS);
     return () => window.clearInterval(id);
   }, []);
@@ -1064,7 +1138,12 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
               </section>
             )}
 
-            <BotsStatus botsOn={botsOn} onToggle={toggleBots} />
+            <BotsStatus
+              botsOn={botsOn}
+              onToggle={toggleBots}
+              sel={botSel}
+              onToggleBot={toggleBot}
+            />
           </>
         )}
 
