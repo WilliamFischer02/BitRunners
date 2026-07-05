@@ -1391,9 +1391,10 @@ dialog.panel::backdrop {
   text-align: center;
 }
 .auth-status[data-kind="ok"] {
-  font-size: 10px;
-  color: #6a8a78;
-  border-color: #2a4038;
+  font-size: 11px;
+  color: #a8f0c0;
+  border-color: #3a6850;
+  text-shadow: 0 0 8px rgba(147, 224, 177, 0.55);
 }
 .auth-status[data-kind="warn"] {
   color: #ff9b8b;
@@ -3450,13 +3451,13 @@ dialog.panel::backdrop {
   text-align: left;
 }
 .auth-status .auth-status-head {
-  font-size: 10px;
+  font-size: 11px;
 }
 .auth-status .auth-status-sub {
-  font-size: 8px;
+  font-size: 9px;
 }
 .auth-status .auth-status-line {
-  font-size: 9px;
+  font-size: 11px;
 }
 .hint {
   /* WASD hint adds no value on touch and collides with admin-launch. */
