@@ -734,6 +734,30 @@ export function addTokens(amount: number): void {
   persist();
 }
 
+/** Fold admin-granted scrape-ladder units into the buffer (migration 0018
+ *  remediation grants). Negative / non-finite components are ignored. */
+export function addUnits(units: {
+  bits: number;
+  strings: number;
+  serials: number;
+  passcodes: number;
+}): void {
+  const add = (v: number): number => (Number.isFinite(v) && v > 0 ? Math.floor(v) : 0);
+  const bits = add(units.bits);
+  const strings = add(units.strings);
+  const serials = add(units.serials);
+  const passcodes = add(units.passcodes);
+  if (bits + strings + serials + passcodes === 0) return;
+  state = {
+    ...state,
+    bits: state.bits + bits,
+    strings: state.strings + strings,
+    serials: state.serials + serials,
+    passcodes: state.passcodes + passcodes,
+  };
+  persist();
+}
+
 /** Spend Tokens (token bet / token-priced item). False if insufficient. */
 export function spendTokens(amount: number): boolean {
   if (!Number.isFinite(amount) || amount <= 0) return false;

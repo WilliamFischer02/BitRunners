@@ -11,6 +11,7 @@ import {
   type EconomyState,
   addCredits,
   addTokens,
+  addUnits,
   exportProgress,
   getEconomy,
   importProgress,
@@ -109,9 +110,12 @@ async function loadFromAccount(uid: string): Promise<void> {
  */
 async function applyPendingGrants(uid: string): Promise<void> {
   const grant = await claimEconomyGrants();
-  if (!grant || (grant.credits <= 0 && grant.tokens <= 0)) return;
+  if (!grant) return;
+  const unitTotal = grant.bits + grant.strings + grant.serials + grant.passcodes;
+  if (grant.credits <= 0 && grant.tokens <= 0 && unitTotal <= 0) return;
   if (grant.credits > 0) addCredits(grant.credits);
   if (grant.tokens > 0) addTokens(grant.tokens);
+  if (unitTotal > 0) addUnits(grant);
   await saveNow(uid);
   try {
     window.dispatchEvent(new CustomEvent('bitrunners:grant-received', { detail: grant }));
