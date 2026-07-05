@@ -212,7 +212,7 @@ export function TitleScreen({ onLink }: { onLink(): void }): JSX.Element {
       </div>
       <div className="title-actions">
         <button type="button" className="title-link-btn" onClick={onLink}>
-          [ LINK ]
+          [ UPLINK ]
         </button>
         <button type="button" className="title-account-btn" onClick={() => setAccountOpen(true)}>
           [ account{auth.status === 'authenticated' ? ' ✓' : ''} ]

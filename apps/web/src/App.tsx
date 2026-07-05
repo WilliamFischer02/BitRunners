@@ -147,7 +147,15 @@ export function App(): JSX.Element {
     content = <Shell />;
   }
 
-  return <ConstructionGate>{content}</ConstructionGate>;
+  return (
+    <>
+      <ConstructionGate>{content}</ConstructionGate>
+      {/* Global CRT / VHS overlay — scanlines + a slow rolling band over
+          EVERY surface (title, boot, game, menus, board). Click-through,
+          composited, ~zero cost. Devlog 0135. */}
+      <div className="crt-overlay" aria-hidden="true" />
+    </>
+  );
 }
 
 function Shell(): JSX.Element {

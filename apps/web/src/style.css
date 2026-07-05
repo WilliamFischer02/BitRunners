@@ -6433,3 +6433,61 @@ dialog.panel::backdrop {
 .title-auth-forgot:hover {
   color: #c0ffd6;
 }
+
+/* ──────────── global CRT / VHS overlay (devlog 0135) ──────────── */
+.crt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  /* fine scanlines */
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0.14) 3px,
+    rgba(0, 0, 0, 0) 4px
+  );
+  mix-blend-mode: multiply;
+  opacity: 0.55;
+}
+.crt-overlay::after {
+  /* slow VHS roll band drifting down the screen */
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -20%;
+  height: 14%;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.045) 45%,
+    rgba(200, 232, 212, 0.06) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: crt-roll 9s linear infinite;
+}
+@keyframes crt-roll {
+  to {
+    transform: translateY(860%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crt-overlay::after {
+    animation: none;
+    display: none;
+  }
+}
+
+.boot-ff-hint {
+  position: fixed;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #5a8870;
+  pointer-events: none;
+}
