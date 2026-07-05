@@ -123,15 +123,22 @@ export function Boot({ onSelect, startAtSelect = false }: BootProps): JSX.Elemen
         return;
       }
       if (charIdx < def.text.length) {
-        const head = def.text.slice(0, charIdx + 1);
+        // Held (mouse / touch / any key) = fast-forward: complete the whole
+        // line in one paint instead of char-by-char, since setTimeout clamps
+        // to ~4ms and per-char updates still crawl on long lines.
+        const head = heldRef.current ? def.text : def.text.slice(0, charIdx + 1);
         setLines((prev) => {
           const copy = prev.slice();
           copy[lineIdx] = head;
           return copy;
         });
-        charIdxRef.current = charIdx + 1;
-        const delay = heldRef.current ? CHAR_DELAY_FAST_MS : CHAR_DELAY_MS;
-        timerRef.current = setTimeout(tick, delay);
+        if (!heldRef.current) {
+          charIdxRef.current = charIdx + 1;
+          timerRef.current = setTimeout(tick, CHAR_DELAY_MS);
+          return;
+        }
+        charIdxRef.current = def.text.length;
+        timerRef.current = setTimeout(tick, CHAR_DELAY_FAST_MS);
         return;
       }
       lineIdxRef.current = lineIdx + 1;
@@ -153,6 +160,7 @@ export function Boot({ onSelect, startAtSelect = false }: BootProps): JSX.Elemen
         <div className="boot-grid-bg" aria-hidden="true" />
         <div className="boot-scroll">
           <div className="boot-banner">cloud-env.central · bootstrap</div>
+          {!done && <div className="boot-ff-hint">hold anywhere to fast-forward ≫</div>}
           {lines.map((l, i) => (
             <div key={`l-${i}-${l.length}`} className="boot-line">
               {l}
