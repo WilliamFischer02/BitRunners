@@ -821,9 +821,25 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
     after(260, () => setVerb('SCRAPE'));
   };
 
+  // Supercomputer ladder drain: carry the scrape cadence through the whole
+  // ladder so passcodes rise in proportion to bits, at whatever speed the
+  // player scrapes (tap / hold / auto-tap). Each rung converts 8→1, so the
+  // flow factors down by 8 per level — the SPIRIT is max-speed conversion up
+  // to passcodes (devlog 0131). Bounded while-loops clear any backlog a tick
+  // can create; per-bot switches still gate each rung. Auras stay on the
+  // slower BOT_TICK_MS loop (they're a spend decision, not part of the flow).
+  const scLadderDrain = (): void => {
+    if (!hasSupercomputer() || !botsOnRef.current) return;
+    const sel = botSelRef.current;
+    for (let i = 0; sel.bits && canTabulate('bits') && i < 64; i++) tabulate('bits');
+    for (let i = 0; sel.strings && canTabulate('strings') && i < 64; i++) tabulate('strings');
+    for (let i = 0; sel.serials && canTabulate('serials') && i < 64; i++) tabulate('serials');
+  };
+
   const doScrape = (pop: boolean): void => {
     const g = scrapeYield();
     scrape();
+    scLadderDrain();
     if (pop) {
       setPressed(true);
       after(140, () => setPressed(false));
@@ -868,17 +884,19 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
 
   // Auto-converter bots (Path 4). One shared interval walks the
   // bits→strings→serials→passcodes→auras ladder once per tick. Each upgrade
-  // flag gates one rung; the Supercomputer capstone drives every rung at once
-  // for a constant scrape→passcode flow. Obeys the master toggle AND each
-  // bot's own switch, and pauses when the panel closes (active-panel
-  // automation). The Supercomputer's continuous scrape rides the tapper's
-  // switch so "pause scraping, keep converting" works on capstone accounts.
+  // flag gates one rung. Obeys the master toggle AND each bot's own switch,
+  // and pauses when the panel closes (active-panel automation).
+  //
+  // Supercomputer accounts mostly ride scLadderDrain (conversion at scrape
+  // cadence); this loop remains their fallback so an existing stock still
+  // converts while scraping is paused (tapper off), and it stays the ONLY
+  // driver of passcodes→auras. The old sc-driven scrape here is gone — the
+  // forced tier-4 auto-tapper already scrapes continuously.
   useEffect(() => {
     const id = window.setInterval(() => {
       if (!botsOnRef.current) return;
       const sel = botSelRef.current;
       const sc = hasSupercomputer();
-      if (sc && sel.tapper) scrapeRef.current(false);
       if (sel.bits && (sc || hasBotBitsTab())) tabulate('bits');
       if (sel.strings && (sc || hasBotStringsTab())) tabulate('strings');
       if (sel.serials && (sc || hasBotSerialsTab())) tabulate('serials');
