@@ -20,6 +20,7 @@ import { ScrapeMenu } from './ScrapeMenu.js';
 import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
 import { Starmap } from './Starmap.js';
 import { TetherChat } from './TetherChat.js';
+import { TitleScreen } from './TitleScreen.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startAccountNudge } from './account-nudge.js';
@@ -96,7 +97,7 @@ function readRoute(): RoutedSurface {
   return null;
 }
 
-type Phase = 'boot' | 'transition' | 'game';
+type Phase = 'title' | 'boot' | 'transition' | 'game';
 
 export function App(): JSX.Element {
   const [route, setRoute] = useState<RoutedSurface>(() => readRoute());
@@ -150,7 +151,7 @@ export function App(): JSX.Element {
 }
 
 function Shell(): JSX.Element {
-  const [phase, setPhase] = useState<Phase>('boot');
+  const [phase, setPhase] = useState<Phase>('title');
   const [chosenClass, setChosenClass] = useState<string>('bit_spekter');
   const [reselect, setReselect] = useState(false);
 
@@ -175,6 +176,7 @@ function Shell(): JSX.Element {
 
   return (
     <>
+      {phase === 'title' && <TitleScreen onLink={() => setPhase('boot')} />}
       {phase === 'boot' && <Boot onSelect={onSelect} startAtSelect={reselect} />}
       {phase === 'transition' && (
         <>
