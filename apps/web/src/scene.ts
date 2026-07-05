@@ -70,7 +70,7 @@ import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
 import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
-import { getCurrentUserId } from './supabase.js';
+import { getCurrentUserId, subscribeAuth } from './supabase.js';
 import {
   type LockedTarget,
   applyLock,
@@ -1661,6 +1661,37 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     netEl.textContent = text;
     netEl.dataset.kind = kind;
   }
+
+  // Auth status card — sits directly under the NET card so "am I saving?"
+  // is answerable at a glance. Guests get a loud two-line warning; signed-in
+  // users get a quiet one-line confirmation.
+  const authEl = document.createElement('div');
+  authEl.className = 'auth-status';
+  host.appendChild(authEl);
+  const unsubscribeAuthCard = subscribeAuth((snap) => {
+    if (snap.status === 'authenticated') {
+      authEl.dataset.kind = 'ok';
+      authEl.innerHTML = '';
+      const line = document.createElement('div');
+      line.className = 'auth-status-line';
+      line.textContent = 'logged in · progress saved';
+      authEl.appendChild(line);
+    } else {
+      authEl.dataset.kind = 'warn';
+      authEl.innerHTML = '';
+      const head = document.createElement('div');
+      head.className = 'auth-status-head';
+      head.textContent = 'NOT LOGGED IN';
+      const sub = document.createElement('div');
+      sub.className = 'auth-status-sub';
+      sub.textContent = 'PROGRESS NOT SAVED';
+      authEl.append(head, sub);
+    }
+  });
+  standbyCleanups.push(() => {
+    unsubscribeAuthCard();
+    authEl.remove();
+  });
 
   console.info('[bitrunners] VITE_SERVER_URL =', serverUrl ?? '(unset)');
   if (!serverUrl) {

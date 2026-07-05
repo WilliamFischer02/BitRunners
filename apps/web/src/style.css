@@ -1368,6 +1368,68 @@ dialog.panel::backdrop {
   text-shadow: 0 0 8px rgba(255, 120, 100, 0.45);
 }
 
+/* Auth status card — paired with .net-status so "am I saving?" reads at a
+   glance. Desktop keeps the pair bottom-center (auth stacked on top of net —
+   there is no room below); the phone top-left stack places it directly BELOW
+   the net card per the owner's spec. */
+.auth-status {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  background: rgba(8, 12, 14, 0.7);
+  pointer-events: none;
+  z-index: 12;
+  white-space: nowrap;
+  max-width: 80vw;
+  text-align: center;
+}
+.auth-status[data-kind="ok"] {
+  font-size: 10px;
+  color: #6a8a78;
+  border-color: #2a4038;
+}
+.auth-status[data-kind="warn"] {
+  color: #ff9b8b;
+  border-color: #8a3a30;
+  background: rgba(30, 8, 6, 0.82);
+  animation: auth-warn-pulse 2.2s ease-in-out infinite;
+}
+.auth-status-head {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+}
+.auth-status-sub {
+  font-size: 9px;
+  color: #d88a7a;
+  letter-spacing: 0.1em;
+}
+.auth-status-line {
+  font-size: 10px;
+}
+@keyframes auth-warn-pulse {
+  0%,
+  100% {
+    text-shadow: 0 0 6px rgba(255, 120, 100, 0.35);
+  }
+  50% {
+    text-shadow: 0 0 14px rgba(255, 120, 100, 0.75);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-status[data-kind="warn"] {
+    animation: none;
+    text-shadow: 0 0 10px rgba(255, 120, 100, 0.55);
+  }
+}
+
 /* ──────────── session superseded (single live session per account) ──────────── */
 .session-superseded {
   position: absolute;
@@ -3375,6 +3437,26 @@ dialog.panel::backdrop {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.auth-status {
+  /* Directly below the net card in the top-left stack (owner spec). */
+  top: calc(max(44px, env(safe-area-inset-top, 0px)) + 46px);
+  left: max(10px, env(safe-area-inset-left, 0px));
+  right: auto;
+  bottom: auto;
+  transform: none;
+  max-width: calc(100vw - 156px);
+  padding: 2px 8px;
+  text-align: left;
+}
+.auth-status .auth-status-head {
+  font-size: 10px;
+}
+.auth-status .auth-status-sub {
+  font-size: 8px;
+}
+.auth-status .auth-status-line {
+  font-size: 9px;
 }
 .hint {
   /* WASD hint adds no value on touch and collides with admin-launch. */
