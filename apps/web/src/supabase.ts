@@ -217,6 +217,8 @@ export type Tier = 'free' | 'elevated';
 export interface AdminUser {
   id: string;
   email: string;
+  /** True once auth.users.email_confirmed_at is set (migration 0018). */
+  emailConfirmed: boolean;
   displayName: string | null;
   role: Role;
   tier: Tier;
@@ -238,6 +240,7 @@ export async function adminListUsers(): Promise<AdminUser[] | null> {
   return (data as Array<Record<string, unknown>>).map((r) => ({
     id: String(r.id),
     email: String(r.email ?? ''),
+    emailConfirmed: r.email_confirmed === true,
     displayName: typeof r.display_name === 'string' ? r.display_name : null,
     role: normRole(r.role),
     tier: r.tier === 'elevated' ? 'elevated' : 'free',
@@ -249,11 +252,20 @@ export async function adminListUsers(): Promise<AdminUser[] | null> {
   }));
 }
 
-/** Admin-only. Queues a credit/token grant the recipient claims on next load. */
+export interface UnitGrant {
+  bits: number;
+  strings: number;
+  serials: number;
+  passcodes: number;
+}
+
+/** Admin-only. Queues a grant (currencies and/or scrape-ladder units) the
+ *  recipient claims on next load. Requires migration 0018. */
 export async function adminGrantEconomy(
   target: string,
   credits: number,
   tokens: number,
+  units: UnitGrant,
   reason: string,
 ): Promise<{ error: string | null }> {
   const sb = getSupabase();
@@ -262,7 +274,25 @@ export async function adminGrantEconomy(
     target,
     p_credits: credits,
     p_tokens: tokens,
+    p_bits: units.bits,
+    p_strings: units.strings,
+    p_serials: units.serials,
+    p_passcodes: units.passcodes,
     p_reason: reason,
+  });
+  return { error: error?.message ?? null };
+}
+
+/** Re-sends the signup verification email to an address (rate-limited by
+ *  Supabase). Used from the admin console when a user reports the original
+ *  never arrived, and from the recovery menu on the title screen. */
+export async function resendVerificationEmail(email: string): Promise<{ error: string | null }> {
+  const sb = getSupabase();
+  if (!sb) return { error: 'auth not configured' };
+  const { error } = await sb.auth.resend({
+    type: 'signup',
+    email,
+    options: { emailRedirectTo: `${window.location.origin}#auth/verified` },
   });
   return { error: error?.message ?? null };
 }
@@ -310,10 +340,15 @@ export async function adminSetRole(target: string, role: Role): Promise<{ error:
 export interface GrantClaim {
   credits: number;
   tokens: number;
+  bits: number;
+  strings: number;
+  serials: number;
+  passcodes: number;
 }
 
 /** Claims the signed-in user's pending economy grants exactly-once (atomic on
- *  the server). Returns the summed amounts to apply locally, or null on error. */
+ *  the server). Returns the summed amounts to apply locally, or null on error.
+ *  Unit fields are 0 until migration 0018 is applied (missing keys coerce). */
 export async function claimEconomyGrants(): Promise<GrantClaim | null> {
   const sb = getSupabase();
   if (!sb) return null;
@@ -321,8 +356,15 @@ export async function claimEconomyGrants(): Promise<GrantClaim | null> {
   if (error || !data) return null;
   const row = Array.isArray(data) ? data[0] : data;
   if (!row) return null;
-  const r = row as { credits?: unknown; tokens?: unknown };
-  return { credits: Number(r.credits ?? 0), tokens: Number(r.tokens ?? 0) };
+  const r = row as Record<string, unknown>;
+  return {
+    credits: Number(r.credits ?? 0),
+    tokens: Number(r.tokens ?? 0),
+    bits: Number(r.bits ?? 0),
+    strings: Number(r.strings ?? 0),
+    serials: Number(r.serials ?? 0),
+    passcodes: Number(r.passcodes ?? 0),
+  };
 }
 
 export interface EconomySaveResult {

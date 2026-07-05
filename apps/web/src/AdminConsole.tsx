@@ -21,6 +21,7 @@ import {
   fetchActivityStats,
   fetchUnderConstruction,
   getMyRole,
+  resendVerificationEmail,
   setUnderConstruction,
   subscribeAuth,
 } from './supabase.js';
@@ -433,6 +434,10 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
   const [msg, setMsg] = useState<string | null>(null);
   const [credits, setCredits] = useState('');
   const [tokens, setTokens] = useState('');
+  const [bits, setBits] = useState('');
+  const [strings, setStrings] = useState('');
+  const [serials, setSerials] = useState('');
+  const [passcodes, setPasscodes] = useState('');
   const [reason, setReason] = useState('');
 
   const run = async (fn: () => Promise<{ error: string | null }>, ok: string): Promise<void> => {
@@ -458,19 +463,41 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
   const grant = (): void => {
     const c = Math.floor(Number(credits) || 0);
     const t = Math.floor(Number(tokens) || 0);
-    if (c <= 0 && t <= 0) {
-      setMsg('! enter a credit or token amount');
+    const units = {
+      bits: Math.floor(Number(bits) || 0),
+      strings: Math.floor(Number(strings) || 0),
+      serials: Math.floor(Number(serials) || 0),
+      passcodes: Math.floor(Number(passcodes) || 0),
+    };
+    const unitTotal = units.bits + units.strings + units.serials + units.passcodes;
+    if (c <= 0 && t <= 0 && unitTotal <= 0) {
+      setMsg('! enter an amount (currency or units)');
       return;
     }
     void run(async () => {
-      const res = await adminGrantEconomy(user.id, c, t, reason);
+      const res = await adminGrantEconomy(user.id, c, t, units, reason);
       if (!res.error) {
         setCredits('');
         setTokens('');
+        setBits('');
+        setStrings('');
+        setSerials('');
+        setPasscodes('');
         setReason('');
       }
       return res;
     }, 'queued ✓ — applies on their next load');
+  };
+
+  const resendVerification = (): void => {
+    if (!user.email) {
+      setMsg('! user has no email on file');
+      return;
+    }
+    void run(
+      () => resendVerificationEmail(user.email),
+      'verification email re-sent ✓ (rate-limited — wait ~60s between sends)',
+    );
   };
 
   const pending =
@@ -486,6 +513,22 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
           ¢{user.credits} ◈{user.tokens}
           {pending}
         </span>
+      </div>
+
+      <div className="panel-row">
+        <span className="panel-key">
+          email {user.emailConfirmed ? 'verified ✓' : 'NOT verified ✗'}
+        </span>
+        {!user.emailConfirmed && (
+          <button
+            type="button"
+            className="panel-toggle"
+            disabled={busy || !user.email}
+            onClick={resendVerification}
+          >
+            [ resend verification ]
+          </button>
+        )}
       </div>
 
       <div className="panel-row">
@@ -543,6 +586,52 @@ function UserEditor({ user, onChanged }: { user: AdminUser; onChanged(): void })
         <button type="button" className="panel-toggle is-on" disabled={busy} onClick={grant}>
           [ grant ]
         </button>
+      </div>
+      <div className="admin-grant-row">
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="· bits"
+          value={bits}
+          disabled={busy}
+          onChange={(e) => setBits(e.target.value)}
+          aria-label="grant bits"
+        />
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder=": strings"
+          value={strings}
+          disabled={busy}
+          onChange={(e) => setStrings(e.target.value)}
+          aria-label="grant strings"
+        />
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="= serials"
+          value={serials}
+          disabled={busy}
+          onChange={(e) => setSerials(e.target.value)}
+          aria-label="grant serials"
+        />
+        <input
+          className="admin-select admin-grant-num"
+          type="number"
+          min={0}
+          inputMode="numeric"
+          placeholder="# passcodes"
+          value={passcodes}
+          disabled={busy}
+          onChange={(e) => setPasscodes(e.target.value)}
+          aria-label="grant passcodes"
+        />
       </div>
       <input
         className="admin-select"
