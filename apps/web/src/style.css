@@ -6280,3 +6280,155 @@ dialog.panel::backdrop {
     padding: 4px 8px;
   }
 }
+
+/* ──────────── title screen (devlog 0133 · Data Amalgam Inc.) ──────────── */
+.title-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 24px 16px 64px;
+  background: radial-gradient(ellipse at 50% 38%, #0d0b18 0%, #060507 55%, #020205 100%);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  color: #c0ffd6;
+  text-align: center;
+}
+.title-pre {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #5a8870;
+}
+.title-logo {
+  margin: 0;
+  font-size: clamp(10px, 3.4vw, 22px);
+  line-height: 1.15;
+  color: #b07cff;
+  text-shadow: 0 0 18px rgba(176, 124, 255, 0.45);
+  user-select: none;
+}
+.title-sub {
+  max-width: 560px;
+  font-size: 12px;
+  line-height: 1.7;
+  letter-spacing: 0.06em;
+  color: #8aa597;
+}
+.title-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 4vh;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.title-link-btn,
+.title-account-btn {
+  appearance: none;
+  min-height: 48px;
+  padding: 10px 26px;
+  border-radius: 4px;
+  font: inherit;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.title-link-btn {
+  font-size: 16px;
+  color: #c0ffd6;
+  background: rgba(132, 216, 164, 0.14);
+  border: 1px solid #84d8a4;
+  animation: title-link-glow 2.4s ease-in-out infinite;
+}
+.title-link-btn:hover {
+  background: rgba(132, 216, 164, 0.3);
+}
+.title-account-btn {
+  font-size: 12px;
+  color: #8aa597;
+  background: rgba(8, 12, 14, 0.6);
+  border: 1px solid #355042;
+}
+.title-account-btn:hover {
+  color: #c0ffd6;
+  border-color: #5a9878;
+}
+@keyframes title-link-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 10px rgba(132, 216, 164, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 26px rgba(132, 216, 164, 0.6);
+  }
+}
+.title-ticker {
+  position: absolute;
+  bottom: 14px;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #4a6a58;
+  pointer-events: none;
+}
+.title-ticker-inner {
+  display: inline-flex;
+  gap: 6em;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: title-ticker-scroll 38s linear infinite;
+}
+@keyframes title-ticker-scroll {
+  to {
+    transform: translateX(-100%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title-link-btn {
+    animation: none;
+    box-shadow: 0 0 16px rgba(132, 216, 164, 0.4);
+  }
+  .title-ticker-inner {
+    animation: none;
+    padding-left: 16px;
+  }
+}
+.title-account-back {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.title-account {
+  position: static;
+  width: min(400px, 92vw);
+}
+.title-auth-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.title-auth-forgot {
+  appearance: none;
+  background: none;
+  border: 0;
+  color: #5a8870;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.title-auth-forgot:hover {
+  color: #c0ffd6;
+}
