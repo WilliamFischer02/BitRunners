@@ -5,6 +5,39 @@ Keep signal-dense — record decisions, not routine feature work (that's the dev
 
 ---
 
+## 2026-07-11 — Performance pass: locked patterns + budgets (devlogs 0137–0142)
+
+Rules established by the perf pass. Reference: `docs/PERFORMANCE.md`. Breaking
+any of these is a *regression*, not a style choice:
+
+- **Boot path is budgeted.** Entry chunk ≤ 120 kB gzip, any chunk ≤ 350 kB gzip
+  — enforced by `apps/web/scripts/check-bundle.mjs` (`pnpm --filter
+  @bitrunners/web check-bundle`, run after build). NOT in CI (workflow edits
+  need owner confirmation); wire it as a step after the web build when
+  authorized. Game-only code belongs in `Game.tsx` (lazy, prefetched from
+  title) — a static import from `App.tsx`/`main.tsx` drags three/colyseus back
+  onto first paint.
+- **vite `manualChunks` must stay in FUNCTION form.** Object form parked
+  rollup's shared CJS-interop helper inside the colyseus chunk, making the
+  entry statically import 37 kB of colyseus for a one-line helper (0139).
+- **`subscribeAuth` is one shared GoTrue subscription** (supabase.ts) with a
+  cached-snapshot replay. Never call `sb.auth.onAuthStateChange`/`getSession`
+  per-caller — the old pattern also fired `logSignIn` per subscriber (~16
+  duplicate session_events rows per sign-in, inflating DAU). Guard refetches
+  by **uid change**, not by auth event (TOKEN_REFRESHED reports the same user).
+- **Client must never go fully silent while connected.** The server idle sweep
+  (`sphere-room.ts`, `IDLE_TIMEOUT_MS` 120 s) counts only inbound messages as
+  liveness. The sendMove dirty-check therefore keeps a 10 s keepalive — do not
+  "optimize" it away, it would kick every AFK tab (0141).
+- **No per-frame React state, no per-frame allocation, no per-frame layout
+  reads** in rAF/tick loops (FreqLock imperative blip layer, hoisted scratch,
+  cached hostW/H, last-value style-write skip — 0140). Economy dispatch +
+  persist are microtask-coalesced (0138).
+- **`?perf=1`** mounts the zero-dep HUD (`perf.ts`); `perfCount()` is a no-op
+  branch when off, so instrumentation stays in shipped code.
+
+---
+
 ## 2026-07-01 — core_run maze difficulty band uses a room-edge metric [30,70], not the brief's [55,85] (devlog 0118)
 
 **Decision:** The mega-batch-2 brief suggested normalising `core_run` mazes to a
