@@ -4064,6 +4064,9 @@ dialog.panel::backdrop {
 /* ── SCRAPE press flourish: green glow + circuit-trace tendrils ── */
 .scrape-stage {
   position: relative;
+  /* The glow is a 320x200 absolute sibling; clip it to the stage so its
+     grid never paints over the section borders / sibling UI. */
+  overflow: hidden;
 }
 .scrape-btn {
   position: relative;
