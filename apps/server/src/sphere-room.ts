@@ -17,6 +17,7 @@ import {
   isValidTetherBody,
   isValidThemeKey,
   isValidUserId,
+  isValidZone,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { recordAudit } from './audit.js';
@@ -289,6 +290,17 @@ export class SphereRoom extends Room<SphereState> {
         }
       },
     );
+
+    // Zone presence (P5): which sub-space the runner occupies ('cloud' or
+    // 'void'). Allowlist only — the server never trusts an arbitrary string.
+    // Clients filter remote visibility by zone; positions keep flowing on
+    // the same delta path regardless of zone.
+    this.onMessage('zone', (client: Client, msg: { zone?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const p = this.state.players.get(client.sessionId);
+      if (!p) return;
+      if (isValidZone(msg?.zone)) p.zone = msg.zone;
+    });
 
     // ── Tether chat (PR 87) ────────────────────────────────────────────────
     // Server routes the 5 tether messages between exactly two consenting

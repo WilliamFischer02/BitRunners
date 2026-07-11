@@ -673,6 +673,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // Plates: emissive floor tiles + 1..4 pip cubes. Materials kept so the tick
   // can brighten a plate as the sequence advances (clones share the material).
   const plateMats: MeshStandardMaterialType[] = [];
+  // Tile meshes kept too (P5): a lit plate depresses ~0.05y for tactile
+  // press feedback. NOTE: worldTile is cloned across the 3x3 torus tiles and
+  // clones share materials but NOT transforms — the depress shows on the
+  // center (playable) tile, which is the one underfoot when stepping.
+  const plateTiles: Mesh[] = [];
   const plateGeom = new BoxGeometry(1.2, 0.08, 1.2);
   const pipGeom = new BoxGeometry(0.16, 0.1, 0.16);
   const pipMat = new MeshStandardMaterial({
@@ -690,6 +695,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     plateMats.push(mat);
     const tile = new MeshClass(plateGeom, mat);
     tile.position.set(plate.x, 0.04, plate.z);
+    plateTiles.push(tile);
     worldTile.add(tile);
     for (let p = 0; p < plate.pips; p++) {
       const pip = new MeshClass(pipGeom, pipMat);
@@ -1590,6 +1596,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     petMat: MeshStandardMaterialType | null;
     petId: string | null;
     lastAppearanceKey: string;
+    /** Zone presence (P5) — 'cloud' | 'void'. Remotes in a different zone
+     *  than the local runner are hidden (group + tag). */
+    zone: string;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
 
@@ -1908,6 +1917,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 petMat: null,
                 petId: null,
                 lastAppearanceKey: '',
+                zone: p.zone,
               };
               if (build) applyRemoteAppearance(ra, p);
               applyTag(
@@ -1929,6 +1939,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 ra.tagEl.classList.add('player-tag--npc');
               }
               remoteAvatars.set(p.id, ra);
+              applyRemoteZoneVisibility(ra);
               setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
             },
             onLeave(id) {
@@ -1957,6 +1968,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               ra.tx = p.x;
               ra.tz = p.z;
               ra.trotY = p.rotY;
+              if (p.zone !== ra.zone) {
+                ra.zone = p.zone;
+                applyRemoteZoneVisibility(ra);
+              }
             },
             onIdentity(id, p) {
               const ra = remoteAvatars.get(id);
@@ -2038,6 +2053,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         );
         reconnectAttempt = 0;
         netSession = session;
+        // If a reconnect landed while the runner is in the void, restore the
+        // zone tag (fresh sessions default to 'cloud' server-side).
+        if (voidActive) session.sendZone('void');
         // Force the first move after (re)connect to send even if stationary —
         // the server scatters spawn coords on join, so remotes would otherwise
         // see this avatar parked at its random spawn point.
@@ -2184,11 +2202,29 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // ── Zone-filtered remote visibility (P5) ─────────────────────────────────
+  // A remote runner renders only when it shares the local runner's zone
+  // ('cloud' vs 'void'); the maze is solo, so everything hides there. Applied
+  // on join, on zone patches, and on local zone transitions — never per frame.
+  function applyRemoteZoneVisibility(ra: RemoteAvatar): void {
+    const visible = !mazeActive && ra.zone === (voidActive ? 'void' : 'cloud');
+    ra.group.visible = visible;
+    ra.tagEl.style.display = visible ? '' : 'none';
+  }
+  function refreshRemoteZoneVisibility(): void {
+    for (const ra of remoteAvatars.values()) applyRemoteZoneVisibility(ra);
+  }
+
   function setWorldVisibleForMaze(visible: boolean): void {
     for (const o of worldToggle) o.visible = visible;
-    for (const ra of remoteAvatars.values()) {
-      ra.group.visible = visible;
-      ra.tagEl.style.display = visible ? '' : 'none';
+    if (visible) {
+      // Re-showing the world: remotes come back zone-filtered, not en masse.
+      refreshRemoteZoneVisibility();
+    } else {
+      for (const ra of remoteAvatars.values()) {
+        ra.group.visible = false;
+        ra.tagEl.style.display = 'none';
+      }
     }
   }
 
@@ -2347,8 +2383,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   let plateNext = 0;
   let plateOn = -1;
   function setPlateLit(i: number, lit: boolean): void {
+    // Press feedback (P5): on lit the plate flashes bright (2.8, decays to
+    // 1.7 in checkVaultPlates — no timers, no allocation) and depresses.
     const mat = plateMats[i];
-    if (mat) mat.emissiveIntensity = lit ? 1.7 : 0.5;
+    if (mat) mat.emissiveIntensity = lit ? 2.8 : 0.5;
+    const tile = plateTiles[i];
+    if (tile) tile.position.y = lit ? -0.01 : 0.04;
   }
   function resetPlateLights(): void {
     for (let i = 0; i < plateMats.length; i++) setPlateLit(i, false);
@@ -2370,6 +2410,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     skybox.visible = false;
     voidGroup.visible = true;
     voidActive = true;
+    // Zone sync (P5): tell the sphere we moved to the void, then re-filter
+    // remotes — void-mates appear, cloud runners stay hidden.
+    netSession?.sendZone('void');
+    refreshRemoteZoneVisibility();
     fireMaze('bitrunners:void-enter');
   }
   function exitVoid(): void {
@@ -2384,6 +2428,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     plateNext = 0;
     plateOn = -1;
     resetPlateLights();
+    netSession?.sendZone('cloud');
     fireMaze('bitrunners:void-exit');
   }
   function updateVoid(): void {
@@ -2405,6 +2450,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
 
   function checkVaultPlates(): void {
+    // Settle the press flash: any plate above the lit resting intensity
+    // (1.7) eases back down. Scalar math on ≤4 materials — no allocation.
+    for (const m of plateMats) {
+      if (m.emissiveIntensity > 1.7)
+        m.emissiveIntensity = Math.max(1.7, m.emissiveIntensity - 0.05);
+    }
     let on = -1;
     for (let i = 0; i < VAULT_PLATES.length; i++) {
       const plate = VAULT_PLATES[i];
@@ -2490,7 +2541,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       dx = mazeArena.centerWorld.x - rig.root.position.x;
       dz = mazeArena.centerWorld.z - rig.root.position.z;
       show = true;
-    } else if (!voidActive) {
+    } else if (voidActive) {
+      // In the void the only landmark is the exit door — point straight at it
+      // (no wrap; the void room is bounded). Hide when standing on it.
+      dx = VOID_DOOR.x - rig.root.position.x;
+      dz = VOID_DOOR.z - rig.root.position.z;
+      show = dx * dx + dz * dz > 0.36;
+    } else {
       const cp = activeCheckpointXZ();
       feetArrowTargets.length = 4;
       if (cp) feetArrowTargets.push(cp);
@@ -2695,7 +2752,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // In maze mode we freeze outbound moves so the avatar stays parked in the
     // shared world (the rig is off in the maze arena's coordinate space).
-    if (!mazeActive && !voidActive && netSession && now - lastNetSend >= NET_SEND_MS) {
+    // Void moves DO send (P5): the void is shared space now — void-mates see
+    // each other via the zone filter; cloud runners hide void coords anyway.
+    if (!mazeActive && netSession && now - lastNetSend >= NET_SEND_MS) {
       const sx = rig.root.position.x;
       const sz = rig.root.position.z;
       const moved =

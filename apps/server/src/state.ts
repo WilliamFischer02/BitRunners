@@ -39,6 +39,10 @@ export class PlayerState extends Schema {
   @type('string') equippedChest = '';
   @type('string') equippedLegs = '';
   @type('string') equippedPet = '';
+  // Zone presence (mega-batch 3 P5) — 'cloud' | 'void' (isValidZone
+  // allowlist). Appended field = no protocol bump. Clients hide remote
+  // runners whose zone differs from their own; NPCs stay 'cloud'.
+  @type('string') zone = 'cloud';
 }
 
 export class SphereState extends Schema {

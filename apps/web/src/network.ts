@@ -20,6 +20,7 @@ export interface RemotePlayer {
   equippedChest: string;
   equippedLegs: string;
   equippedPet: string;
+  zone: string;
 }
 
 export interface IdentityUpdate {
@@ -86,6 +87,8 @@ export interface NetworkSession {
   sendEmote(text: string): void;
   setClass(name: string): void;
   sendIdentity(update: IdentityUpdate): void;
+  /** Zone presence (P5) — 'cloud' | 'void'. Server allowlists. */
+  sendZone(zone: string): void;
   sendTetherRequest(target: string): void;
   sendTetherAccept(from: string): void;
   sendTetherDecline(from: string): void;
@@ -119,6 +122,7 @@ interface PlayerSchema {
   equippedChest?: string;
   equippedLegs?: string;
   equippedPet?: string;
+  zone?: string;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -141,6 +145,7 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     equippedChest: p.equippedChest ?? '',
     equippedLegs: p.equippedLegs ?? '',
     equippedPet: p.equippedPet ?? '',
+    zone: p.zone ?? 'cloud',
   };
 }
 
@@ -245,6 +250,9 @@ export async function joinSphere(
         playerCb.listen('x', fireUpdate);
         playerCb.listen('z', fireUpdate);
         playerCb.listen('rotY', fireUpdate);
+        // Zone rides the update path (not identity) — visibility filtering
+        // lives next to positioning in scene.ts's onUpdate handler.
+        playerCb.listen('zone', fireUpdate);
         playerCb.listen('displayName', fireIdentity);
         playerCb.listen('equippedBadge', fireIdentity);
         playerCb.listen('equippedTheme', fireIdentity);
@@ -347,6 +355,9 @@ export async function joinSphere(
         return;
       }
       room.send('identity', update);
+    },
+    sendZone(zone) {
+      room.send('zone', { zone });
     },
     sendTetherRequest(target) {
       room.send('tether-request', { target });

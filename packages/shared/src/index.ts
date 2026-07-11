@@ -107,6 +107,16 @@ export function isValidItemId(id: unknown): id is string {
   return typeof id === 'string' && ITEM_ID_RE.test(id);
 }
 
+// Zone presence (mega-batch 3 P5): which sub-space a runner currently
+// occupies. 'cloud' = the shared overworld, 'void' = the pressure-plate
+// vault's dark room. Sky-grid plots (P7C) will extend this to 'plot:<idx>'.
+// Server stores only allowlisted values; clients filter remote visibility
+// by zone so runners in the void vanish from the cloud and vice versa.
+export const ZONES = ['cloud', 'void'] as const;
+export function isValidZone(z: unknown): z is string {
+  return typeof z === 'string' && (ZONES as readonly string[]).includes(z);
+}
+
 // Name-tag styling (weight + tint). Mirrors the curated vocabulary in
 // apps/web/src/name-style.ts; kept here so the server can shape-validate the
 // 'identity' wire and other clients can render a remote runner's styled name
