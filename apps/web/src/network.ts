@@ -189,14 +189,33 @@ export async function joinSphere(
           if (player.emote) callbacks.onEmote?.(sessionId, player.emote);
         }
       };
-      const fireUpdate = (): void => callbacks.onUpdate?.(snapshot(player));
+      // A movement patch touches x, z AND rotY — three listen() callbacks in
+      // the same synchronous decode. Coalesce to one snapshot + one onUpdate
+      // per patch via a microtask flag (identity likewise: 6 fields → 1 call).
+      let updateQueued = false;
+      const fireUpdate = (): void => {
+        if (updateQueued) return;
+        updateQueued = true;
+        queueMicrotask(() => {
+          updateQueued = false;
+          callbacks.onUpdate?.(snapshot(player));
+        });
+      };
 
       // Schema 3.x: per-field listen() is the reliable way to react to
       // primitive changes on a MapSchema child. Instance-level onChange has
       // been flaky for nested entries across 0.16 builds — the most likely
       // reason remote emotes never reached other clients. Keep onChange as a
       // fallback for any build where listen() is unavailable.
-      const fireIdentity = (): void => callbacks.onIdentity?.(sessionId, snapshot(player));
+      let identityQueued = false;
+      const fireIdentity = (): void => {
+        if (identityQueued) return;
+        identityQueued = true;
+        queueMicrotask(() => {
+          identityQueued = false;
+          callbacks.onIdentity?.(sessionId, snapshot(player));
+        });
+      };
       if (playerCb && typeof playerCb.listen === 'function') {
         playerCb.listen('emoteSeq', (seq: number) => fireEmote(seq ?? 0));
         playerCb.listen('x', fireUpdate);

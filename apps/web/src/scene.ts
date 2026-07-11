@@ -1672,6 +1672,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   let lastNetSend = 0;
   let lastMinimapEmit = 0;
+  // Outbound move dirty-check: skip the 15 Hz send while stationary, but keep
+  // a slow keepalive — the server's idle sweep (sphere-room IDLE_TIMEOUT_MS =
+  // 120 s) refreshes lastSeen ONLY on inbound messages, so a fully silent
+  // stationary client would be kicked after 2 minutes.
+  const MOVE_EPSILON = 1e-4;
+  const MOVE_KEEPALIVE_MS = 10_000;
+  let lastSentX = Number.NaN;
+  let lastSentZ = Number.NaN;
+  let lastSentRotY = Number.NaN;
   const serverUrl = getServerUrl();
   let sceneDisposed = false;
   let reconnectAttempt = 0;
@@ -1901,6 +1910,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         );
         reconnectAttempt = 0;
         netSession = session;
+        // Force the first move after (re)connect to send even if stationary —
+        // the server scatters spawn coords on join, so remotes would otherwise
+        // see this avatar parked at its random spawn point.
+        lastSentX = Number.NaN;
+        lastSentZ = Number.NaN;
+        lastSentRotY = Number.NaN;
         setTetherSink({
           request: (target) => session.sendTetherRequest(target),
           accept: (from) => session.sendTetherAccept(from),
@@ -2553,8 +2568,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // In maze mode we freeze outbound moves so the avatar stays parked in the
     // shared world (the rig is off in the maze arena's coordinate space).
     if (!mazeActive && !voidActive && netSession && now - lastNetSend >= NET_SEND_MS) {
-      netSession.sendMove(rig.root.position.x, rig.root.position.z, facing);
-      lastNetSend = now;
+      const sx = rig.root.position.x;
+      const sz = rig.root.position.z;
+      const moved =
+        Number.isNaN(lastSentX) || // fresh (re)connect — always send
+        Math.abs(sx - lastSentX) > MOVE_EPSILON ||
+        Math.abs(sz - lastSentZ) > MOVE_EPSILON ||
+        Math.abs(facing - lastSentRotY) > MOVE_EPSILON;
+      // Stationary avatars skip the 15 Hz send, but still ping every 10 s so
+      // the server's message-driven idle sweep (120 s) never fires on a
+      // present-but-idle player (matches pre-dirty-check behavior).
+      if (moved || now - lastNetSend >= MOVE_KEEPALIVE_MS) {
+        netSession.sendMove(sx, sz, facing);
+        lastNetSend = now;
+        lastSentX = sx;
+        lastSentZ = sz;
+        lastSentRotY = facing;
+      }
     }
 
     // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the

@@ -34,6 +34,21 @@ export interface AuthSnapshot {
 
 export type AuthListener = (snap: AuthSnapshot) => void;
 
+// One shared GoTrue subscription for the whole app. Previously every
+// subscribeAuth() caller (~16 mounted at once in-game) created its own
+// getSession() promise + onAuthStateChange listener, and each of those
+// listeners fired logSignIn on SIGNED_IN — one sign-in produced ~16
+// duplicate session_events inserts. Now the GoTrue client is wired once,
+// the latest snapshot is cached, and subscribers are a plain Set.
+const authListeners = new Set<AuthListener>();
+let lastAuthSnap: AuthSnapshot | null = null;
+let authWired = false;
+
+function emitAuth(snap: AuthSnapshot): void {
+  lastAuthSnap = snap;
+  for (const cb of authListeners) cb(snap);
+}
+
 export function subscribeAuth(cb: AuthListener): () => void {
   const sb = getSupabase();
   if (!sb) {
@@ -42,22 +57,35 @@ export function subscribeAuth(cb: AuthListener): () => void {
       // no-op
     };
   }
-  void sb.auth.getSession().then(({ data }) => {
-    if (data.session) {
-      cb({ status: 'authenticated', user: data.session.user, session: data.session });
-    } else {
-      cb({ status: 'guest' });
-    }
-  });
-  const { data } = sb.auth.onAuthStateChange((event, session) => {
-    if (session) {
-      if (event === 'SIGNED_IN') void logSignIn(session.user.id);
-      cb({ status: 'authenticated', user: session.user, session });
-    } else {
-      cb({ status: 'guest' });
-    }
-  });
-  return () => data.subscription.unsubscribe();
+  authListeners.add(cb);
+  // Replay the latest snapshot immediately so late subscribers don't wait
+  // for the next auth event (previously each caller ran its own getSession).
+  if (lastAuthSnap) cb(lastAuthSnap);
+  if (!authWired) {
+    authWired = true;
+    void sb.auth.getSession().then(({ data }) => {
+      // onAuthStateChange (INITIAL_SESSION) may have landed first — don't
+      // clobber a fresher snapshot with this one.
+      if (lastAuthSnap) return;
+      if (data.session) {
+        emitAuth({ status: 'authenticated', user: data.session.user, session: data.session });
+      } else {
+        emitAuth({ status: 'guest' });
+      }
+    });
+    // Module-lifetime subscription; never unsubscribed by design.
+    sb.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        if (event === 'SIGNED_IN') void logSignIn(session.user.id);
+        emitAuth({ status: 'authenticated', user: session.user, session });
+      } else {
+        emitAuth({ status: 'guest' });
+      }
+    });
+  }
+  return () => {
+    authListeners.delete(cb);
+  };
 }
 
 /** Fire-and-forget: records a sign-in event for DAU tracking. Silently no-ops
