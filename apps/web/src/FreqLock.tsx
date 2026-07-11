@@ -89,7 +89,6 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const [combo, setCombo] = useState(0);
   const [hits, setHits] = useState(0);
   const [judgement, setJudgement] = useState<string>('');
-  const [songMs, setSongMs] = useState(0);
 
   const notesRef = useRef<Note[]>([]);
   const startRef = useRef<number>(0);
@@ -100,8 +99,24 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
   const phaseRef = useRef<Phase>('ready');
   phaseRef.current = phase;
 
+  // Imperative animation layer (perf P2, devlog 0140). The travelling blips
+  // used to be React state driven by setSongMs() every rAF — a full-panel
+  // re-render at 60 fps for the whole minigame. The rAF loop now writes blip
+  // positions/heights straight to DOM nodes it owns inside blipLayerRef, and
+  // React only re-renders on actual game events (taps, misses, phase).
+  const blipLayerRef = useRef<HTMLDivElement>(null);
+  const timeLeftRef = useRef<HTMLSpanElement>(null);
+  const blipEls = useRef<Map<number, { el: HTMLDivElement; bars: HTMLSpanElement[] }>>(new Map());
+  const lastTimeLeft = useRef(-1);
+
+  const clearBlips = useCallback(() => {
+    for (const b of blipEls.current.values()) b.el.remove();
+    blipEls.current.clear();
+  }, []);
+
   const finish = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
+    clearBlips();
     const credits = Math.min(CREDITS_CAP, Math.floor(scoreRef.current * CREDITS_PER_POINT));
     if (credits > 0) {
       addCredits(credits);
@@ -109,7 +124,7 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
     }
     void submitMinigameScore('freq_lock', scoreRef.current);
     setPhase('done');
-  }, []);
+  }, [clearBlips]);
 
   const start = useCallback(() => {
     notesRef.current = buildChart();
@@ -120,17 +135,64 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
     setHits(0);
     setCombo(0);
     setJudgement('');
+    clearBlips();
+    lastTimeLeft.current = -1;
     startRef.current = performance.now();
     setPhase('playing');
 
     const loop = (): void => {
       const now = performance.now() - startRef.current;
-      setSongMs(now);
+
+      // Countdown chip: textContent write only when the second flips.
+      const timeLeft = Math.max(0, Math.ceil((SONG_MS - now) / 1000));
+      if (timeLeft !== lastTimeLeft.current) {
+        lastTimeLeft.current = timeLeft;
+        if (timeLeftRef.current) timeLeftRef.current.textContent = `${timeLeft}s`;
+      }
+
+      const layer = blipLayerRef.current;
       for (const n of notesRef.current) {
         if (n.state === 'pending' && now - n.hitTime > HIT_WINDOW_MS) {
           n.state = 'missed';
           comboRef.current = 0;
           setCombo(0);
+        }
+        const inWindow =
+          n.state === 'pending' && n.hitTime - now <= TRAVEL_MS && n.hitTime - now > -HIT_WINDOW_MS;
+        const existing = blipEls.current.get(n.id);
+        if (!inWindow) {
+          if (existing) {
+            existing.el.remove();
+            blipEls.current.delete(n.id);
+          }
+          continue;
+        }
+        const g = LANE_GEO[n.lane];
+        if (!g || !layer) continue;
+        let blip = existing;
+        if (!blip) {
+          const el = document.createElement('div');
+          el.className = `freqlock-blip freqlock-blip--${LANE_KEYS[n.lane]}`;
+          const bars: HTMLSpanElement[] = [];
+          for (let i = 0; i < n.bars.length; i++) {
+            const bar = document.createElement('span');
+            bar.className = 'freqlock-bar';
+            el.appendChild(bar);
+            bars.push(bar);
+          }
+          layer.appendChild(el);
+          blip = { el, bars };
+          blipEls.current.set(n.id, blip);
+        }
+        const p = Math.min(1, Math.max(0, 1 - (n.hitTime - now) / TRAVEL_MS));
+        const env = p ** 0.7; // silent → loud toward the target
+        blip.el.style.left = `${lerp(g.far.x, g.hit.x, p)}%`;
+        blip.el.style.top = `${lerp(g.far.y, g.hit.y, p)}%`;
+        blip.el.style.opacity = `${0.35 + env * 0.65}`;
+        for (let i = 0; i < blip.bars.length; i++) {
+          const bar = blip.bars[i];
+          const h = n.bars[i];
+          if (bar && h !== undefined) bar.style.height = `${Math.max(8, h * env * 100)}%`;
         }
       }
       if (now >= SONG_MS) {
@@ -140,7 +202,7 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
       rafRef.current = requestAnimationFrame(loop);
     };
     rafRef.current = requestAnimationFrame(loop);
-  }, [finish]);
+  }, [finish, clearBlips]);
 
   const tapLane = useCallback((lane: number) => {
     if (phaseRef.current !== 'playing') return;
@@ -194,7 +256,6 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
 
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
-  const timeLeft = Math.max(0, Math.ceil((SONG_MS - songMs) / 1000));
   const credits = Math.min(CREDITS_CAP, Math.floor(score * CREDITS_PER_POINT));
 
   return (
@@ -204,7 +265,9 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
           <span className="freqlock-title">{'// freq_lock'}</span>
           <span className="freqlock-stat">score {score}</span>
           <span className="freqlock-stat">combo {combo}</span>
-          <span className="freqlock-stat">{phase === 'playing' ? `${timeLeft}s` : ''}</span>
+          <span className="freqlock-stat">
+            {phase === 'playing' ? <span ref={timeLeftRef} /> : ''}
+          </span>
           <button type="button" className="panel-close" onClick={onClose} aria-label="close">
             ✕
           </button>
@@ -269,39 +332,13 @@ export function FreqLock({ onClose }: { onClose(): void }): JSX.Element {
             );
           })}
 
-          {/* travelling waveform blips */}
-          {phase === 'playing' &&
-            notesRef.current
-              .filter(
-                (n) =>
-                  n.state === 'pending' &&
-                  n.hitTime - songMs <= TRAVEL_MS &&
-                  n.hitTime - songMs > -HIT_WINDOW_MS,
-              )
-              .map((n) => {
-                const g = LANE_GEO[n.lane];
-                if (!g) return null;
-                const p = Math.min(1, Math.max(0, 1 - (n.hitTime - songMs) / TRAVEL_MS));
-                const env = p ** 0.7; // silent → loud toward the target
-                const x = lerp(g.far.x, g.hit.x, p);
-                const y = lerp(g.far.y, g.hit.y, p);
-                return (
-                  <div
-                    key={n.id}
-                    className={`freqlock-blip freqlock-blip--${LANE_KEYS[n.lane]}`}
-                    style={{ left: `${x}%`, top: `${y}%`, opacity: 0.35 + env * 0.65 }}
-                  >
-                    {n.bars.map((h, i) => (
-                      <span
-                        // biome-ignore lint/suspicious/noArrayIndexKey: fixed-length bar set, positional
-                        key={i}
-                        className="freqlock-bar"
-                        style={{ height: `${Math.max(8, h * env * 100)}%` }}
-                      />
-                    ))}
-                  </div>
-                );
-              })}
+          {/* travelling waveform blips — imperatively managed by the rAF
+              loop (see blipLayerRef above); React never reconciles them. */}
+          <div
+            ref={blipLayerRef}
+            aria-hidden="true"
+            style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}
+          />
 
           {/* hit targets */}
           {LANE_GEO.map((g, lane) => (

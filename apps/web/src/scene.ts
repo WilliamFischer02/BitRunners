@@ -1331,6 +1331,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   playerTagEl.appendChild(playerTagLevel);
   playerTagEl.appendChild(playerTagNameBtn);
   host.appendChild(playerTagEl);
+  // Last-applied visibility for the self tag — opacity is only written on
+  // change; transform still writes per frame (the hover bob is intended to
+  // ride the tag). Perf P2, devlog 0140.
+  let selfTagVisible = true;
   playerTagBadgeBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     try {
@@ -1483,9 +1487,16 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     return `player-tag-name${cls ? ` ${cls}` : ''}`;
   }
 
+  // Host size cached here and refreshed by the ResizeObserver — the tick
+  // loop reads these instead of host.clientWidth/Height, which can force
+  // synchronous layout when read every frame (perf P2, devlog 0140).
+  let hostW = 1;
+  let hostH = 1;
   function resize(): void {
     const w = host.clientWidth || 1;
     const h = host.clientHeight || 1;
+    hostW = w;
+    hostH = h;
     renderer.setSize(w, h, false);
     composer.setSize(w, h);
     characterTarget.setSize(w, h);
@@ -1516,12 +1527,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     tagName: HTMLSpanElement;
     tagBadge: HTMLSpanElement;
     tagLevel: HTMLSpanElement;
+    /** Last-written tag transform — skips the DOM write when unchanged
+     *  (stationary remotes + stationary camera). Perf P2, devlog 0140. */
+    lastTagCss: string;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
   // Reusable buffer published to minimap-state once per tick. Lifetime
   // matches the scene; cleared on dispose so the minimap doesn't keep
   // showing ghosts after the user leaves the room.
   const minimapRemotesScratch: MinimapRemote[] = [];
+  // Object pool backing the scratch buffer — entries are mutated in place
+  // each emit instead of allocating ~N objects at 15 Hz (perf P2).
+  const minimapRemotePool: MinimapRemote[] = [];
 
   function buildRemoteTag(): {
     el: HTMLDivElement;
@@ -1756,6 +1773,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 tagName: tag.nameSpan,
                 tagBadge: tag.badgeSpan,
                 tagLevel: tag.levelSpan,
+                lastTagCss: '',
               };
               applyTag(
                 ra.tagEl,
@@ -2307,9 +2325,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   function activeCheckpointXZ(): { x: number; z: number } | null {
     const snap = getActiveMission();
     if (!snap || snap.state === 'complete' || snap.state === 'final') return null;
-    const cp = snap.mission.checkpoints[snap.nextIdx];
-    return cp ? { x: cp.x, z: cp.z } : null;
+    // Returned by reference (read-only use) — no per-tick allocation.
+    return snap.mission.checkpoints[snap.nextIdx] ?? null;
   }
+
+  // Static landmark targets + one mutable slot for the active mission
+  // checkpoint — hoisted so updateFeetArrow allocates nothing per tick
+  // (was: fresh array + object literals every frame). Perf P2, devlog 0140.
+  const feetArrowTargets: Array<{ x: number; z: number }> = [
+    { x: SAMM_X, z: SAMM_Z },
+    { x: OBELISK_X, z: OBELISK_Z },
+    { x: VAULT.x, z: VAULT.z },
+    { x: GLITCH_SWITCH.x, z: GLITCH_SWITCH.z },
+  ];
 
   function updateFeetArrow(): void {
     let dx = 0;
@@ -2320,16 +2348,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       dz = mazeArena.centerWorld.z - rig.root.position.z;
       show = true;
     } else if (!voidActive) {
-      const targets: Array<{ x: number; z: number }> = [
-        { x: SAMM_X, z: SAMM_Z },
-        { x: OBELISK_X, z: OBELISK_Z },
-        { x: VAULT.x, z: VAULT.z },
-        { x: GLITCH_SWITCH.x, z: GLITCH_SWITCH.z },
-      ];
       const cp = activeCheckpointXZ();
-      if (cp) targets.push(cp);
+      feetArrowTargets.length = 4;
+      if (cp) feetArrowTargets.push(cp);
       let best = LANDMARK_ARROW_RANGE;
-      for (const t of targets) {
+      for (const t of feetArrowTargets) {
         const tdx = wrapDelta(t.x - rig.root.position.x);
         const tdz = wrapDelta(t.z - rig.root.position.z);
         const d = Math.hypot(tdx, tdz);
@@ -2542,12 +2565,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       // scratch array — at a full sphere we publish at most 40 entries
       // per tick, but the array reference is kept stable to dodge GC.
       minimapRemotesScratch.length = 0;
+      let poolIdx = 0;
       for (const [id, ra] of remoteAvatars) {
-        minimapRemotesScratch.push({
-          id,
-          x: ra.group.position.x,
-          z: ra.group.position.z,
-        });
+        let entry = minimapRemotePool[poolIdx];
+        if (!entry) {
+          entry = { id: '', x: 0, z: 0 };
+          minimapRemotePool[poolIdx] = entry;
+        }
+        poolIdx++;
+        entry.id = id;
+        entry.x = ra.group.position.x;
+        entry.z = ra.group.position.z;
+        minimapRemotesScratch.push(entry);
       }
       publishMinimapRemotes(minimapRemotesScratch);
       lastMinimapEmit = now;
@@ -2603,25 +2632,32 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // Project the player code badge to screen space (above the head).
     tempTag.set(rig.root.position.x, rig.root.position.y + 2.55 + hoverY, rig.root.position.z);
     tempTag.project(camera);
-    const tagX = (tempTag.x * 0.5 + 0.5) * (host.clientWidth || 1);
-    const tagY = (-tempTag.y * 0.5 + 0.5) * (host.clientHeight || 1);
+    const tagX = (tempTag.x * 0.5 + 0.5) * hostW;
+    const tagY = (-tempTag.y * 0.5 + 0.5) * hostH;
     const visible = tempTag.z > -1 && tempTag.z < 1;
-    playerTagEl.style.opacity = visible ? '1' : '0';
+    if (visible !== selfTagVisible) {
+      selfTagVisible = visible;
+      playerTagEl.style.opacity = visible ? '1' : '0';
+    }
     playerTagEl.style.transform = `translate(${tagX}px, ${tagY}px) translate(-50%, -100%)`;
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
     if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
-      const hw = host.clientWidth || 1;
-      const hh = host.clientHeight || 1;
       for (const ra of remoteAvatars.values()) {
         tempTag.set(ra.group.position.x, 2.55, ra.group.position.z);
         tempTag.project(camera);
-        const rx = (tempTag.x * 0.5 + 0.5) * hw;
-        const ry = (-tempTag.y * 0.5 + 0.5) * hh;
+        const rx = (tempTag.x * 0.5 + 0.5) * hostW;
+        const ry = (-tempTag.y * 0.5 + 0.5) * hostH;
         const onScreen = tempTag.z > -1 && tempTag.z < 1;
-        ra.tagEl.style.opacity = onScreen ? '1' : '0';
-        ra.tagEl.style.transform = `translate(${rx}px, ${ry}px) translate(-50%, -100%)`;
+        // One combined key: skip both style writes when nothing moved
+        // (stationary remote + stationary camera). Perf P2, devlog 0140.
+        const css = `${onScreen ? '1' : '0'};translate(${rx}px, ${ry}px) translate(-50%, -100%)`;
+        if (css !== ra.lastTagCss) {
+          ra.lastTagCss = css;
+          ra.tagEl.style.opacity = onScreen ? '1' : '0';
+          ra.tagEl.style.transform = `translate(${rx}px, ${ry}px) translate(-50%, -100%)`;
+        }
       }
     }
 
@@ -2636,8 +2672,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
       tempEmote.set(te.group.position.x, 2.35, te.group.position.z);
       tempEmote.project(camera);
-      const ex = (tempEmote.x * 0.5 + 0.5) * (host.clientWidth || 1);
-      const ey = (-tempEmote.y * 0.5 + 0.5) * (host.clientHeight || 1);
+      const ex = (tempEmote.x * 0.5 + 0.5) * hostW;
+      const ey = (-tempEmote.y * 0.5 + 0.5) * hostH;
       const onScreen = tempEmote.z > -1 && tempEmote.z < 1;
       te.anchor.style.opacity = onScreen ? '1' : '0';
       te.anchor.style.transform = `translate(${ex}px, ${ey}px)`;
