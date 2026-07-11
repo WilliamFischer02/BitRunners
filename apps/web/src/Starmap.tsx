@@ -47,6 +47,18 @@ interface PainterOpts {
   big: boolean;
 }
 
+// The ¾-iso camera sits 45° off the world axes, so raw world deltas read as
+// diagonal movement on the minimap (A/left looked like down-left). Rotate
+// every plotted delta by -45° so map-up equals screen-up. Derived from the
+// field report; if a future camera change flips the yaw, negate MAP_ROT_R.
+const MAP_ROT_R = Math.SQRT1_2;
+function toMapX(dx: number, dz: number): number {
+  return (dx - dz) * MAP_ROT_R;
+}
+function toMapY(dx: number, dz: number): number {
+  return (dx + dz) * MAP_ROT_R;
+}
+
 function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: PainterOpts): void {
   const tick = getMinimapTick();
   // Draw a CENTERED SQUARE using the smaller dimension, so the map graphic is
@@ -86,10 +98,11 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const compassR = half - fontPx - 2;
-  ctx.fillText('N', cx, cy - compassR);
-  ctx.fillText('S', cx, cy + compassR);
-  ctx.fillText('E', cx + compassR, cy);
-  ctx.fillText('W', cx - compassR, cy);
+  const cr = compassR * MAP_ROT_R;
+  ctx.fillText('N', cx + cr, cy - cr);
+  ctx.fillText('S', cx - cr, cy + cr);
+  ctx.fillText('E', cx + cr, cy + cr);
+  ctx.fillText('W', cx - cr, cy - cr);
 
   // anchors — drawn at their wrapped delta from the player.
   ctx.font = `${fontPx - 1}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
@@ -98,8 +111,10 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
   for (const a of ANCHORS) {
     const dx = wrapDelta(a.x - tick.playerX);
     const dz = wrapDelta(a.z - tick.playerZ);
-    let mx = cx + dx * px;
-    let my = cy + dz * px;
+    const rdx = toMapX(dx, dz);
+    const rdz = toMapY(dx, dz);
+    let mx = cx + rdx * px;
+    let my = cy + rdz * px;
     let onScreen = true;
     const pad = 8 * scale;
     if (
@@ -109,7 +124,7 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
       my > cy + half - pad
     ) {
       onScreen = false;
-      const ang = Math.atan2(dz, dx);
+      const ang = Math.atan2(rdz, rdx);
       const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
@@ -138,8 +153,10 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
   if (checkpoint) {
     const dx = wrapDelta(checkpoint.x - tick.playerX);
     const dz = wrapDelta(checkpoint.z - tick.playerZ);
-    let mx = cx + dx * px;
-    let my = cy + dz * px;
+    const rdx = toMapX(dx, dz);
+    const rdz = toMapY(dx, dz);
+    let mx = cx + rdx * px;
+    let my = cy + rdz * px;
     let onScreen = true;
     const pad = 10 * scale;
     if (
@@ -149,7 +166,7 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
       my > cy + half - pad
     ) {
       onScreen = false;
-      const ang = Math.atan2(dz, dx);
+      const ang = Math.atan2(rdz, rdx);
       const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
@@ -180,8 +197,10 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
   for (const rem of getMinimapRemotes()) {
     const dx = wrapDelta(rem.x - tick.playerX);
     const dz = wrapDelta(rem.z - tick.playerZ);
-    let mx = cx + dx * px;
-    let my = cy + dz * px;
+    const rdx = toMapX(dx, dz);
+    const rdz = toMapY(dx, dz);
+    let mx = cx + rdx * px;
+    let my = cy + rdz * px;
     let onScreen = true;
     const pad = 6 * scale;
     if (
@@ -191,7 +210,7 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
       my > cy + half - pad
     ) {
       onScreen = false;
-      const ang = Math.atan2(dz, dx);
+      const ang = Math.atan2(rdz, rdx);
       const r = half - pad;
       mx = cx + Math.cos(ang) * r;
       my = cy + Math.sin(ang) * r;
@@ -219,9 +238,11 @@ function paint(ctx: CanvasRenderingContext2D, pxW: number, pxH: number, opts: Pa
   ctx.arc(cx, cy, playerDot, 0, Math.PI * 2);
   ctx.fill();
   const ang = tick.facing;
+  const fwdX = toMapX(Math.sin(ang), Math.cos(ang));
+  const fwdY = toMapY(Math.sin(ang), Math.cos(ang));
   const tipLen = opts.big ? 14 : 9;
-  const tipX = cx + Math.sin(ang) * tipLen;
-  const tipY = cy + Math.cos(ang) * tipLen;
+  const tipX = cx + fwdX * tipLen;
+  const tipY = cy + fwdY * tipLen;
   ctx.strokeStyle = '#c0ffd6';
   ctx.lineWidth = opts.big ? 2.5 : 1.8;
   ctx.beginPath();

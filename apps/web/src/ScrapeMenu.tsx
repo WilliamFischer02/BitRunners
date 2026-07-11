@@ -25,6 +25,8 @@ import {
   drainLadder,
   equip,
   exchangeCreditsForTokens,
+  fmtCompact,
+  getBotPrefs,
   getEconomy,
   getEmoteLoadout,
   getEquipped,
@@ -46,6 +48,7 @@ import {
   scrape,
   scrapeYield,
   setAppearanceHidden,
+  setBotPrefs,
   setEmoteSlot,
   subscribeEconomy,
   tabulate,
@@ -74,6 +77,7 @@ import {
   isNodeMaxed,
   nodeCost,
   nodeLevel,
+  prestigeTreeComplete,
 } from './skilltree.js';
 
 type Verb = 'SCRAPE' | 'TABULATING' | 'CALCULATING';
@@ -102,6 +106,8 @@ const HOLD_MS = 110;
 // Auto-tapper tap interval by tier: [off, slow, medium, fast, hold-down].
 // The Supercomputer capstone forces the top (continuous) tier.
 const AUTO_TAP_MS = [0, 900, 500, 220, 90] as const;
+// Legacy device-local keys (pre account-sync). Read once to migrate into the
+// economy blob, then removed. New source of truth: economy.getBotPrefs().
 const BOTS_KEY = 'bitrunners.settings.bots';
 // Per-bot enable map (device-local, like the master). Additive on top of the
 // master toggle: a bot runs only when master && its own flag && unlocked.
@@ -133,11 +139,29 @@ function loadBotSelection(): BotSelection {
   }
 }
 
-function saveBotSelection(sel: BotSelection): void {
+let legacyMigrated = false;
+/** One-time fold of the old localStorage prefs into the account blob, so
+ *  nobody's saved lineup resets to all-on. Safe if keys are absent. */
+function migrateLegacyBotPrefs(): void {
+  if (legacyMigrated) return;
+  legacyMigrated = true;
   try {
-    localStorage.setItem(BOTS_SEL_KEY, JSON.stringify(sel));
+    const hadMaster = localStorage.getItem(BOTS_KEY);
+    const hadSel = localStorage.getItem(BOTS_SEL_KEY);
+    if (hadMaster === null && hadSel === null) return;
+    const sel = loadBotSelection();
+    setBotPrefs({
+      master: hadMaster !== 'false',
+      tapper: sel.tapper,
+      bits: sel.bits,
+      strings: sel.strings,
+      serials: sel.serials,
+      passcodes: sel.passcodes,
+    });
+    localStorage.removeItem(BOTS_KEY);
+    localStorage.removeItem(BOTS_SEL_KEY);
   } catch {
-    // storage unavailable — keep in-memory
+    // storage unavailable — blob defaults apply
   }
 }
 
@@ -208,27 +232,27 @@ function DataHud({ eco, auto }: { eco: EconomyState; auto: boolean }): JSX.Eleme
           <span className="scrape-hud-glyph">{r.glyph}</span>
           <span className="scrape-hud-name">{r.key}</span>
           <span className="scrape-hud-bar">{ladderBar(eco[r.key])}</span>
-          <span className="scrape-hud-val">{eco[r.key]}</span>
+          <span className="scrape-hud-val">{fmtCompact(eco[r.key])}</span>
         </div>
       ))}
       <div className="scrape-hud-row scrape-hud--passcode">
         <span className="scrape-hud-glyph">#</span>
         <span className="scrape-hud-name">passcodes</span>
         <span className="scrape-hud-bar">{ladderBar(eco.passcodes)}</span>
-        <span className="scrape-hud-val">{eco.passcodes}</span>
+        <span className="scrape-hud-val">{fmtCompact(eco.passcodes)}</span>
       </div>
       <div className="scrape-hud-row scrape-hud--aura">
         <span className="scrape-hud-glyph">✺</span>
         <span className="scrape-hud-name">auras</span>
         <span className="scrape-hud-bar">{'▒'.repeat(Math.min(eco.auras, STEP))}</span>
-        <span className="scrape-hud-val">{eco.auras}</span>
+        <span className="scrape-hud-val">{fmtCompact(eco.auras)}</span>
       </div>
       <div className="scrape-hud-div">────────────────</div>
       <div className="scrape-hud-row scrape-hud--currency">
         <span className="scrape-hud-glyph">▣</span>
         <span className="scrape-hud-name">credits</span>
         <span className="scrape-hud-bar" />
-        <span className="scrape-hud-val">{eco.credits}</span>
+        <span className="scrape-hud-val">{fmtCompact(eco.credits)}</span>
       </div>
       <div className="scrape-hud-row scrape-hud--currency">
         <span className="scrape-hud-glyph">⬢</span>
@@ -743,34 +767,36 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [closing, setClosing] = useState(false);
   const [lbOpen, setLbOpen] = useState(false);
   const [botsOn, setBotsOn] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(BOTS_KEY) !== 'false';
-    } catch {
-      return true;
-    }
+    migrateLegacyBotPrefs();
+    return getBotPrefs().master;
   });
   const botsOnRef = useRef(botsOn);
   botsOnRef.current = botsOn;
   const toggleBots = (): void => {
     setBotsOn((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(BOTS_KEY, String(next));
-      } catch {
-        // storage unavailable — keep in-memory
-      }
+      setBotPrefs({ master: next });
       return next;
     });
   };
   // Per-bot selection (e.g. run the ladder bots but keep passcodes→auras
   // paused). Persisted per device alongside the master.
-  const [botSel, setBotSel] = useState<BotSelection>(loadBotSelection);
+  const [botSel, setBotSel] = useState<BotSelection>(() => {
+    const p = getBotPrefs();
+    return {
+      tapper: p.tapper,
+      bits: p.bits,
+      strings: p.strings,
+      serials: p.serials,
+      passcodes: p.passcodes,
+    };
+  });
   const botSelRef = useRef(botSel);
   botSelRef.current = botSel;
   const toggleBot = (key: BotKey): void => {
     setBotSel((prev) => {
       const next = { ...prev, [key]: !prev[key] };
-      saveBotSelection(next);
+      setBotPrefs({ [key]: next[key] });
       return next;
     });
   };
@@ -927,6 +953,9 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const showAll = tabulateReach() >= 1;
   const auraReady = canTabulateAura();
   const prestigeOn = isPrestigeUnlocked();
+  // Anti-abuse gate (devlog 0143): prestige needs the WHOLE tree maxed
+  // (corporate greed excepted). Recomputed per render — eco changes re-render.
+  const prestigeTreeReady = prestigeTreeComplete();
 
   const VIEW_LABELS: Record<View, string> = {
     scrape: 'scrape',
@@ -1134,8 +1163,8 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
                 <div className="panel-section-title">$ prestige · clean slate</div>
                 <div className="panel-stub">
                   ─── trade your scrape buffers + skill levels for tokens. cosmetics, equipped
-                  items, reputation, badges, and the Supercomputer / Corporate Greed capstones stay.
-                  the permanent scrape buff each prestige grants scales with your accrued auras.
+                  items, reputation, badges, and Corporate Greed stay — the Supercomputer resets
+                  with the tree. the permanent scrape buff scales with your accrued auras.
                 </div>
                 <div className="panel-row">
                   <span className="panel-key">current buff · tier {eco.prestiges}</span>
@@ -1145,12 +1174,21 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
                   <span className="panel-key">this prestige adds</span>
                   <span className="scrape-hud-val">+{prestigeBuffGain()} bits / SCRAPE</span>
                 </div>
+                {!prestigeTreeReady && (
+                  <div className="panel-stub">
+                    ─── locked: max every skill-tree node (corporate greed excepted) to prestige.
+                    the supercomputer resets with the tree each prestige.
+                  </div>
+                )}
                 <div className="panel-row">
                   <span className="panel-key">reset payout · {prestigeTokenPayout()} tk</span>
                   <button
                     type="button"
-                    className="scrape-mini is-ready"
-                    onClick={() => prestigeReset()}
+                    className={prestigeTreeReady ? 'scrape-mini is-ready' : 'scrape-mini'}
+                    disabled={!prestigeTreeReady}
+                    onClick={() => {
+                      if (prestigeTreeReady) prestigeReset();
+                    }}
                   >
                     [ trade ]
                   </button>

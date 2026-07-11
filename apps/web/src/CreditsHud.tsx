@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
+import { type EconomyState, fmtCompact, getEconomy, subscribeEconomy } from './economy.js';
 
 // Persistent currency pill mounted at the top-center of the canvas-host.
 // Always visible while in-game so the player can track credits / tokens
@@ -18,12 +18,7 @@ function readChatter(eco: EconomyState): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function fmt(n: number): string {
-  if (!Number.isFinite(n)) return '0';
-  if (n < 1000) return String(Math.floor(n));
-  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
-  return `${(n / 1_000_000).toFixed(1)}M`;
-}
+const fmt = fmtCompact;
 
 export function CreditsHud(): JSX.Element {
   // Primitive state per currency (not a cloned blob) so React's Object.is

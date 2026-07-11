@@ -6071,3 +6071,90 @@ dialog.panel::backdrop {
   color: #5a8870;
   pointer-events: none;
 }
+
+/* ════════ MAIN MENU + PROTOCOLS analogue button set (devlog 0138) ════════
+   Owner spec: no stair-step — one attached, semi-3D two-button block of
+   worn/dirtied analogue buttons. MAIN MENU green on top, PROTOCOLS purple
+   beneath with a half-opacity "(Minigames)" banner hanging under it.
+   Appended last so these rules win the cascade over the older pill layouts. */
+.profile,
+.protocols-launch {
+  overflow: visible;
+  border-radius: 0;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.14), inset 0 -3px 0 rgba(0, 0, 0, 0.45), inset 2px
+    0 0 rgba(255, 255, 255, 0.05), 0 3px 6px rgba(0, 0, 0, 0.5);
+  /* worn grime: faint diagonal scuff lines over the base colour */
+  background-image: repeating-linear-gradient(
+    115deg,
+    rgba(0, 0, 0, 0.16) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(0, 0, 0, 0) 7px,
+    rgba(255, 255, 255, 0.025) 8px
+  );
+}
+.profile {
+  background-color: #24402f;
+  border: 1px solid #84d8a4;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+}
+.protocols-launch {
+  background-color: #322447;
+  border: 1px solid #b07cff;
+  border-radius: 0 0 6px 6px;
+}
+.protocols-launch:hover {
+  border-color: #c8a8ff;
+}
+.profile:active,
+.protocols-launch:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.55), 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+.protocols-launch-cap,
+.protocols-launch-glyph {
+  color: #dcc8ff;
+}
+.protocols-launch-banner {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  margin-top: 3px;
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: #c8a8ff;
+  opacity: 0.5;
+  pointer-events: none;
+  white-space: nowrap;
+}
+/* Attach the pair: same column, same width, zero gap — both breakpoints. */
+@media (max-width: 540px) {
+  .profile,
+  .protocols-launch {
+    right: 8px;
+    width: 132px;
+    min-width: 132px;
+    max-width: 132px;
+  }
+  .profile {
+    top: 138px;
+  }
+  .protocols-launch {
+    top: 168px; /* 138 + 30px pill height — flush against the profile */
+  }
+}
+@media (min-width: 541px) {
+  .profile,
+  .protocols-launch {
+    right: 12px;
+    width: clamp(140px, 16vw, 176px);
+    min-width: 140px;
+    max-width: 176px;
+  }
+  .protocols-launch {
+    /* directly beneath the profile: minimap offset + one button height */
+    top: calc(12px + clamp(120px, 18vw, 156px) + 10px + clamp(56px, 8.4vw, 72px));
+  }
+}

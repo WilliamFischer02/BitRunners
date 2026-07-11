@@ -94,10 +94,41 @@ export interface EconomyState {
   // solved the puzzle — gates the first-clear (100 cr) vs repeat (20 cr)
   // reward. Additive + defaulted so old blobs load clean.
   circuitFirstClear: boolean;
+  // Bot automation prefs (master + per-bot switches). Account-synced so a
+  // player's bot lineup (e.g. passcodes->auras OFF) follows them across
+  // devices instead of resetting to all-on when localStorage is absent.
+  botPrefs: BotPrefs;
   // circuit_patch level progress: index (0–9) of the level the runner resumes
   // on next session. Wins on the frontier level advance it. Additive.
   circuitLevel: number;
   updatedAt: number;
+}
+
+export interface BotPrefs {
+  master: boolean;
+  tapper: boolean;
+  bits: boolean;
+  strings: boolean;
+  serials: boolean;
+  passcodes: boolean;
+}
+export const DEFAULT_BOT_PREFS: BotPrefs = {
+  master: true,
+  tapper: true,
+  bits: true,
+  strings: true,
+  serials: true,
+  passcodes: true,
+};
+function normBotPrefs(v: unknown): BotPrefs {
+  const out = { ...DEFAULT_BOT_PREFS };
+  if (typeof v === 'object' && v !== null) {
+    const o = v as Record<string, unknown>;
+    for (const k of Object.keys(out) as (keyof BotPrefs)[]) {
+      if (typeof o[k] === 'boolean') out[k] = o[k] as boolean;
+    }
+  }
+  return out;
 }
 
 export const EMOTE_LOADOUT_SLOTS = 4;
@@ -148,6 +179,7 @@ function defaultState(): EconomyState {
     ownedEmotes: [],
     emoteLoadout: [...DEFAULT_LOADOUT],
     circuitFirstClear: false,
+    botPrefs: { ...DEFAULT_BOT_PREFS },
     circuitLevel: 0,
     updatedAt: 0,
   };
@@ -251,6 +283,7 @@ function normalize(parsed: EconomyState): EconomyState {
     ownedEmotes: strArray(p.ownedEmotes),
     emoteLoadout: normLoadout(p.emoteLoadout),
     circuitFirstClear: p.circuitFirstClear === true,
+    botPrefs: normBotPrefs(p.botPrefs),
     // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
     // player past the last level.
     circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
@@ -597,6 +630,18 @@ export function calculateAura(faction: Faction): boolean {
 }
 
 /** Prestige unlocks once the runner has minted at least one aura. */
+/** Compact display formatting for large counters — k/M/B/T tiers keep the
+ *  HUD legible all the way to (and past) a trillion. Number precision is
+ *  exact to 2^53 (~9e15), so counting to 1e12 is safely inside range. */
+export function fmtCompact(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n < 1000) return String(Math.floor(n));
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n < 1_000_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  return `${(n / 1_000_000_000_000).toFixed(2)}T`;
+}
+
 export function isPrestigeUnlocked(): boolean {
   return state.lifetimeAuras >= 1;
 }
@@ -617,16 +662,15 @@ export function prestigeBuffGain(): number {
 /** Prestige reset: burn the scrape buffers + skill-tree levels for tokens
  *  and a permanent, aura-scaled scrape-yield buff (prestigeBuffGain). Owned
  *  items, equipped slots, reputation, badges, lifetime stats, the prestige
- *  count, and the two permanent capstones (Supercomputer, Corporate Greed
- *  Protocol) are preserved. One-way; idempotent (a no-progress re-prestige
- *  still awards the base payout + at least +1 buff). */
+ *  count, and Corporate Greed Protocol are preserved. The SUPERCOMPUTER
+ *  resets with the rest of the tree (owner call, devlog 0143): keeping it
+ *  let a prestiged runner re-farm at capstone speed from turn one, which
+ *  trivialised every later prestige. One-way. */
 export function prestigeReset(): boolean {
   if (!isPrestigeUnlocked()) return false;
   const payout = prestigeTokenPayout();
-  // Keep the expensive permanent capstones through the wipe.
+  // Corporate Greed is the ONLY upgrade that survives the wipe.
   const keptUpgrades: Record<string, number> = {};
-  if ((state.upgrades.supercomputer ?? 0) >= 1)
-    keptUpgrades.supercomputer = state.upgrades.supercomputer as number;
   if ((state.upgrades.greed ?? 0) >= 1) keptUpgrades.greed = state.upgrades.greed as number;
   state = {
     ...state,
@@ -789,6 +833,22 @@ export function addCredits(amount: number): void {
 
 /** circuit_patch (4.4): has the runner ever solved the puzzle? Gates the
  *  first-clear vs repeat reward. */
+/** Bot automation prefs (account-synced). */
+export function getBotPrefs(): BotPrefs {
+  return state.botPrefs;
+}
+
+/** Merge-update bot prefs and persist. No-op when nothing changes. */
+export function setBotPrefs(next: Partial<BotPrefs>): void {
+  const merged = { ...state.botPrefs, ...next };
+  const same = (Object.keys(merged) as (keyof BotPrefs)[]).every(
+    (k) => merged[k] === state.botPrefs[k],
+  );
+  if (same) return;
+  state = { ...state, botPrefs: merged };
+  persist();
+}
+
 export function hasClearedCircuit(): boolean {
   return state.circuitFirstClear;
 }
