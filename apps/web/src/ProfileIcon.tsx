@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 import { getJoinedRoomId, getServerUrl } from './network.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
@@ -27,13 +27,25 @@ function makeRainLine(): string {
 }
 
 export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
-  const [rain, setRain] = useState<string[]>(() => Array.from({ length: 4 }, makeRainLine));
   const [open, setOpen] = useState(false);
   const [identity, setIdentity] = useState<LocalIdentity>(getIdentity);
+  const rainRef = useRef<HTMLDivElement>(null);
 
+  // Decorative rain writes textContent directly (no React re-render every
+  // 380 ms for the life of the app) and pauses while the tab is hidden
+  // (perf pass, devlog 0138).
   useEffect(() => {
     const id = setInterval(() => {
-      setRain((prev) => [makeRainLine(), ...prev.slice(0, 3)]);
+      if (document.hidden) return;
+      const host = rainRef.current;
+      if (!host) return;
+      const lines = host.children;
+      for (let i = lines.length - 1; i > 0; i--) {
+        const above = lines[i - 1];
+        const line = lines[i];
+        if (above && line) line.textContent = above.textContent;
+      }
+      if (lines[0]) lines[0].textContent = makeRainLine();
     }, 380);
     return () => clearInterval(id);
   }, []);
@@ -61,10 +73,10 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
         title="open menu"
         aria-label="open menu"
       >
-        <div className="profile-rain" aria-hidden="true">
-          {rain.map((l, i) => (
-            <div key={`r-${i}-${l}`} className={`profile-rain-line profile-rain-line--${i}`}>
-              {l}
+        <div className="profile-rain" aria-hidden="true" ref={rainRef}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={`r-${i}`} className={`profile-rain-line profile-rain-line--${i}`}>
+              {makeRainLine()}
             </div>
           ))}
         </div>

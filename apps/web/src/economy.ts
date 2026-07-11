@@ -271,21 +271,62 @@ function load(): EconomyState {
 
 let state: EconomyState = load();
 
-function persist(appearanceChanged = false): void {
-  perfCount('eco.mutate');
-  state.updatedAt = Date.now();
+// Persist coalescing (perf pass, devlog 0138). Mutations used to stringify the
+// full blob + hit localStorage + dispatch a CustomEvent EVERY call — the
+// Supercomputer ladder drain made that ~2,000 synchronous writes/sec. Now:
+// - in-memory `state` is always current (readers are unaffected);
+// - the CustomEvent dispatch coalesces onto a microtask, so a synchronous
+//   burst of mutations = ONE event per turn (subscribers read latest state);
+// - the localStorage write debounces ~250 ms and force-flushes on pagehide /
+//   tab-hide so progress can't be lost. economy-sync's account save already
+//   tolerates seconds of delay (1.5 s debounce downstream).
+const WRITE_DEBOUNCE_MS = 250;
+let writeTimer: ReturnType<typeof setTimeout> | null = null;
+let dispatchQueued = false;
+let appearanceQueued = false;
+
+function flushWrite(): void {
+  if (writeTimer !== null) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+  }
   try {
     perfCount('eco.write');
     localStorage.setItem(ECONOMY_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // storage unavailable (private mode / quota) — keep in-memory state
   }
-  try {
-    window.dispatchEvent(new CustomEvent(ECONOMY_EVENT));
-    if (appearanceChanged) window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT));
-  } catch {
-    // non-DOM env — ignore
-  }
+}
+
+if (typeof window !== 'undefined') {
+  // pagehide covers close/navigate; visibilitychange covers tab-switch (and is
+  // the reliable signal on iOS Safari, where pagehide can be skipped).
+  window.addEventListener('pagehide', () => {
+    if (writeTimer !== null) flushWrite();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && writeTimer !== null) flushWrite();
+  });
+}
+
+function persist(appearanceChanged = false): void {
+  perfCount('eco.mutate');
+  state.updatedAt = Date.now();
+  if (writeTimer === null) writeTimer = setTimeout(flushWrite, WRITE_DEBOUNCE_MS);
+  appearanceQueued = appearanceQueued || appearanceChanged;
+  if (dispatchQueued) return;
+  dispatchQueued = true;
+  queueMicrotask(() => {
+    dispatchQueued = false;
+    const appearance = appearanceQueued;
+    appearanceQueued = false;
+    try {
+      window.dispatchEvent(new CustomEvent(ECONOMY_EVENT));
+      if (appearance) window.dispatchEvent(new CustomEvent(APPEARANCE_EVENT));
+    } catch {
+      // non-DOM env — ignore
+    }
+  });
 }
 
 export function getEconomy(): Readonly<EconomyState> {
@@ -447,6 +488,48 @@ export function tabulateAll(): boolean {
   if (!any) return false;
   const minted = next.passcodes - startPasscodes;
   if (minted > 0) next.lifetimePasscodes += minted;
+  state = next;
+  persist();
+  return true;
+}
+
+/**
+ * Supercomputer ladder drain (perf pass, devlog 0138): converts up to 64 steps
+ * per enabled rung in ONE state mutation + ONE persist, replacing the panel's
+ * old per-step `tabulate()` loops (up to 192 persists per scrape tap). Rungs
+ * run in ladder order so freshly minted units feed the next rung, exactly like
+ * the sequential loops did. The locked 8× STEP ratio is untouched.
+ */
+export function drainLadder(sel: { bits: boolean; strings: boolean; serials: boolean }): boolean {
+  const CAP = 64;
+  const next = { ...state };
+  let any = false;
+  if (sel.bits) {
+    const conv = Math.min(Math.floor(next.bits / STEP), CAP);
+    if (conv > 0) {
+      next.bits -= conv * STEP;
+      next.strings += conv;
+      any = true;
+    }
+  }
+  if (sel.strings) {
+    const conv = Math.min(Math.floor(next.strings / STEP), CAP);
+    if (conv > 0) {
+      next.strings -= conv * STEP;
+      next.serials += conv;
+      any = true;
+    }
+  }
+  if (sel.serials) {
+    const conv = Math.min(Math.floor(next.serials / STEP), CAP);
+    if (conv > 0) {
+      next.serials -= conv * STEP;
+      next.passcodes += conv;
+      next.lifetimePasscodes += conv;
+      any = true;
+    }
+  }
+  if (!any) return false;
   state = next;
   persist();
   return true;

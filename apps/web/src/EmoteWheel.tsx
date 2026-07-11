@@ -44,7 +44,21 @@ function cardinalSlots(loadout: readonly (string | null)[]): SlotDef[] {
 
 export function EmoteWheel({ onEmote, onInventory }: EmoteWheelProps): JSX.Element {
   const [loadout, setLoadout] = useState<readonly (string | null)[]>(getEmoteLoadout);
-  useEffect(() => subscribeEconomy(() => setLoadout([...getEmoteLoadout()])), []);
+  useEffect(
+    () =>
+      subscribeEconomy(() =>
+        // Keep the previous array when nothing changed so React's Object.is
+        // bailout skips re-rendering this always-mounted wheel on unrelated
+        // economy events (perf pass, devlog 0138).
+        setLoadout((prev) => {
+          const next = getEmoteLoadout();
+          return prev.length === next.length && prev.every((v, i) => v === next[i])
+            ? prev
+            : [...next];
+        }),
+      ),
+    [],
+  );
 
   const slots: SlotDef[] = [...cardinalSlots(loadout), ...FIXED_DIAGONALS];
 
