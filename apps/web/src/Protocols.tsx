@@ -149,7 +149,10 @@ export function Protocols(): JSX.Element {
         aria-expanded={open}
       >
         <span className="protocols-launch-glyph">⌬</span>
-        <span className="protocols-launch-cap">protocols</span>
+        <span className="protocols-launch-cap">PROTOCOLS</span>
+        <span className="protocols-launch-banner" aria-hidden="true">
+          (Minigames)
+        </span>
       </button>
       {open && (
         <div className="protocols-carousel" aria-label="protocols carousel">

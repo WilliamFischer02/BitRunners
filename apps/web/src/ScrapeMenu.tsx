@@ -25,6 +25,7 @@ import {
   drainLadder,
   equip,
   exchangeCreditsForTokens,
+  getBotPrefs,
   getEconomy,
   getEmoteLoadout,
   getEquipped,
@@ -46,6 +47,7 @@ import {
   scrape,
   scrapeYield,
   setAppearanceHidden,
+  setBotPrefs,
   setEmoteSlot,
   subscribeEconomy,
   tabulate,
@@ -102,6 +104,8 @@ const HOLD_MS = 110;
 // Auto-tapper tap interval by tier: [off, slow, medium, fast, hold-down].
 // The Supercomputer capstone forces the top (continuous) tier.
 const AUTO_TAP_MS = [0, 900, 500, 220, 90] as const;
+// Legacy device-local keys (pre account-sync). Read once to migrate into the
+// economy blob, then removed. New source of truth: economy.getBotPrefs().
 const BOTS_KEY = 'bitrunners.settings.bots';
 // Per-bot enable map (device-local, like the master). Additive on top of the
 // master toggle: a bot runs only when master && its own flag && unlocked.
@@ -133,11 +137,29 @@ function loadBotSelection(): BotSelection {
   }
 }
 
-function saveBotSelection(sel: BotSelection): void {
+let legacyMigrated = false;
+/** One-time fold of the old localStorage prefs into the account blob, so
+ *  nobody's saved lineup resets to all-on. Safe if keys are absent. */
+function migrateLegacyBotPrefs(): void {
+  if (legacyMigrated) return;
+  legacyMigrated = true;
   try {
-    localStorage.setItem(BOTS_SEL_KEY, JSON.stringify(sel));
+    const hadMaster = localStorage.getItem(BOTS_KEY);
+    const hadSel = localStorage.getItem(BOTS_SEL_KEY);
+    if (hadMaster === null && hadSel === null) return;
+    const sel = loadBotSelection();
+    setBotPrefs({
+      master: hadMaster !== 'false',
+      tapper: sel.tapper,
+      bits: sel.bits,
+      strings: sel.strings,
+      serials: sel.serials,
+      passcodes: sel.passcodes,
+    });
+    localStorage.removeItem(BOTS_KEY);
+    localStorage.removeItem(BOTS_SEL_KEY);
   } catch {
-    // storage unavailable — keep in-memory
+    // storage unavailable — blob defaults apply
   }
 }
 
@@ -743,34 +765,36 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   const [closing, setClosing] = useState(false);
   const [lbOpen, setLbOpen] = useState(false);
   const [botsOn, setBotsOn] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(BOTS_KEY) !== 'false';
-    } catch {
-      return true;
-    }
+    migrateLegacyBotPrefs();
+    return getBotPrefs().master;
   });
   const botsOnRef = useRef(botsOn);
   botsOnRef.current = botsOn;
   const toggleBots = (): void => {
     setBotsOn((prev) => {
       const next = !prev;
-      try {
-        localStorage.setItem(BOTS_KEY, String(next));
-      } catch {
-        // storage unavailable — keep in-memory
-      }
+      setBotPrefs({ master: next });
       return next;
     });
   };
   // Per-bot selection (e.g. run the ladder bots but keep passcodes→auras
   // paused). Persisted per device alongside the master.
-  const [botSel, setBotSel] = useState<BotSelection>(loadBotSelection);
+  const [botSel, setBotSel] = useState<BotSelection>(() => {
+    const p = getBotPrefs();
+    return {
+      tapper: p.tapper,
+      bits: p.bits,
+      strings: p.strings,
+      serials: p.serials,
+      passcodes: p.passcodes,
+    };
+  });
   const botSelRef = useRef(botSel);
   botSelRef.current = botSel;
   const toggleBot = (key: BotKey): void => {
     setBotSel((prev) => {
       const next = { ...prev, [key]: !prev[key] };
-      saveBotSelection(next);
+      setBotPrefs({ [key]: next[key] });
       return next;
     });
   };

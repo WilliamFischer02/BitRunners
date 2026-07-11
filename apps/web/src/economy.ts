@@ -94,10 +94,41 @@ export interface EconomyState {
   // solved the puzzle — gates the first-clear (100 cr) vs repeat (20 cr)
   // reward. Additive + defaulted so old blobs load clean.
   circuitFirstClear: boolean;
+  // Bot automation prefs (master + per-bot switches). Account-synced so a
+  // player's bot lineup (e.g. passcodes->auras OFF) follows them across
+  // devices instead of resetting to all-on when localStorage is absent.
+  botPrefs: BotPrefs;
   // circuit_patch level progress: index (0–9) of the level the runner resumes
   // on next session. Wins on the frontier level advance it. Additive.
   circuitLevel: number;
   updatedAt: number;
+}
+
+export interface BotPrefs {
+  master: boolean;
+  tapper: boolean;
+  bits: boolean;
+  strings: boolean;
+  serials: boolean;
+  passcodes: boolean;
+}
+export const DEFAULT_BOT_PREFS: BotPrefs = {
+  master: true,
+  tapper: true,
+  bits: true,
+  strings: true,
+  serials: true,
+  passcodes: true,
+};
+function normBotPrefs(v: unknown): BotPrefs {
+  const out = { ...DEFAULT_BOT_PREFS };
+  if (typeof v === 'object' && v !== null) {
+    const o = v as Record<string, unknown>;
+    for (const k of Object.keys(out) as (keyof BotPrefs)[]) {
+      if (typeof o[k] === 'boolean') out[k] = o[k] as boolean;
+    }
+  }
+  return out;
 }
 
 export const EMOTE_LOADOUT_SLOTS = 4;
@@ -148,6 +179,7 @@ function defaultState(): EconomyState {
     ownedEmotes: [],
     emoteLoadout: [...DEFAULT_LOADOUT],
     circuitFirstClear: false,
+    botPrefs: { ...DEFAULT_BOT_PREFS },
     circuitLevel: 0,
     updatedAt: 0,
   };
@@ -251,6 +283,7 @@ function normalize(parsed: EconomyState): EconomyState {
     ownedEmotes: strArray(p.ownedEmotes),
     emoteLoadout: normLoadout(p.emoteLoadout),
     circuitFirstClear: p.circuitFirstClear === true,
+    botPrefs: normBotPrefs(p.botPrefs),
     // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
     // player past the last level.
     circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
@@ -789,6 +822,22 @@ export function addCredits(amount: number): void {
 
 /** circuit_patch (4.4): has the runner ever solved the puzzle? Gates the
  *  first-clear vs repeat reward. */
+/** Bot automation prefs (account-synced). */
+export function getBotPrefs(): BotPrefs {
+  return state.botPrefs;
+}
+
+/** Merge-update bot prefs and persist. No-op when nothing changes. */
+export function setBotPrefs(next: Partial<BotPrefs>): void {
+  const merged = { ...state.botPrefs, ...next };
+  const same = (Object.keys(merged) as (keyof BotPrefs)[]).every(
+    (k) => merged[k] === state.botPrefs[k],
+  );
+  if (same) return;
+  state = { ...state, botPrefs: merged };
+  persist();
+}
+
 export function hasClearedCircuit(): boolean {
   return state.circuitFirstClear;
 }

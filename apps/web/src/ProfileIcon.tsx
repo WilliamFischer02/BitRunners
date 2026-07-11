@@ -84,8 +84,8 @@ export function ProfileIcon({ className }: ProfileIconProps): JSX.Element {
           {/* 4.1: the pill reads as the main-menu affordance ("Menu"), not the
               class name. The class still shows in the panel below (opened) and in
               the in-game .hint line, so it's not lost from the HUD. */}
-          <div className="profile-label">{'// menu'}</div>
-          <div className="profile-class">Menu</div>
+          <div className="profile-label">{'// main menu'}</div>
+          <div className="profile-class">MAIN MENU</div>
           <div className="profile-status">
             {`// ${identity.displayName}`}
             {identity.signedIn && !identity.approved ? ' ·' : ''}
