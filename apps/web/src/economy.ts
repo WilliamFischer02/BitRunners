@@ -7,6 +7,8 @@
 // in shop.ts; appearance resolution in appearance.ts. This module is the only
 // place state is mutated + persisted. No scene/network/server coupling.
 
+import { perfCount } from './perf.js';
+
 export const ECONOMY_STORAGE_KEY = 'bitrunners.economy.v1';
 export const ECONOMY_EVENT = 'bitrunners:economy-changed';
 export const APPEARANCE_EVENT = 'bitrunners:appearance-changed';
@@ -270,8 +272,10 @@ function load(): EconomyState {
 let state: EconomyState = load();
 
 function persist(appearanceChanged = false): void {
+  perfCount('eco.mutate');
   state.updatedAt = Date.now();
   try {
+    perfCount('eco.write');
     localStorage.setItem(ECONOMY_STORAGE_KEY, JSON.stringify(state));
   } catch {
     // storage unavailable (private mode / quota) — keep in-memory state
