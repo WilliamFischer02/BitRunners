@@ -11,9 +11,11 @@ import { type EconomyState, getEconomy, subscribeEconomy } from './economy.js';
 // surface render above its z-index so the pill is overlaid (not behind)
 // when a menu is open.
 
-function hasChatter(eco: EconomyState): boolean {
+// chatter lands with the Tether Hop economy field (Phase 3, PR #72). Until
+// that's on main, read defensively so this HUD ships without depending on it.
+function readChatter(eco: EconomyState): number | null {
   const v = (eco as unknown as { chatter?: unknown }).chatter;
-  return typeof v === 'number' && Number.isFinite(v);
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 function fmt(n: number): string {
@@ -24,29 +26,38 @@ function fmt(n: number): string {
 }
 
 export function CreditsHud(): JSX.Element {
-  const [eco, setEco] = useState<EconomyState>(() => ({ ...getEconomy() }));
+  // Primitive state per currency (not a cloned blob) so React's Object.is
+  // bailout skips the re-render when an economy event didn't change what this
+  // always-mounted HUD shows (perf pass, devlog 0138).
+  const [credits, setCredits] = useState<number>(() => getEconomy().credits);
+  const [tokens, setTokens] = useState<number>(() => getEconomy().tokens);
+  const [chatter, setChatter] = useState<number | null>(() => readChatter(getEconomy()));
 
-  useEffect(() => subscribeEconomy(() => setEco({ ...getEconomy() })), []);
+  useEffect(
+    () =>
+      subscribeEconomy(() => {
+        const eco = getEconomy();
+        setCredits(eco.credits);
+        setTokens(eco.tokens);
+        setChatter(readChatter(eco));
+      }),
+    [],
+  );
 
   return (
     <output className="credits-hud" aria-label="player currencies">
       <span className="credits-hud-cell" title="credits">
         <span className="credits-hud-glyph credits-hud-glyph--credits">¢</span>
-        <span className="credits-hud-val">{fmt(eco.credits)}</span>
+        <span className="credits-hud-val">{fmt(credits)}</span>
       </span>
       <span className="credits-hud-cell" title="tokens">
         <span className="credits-hud-glyph credits-hud-glyph--tokens">◈</span>
-        <span className="credits-hud-val">{fmt(eco.tokens)}</span>
+        <span className="credits-hud-val">{fmt(tokens)}</span>
       </span>
-      {/* chatter field lands with the Tether Hop economy field (Phase 3,
-          PR #72). Until that's on main, read defensively so this HUD ships
-          without depending on it. */}
-      {hasChatter(eco) && (
+      {chatter !== null && (
         <span className="credits-hud-cell" title="chatter">
           <span className="credits-hud-glyph credits-hud-glyph--chatter">≋</span>
-          <span className="credits-hud-val">
-            {fmt((eco as unknown as { chatter: number }).chatter)}
-          </span>
+          <span className="credits-hud-val">{fmt(chatter)}</span>
         </span>
       )}
     </output>

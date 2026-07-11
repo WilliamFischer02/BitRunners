@@ -22,6 +22,7 @@ import {
   canTabulateAura,
   creditsPerAura,
   creditsPerPasscode,
+  drainLadder,
   equip,
   exchangeCreditsForTokens,
   getEconomy,
@@ -496,8 +497,8 @@ function TreeView({ eco }: { eco: EconomyState }): JSX.Element {
 }
 
 function EmoteSlotsSection(): JSX.Element {
-  const [, force] = useState(0);
-  useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
+  // No own economy subscription: both hosts (ScrapePanel → InventoryView and
+  // ShopInventoryModal) re-render on every economy event already (devlog 0138).
   const [picker, setPicker] = useState<number | null>(null);
   const loadout = getEmoteLoadout();
   const ownedIds = [...BASE_EMOTE_IDS, ...getOwnedEmotes()];
@@ -678,11 +679,8 @@ function BotsStatus({
   sel: BotSelection;
   onToggleBot(key: BotKey): void;
 }): JSX.Element | null {
-  // Reflects the active automation. Re-renders on economy updates since buying
-  // a node in the tree flips its flag.
-  const [, force] = useState(0);
-  useEffect(() => subscribeEconomy(() => force((n) => n + 1)), []);
-
+  // Reflects the active automation (buying a tree node flips its flag) via the
+  // parent ScrapePanel's economy subscription — no duplicate one here (0138).
   const sc = hasSupercomputer();
   const tap = sc ? 4 : autoTapLevel();
   const bots: { key: BotKey; unlocked: boolean; label: string }[] = [
@@ -793,7 +791,13 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   }, []);
 
   const after = (ms: number, fn: () => void): void => {
-    const id = window.setTimeout(fn, ms);
+    const id = window.setTimeout(() => {
+      // Drop the fired id so the list can't grow unboundedly during a long
+      // scrape session (devlog 0138).
+      const i = timers.current.indexOf(id);
+      if (i >= 0) timers.current.splice(i, 1);
+      fn();
+    }, ms);
     timers.current.push(id);
   };
 
@@ -825,15 +829,13 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
   // ladder so passcodes rise in proportion to bits, at whatever speed the
   // player scrapes (tap / hold / auto-tap). Each rung converts 8→1, so the
   // flow factors down by 8 per level — the SPIRIT is max-speed conversion up
-  // to passcodes (devlog 0131). Bounded while-loops clear any backlog a tick
-  // can create; per-bot switches still gate each rung. Auras stay on the
-  // slower BOT_TICK_MS loop (they're a spend decision, not part of the flow).
+  // to passcodes (devlog 0131). economy.drainLadder batches all rungs into a
+  // single mutation + persist (was up to 192 per tap — devlog 0138); per-bot
+  // switches still gate each rung. Auras stay on the slower BOT_TICK_MS loop
+  // (they're a spend decision, not part of the flow).
   const scLadderDrain = (): void => {
     if (!hasSupercomputer() || !botsOnRef.current) return;
-    const sel = botSelRef.current;
-    for (let i = 0; sel.bits && canTabulate('bits') && i < 64; i++) tabulate('bits');
-    for (let i = 0; sel.strings && canTabulate('strings') && i < 64; i++) tabulate('strings');
-    for (let i = 0; sel.serials && canTabulate('serials') && i < 64; i++) tabulate('serials');
+    drainLadder(botSelRef.current);
   };
 
   const doScrape = (pop: boolean): void => {

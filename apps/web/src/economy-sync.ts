@@ -20,11 +20,27 @@ import {
 import { claimEconomyGrants, getSupabase, saveEconomy, subscribeAuth } from './supabase.js';
 
 const SAVE_DEBOUNCE_MS = 1500;
+// Continuous activity (e.g. steady scraping) restarts the debounce forever —
+// cap how long a dirty state can go unsaved.
+const SAVE_MAX_WAIT_MS = 15_000;
 const TABLE = 'player_economy';
 
 let userId: string | null = null;
 let saveTimer: number | null = null;
 let loading = false;
+// The uid whose account blob we've already loaded/merged this session.
+// TOKEN_REFRESHED / tab-focus auth events re-report the same user; without
+// this guard each one re-ran the whole load-merge-grants round trip.
+let loadedUid: string | null = null;
+// Serialized form (updatedAt zeroed) of the last blob the server accepted —
+// lets saveNow skip the RPC entirely when nothing material changed.
+let lastSavedKey: string | null = null;
+// When the currently-dirty window started (first debounce arm), for max-wait.
+let firstDirtyAt: number | null = null;
+
+function blobKey(blob: EconomyState): string {
+  return JSON.stringify({ ...blob, updatedAt: 0 });
+}
 
 /**
  * Heuristic "how much has this blob accomplished" score, used to decide which
@@ -90,6 +106,7 @@ async function loadFromAccount(uid: string): Promise<void> {
     const remoteScore = hasRemote ? progressScore(remote) : -1;
     if (hasRemote && remoteScore >= localScore) {
       importProgress(remote); // account has >= progress (or new device) → adopt it
+      lastSavedKey = blobKey(exportProgress());
       emitSynced();
     } else {
       await saveNow(uid); // no remote (first save) or local is more progressed
@@ -125,7 +142,15 @@ async function applyPendingGrants(uid: string): Promise<void> {
 }
 
 async function saveNow(uid: string): Promise<void> {
-  const result = await saveEconomy(uid, exportProgress());
+  const blob = exportProgress();
+  const key = blobKey(blob);
+  firstDirtyAt = null;
+  if (key === lastSavedKey) {
+    // Only updatedAt moved — the server already has this exact state.
+    emitSynced();
+    return;
+  }
+  const result = await saveEconomy(uid, blob);
   if (!result) return; // network / unconfigured — keep local, retry on next change
   if (!result.accepted) {
     // Server rejected this write as stale / a clobber (fewer lifetimeScrapes).
@@ -135,6 +160,7 @@ async function saveNow(uid: string): Promise<void> {
     await adoptRemote(uid);
     return;
   }
+  lastSavedKey = key;
   emitSynced();
 }
 
@@ -152,6 +178,8 @@ async function adoptRemote(uid: string): Promise<void> {
   loading = true;
   importProgress(remote);
   loading = wasLoading;
+  // Local now mirrors the server — record it so an echo save can be skipped.
+  lastSavedKey = blobKey(exportProgress());
   emitSynced();
 }
 
@@ -161,10 +189,12 @@ async function adoptRemote(uid: string): Promise<void> {
  * tab closes / is backgrounded inside the 1500 ms debounce window.
  */
 function flushPendingSave(): void {
-  if (saveTimer !== null) {
-    window.clearTimeout(saveTimer);
-    saveTimer = null;
-  }
+  // Only flush when a debounced save is actually pending. Previously every
+  // visibilitychange→hidden (each tab switch / phone lock) fired a full
+  // saveNow even with nothing dirty.
+  if (saveTimer === null) return;
+  window.clearTimeout(saveTimer);
+  saveTimer = null;
   if (userId) void saveNow(userId);
 }
 
@@ -176,17 +206,36 @@ export function initEconomySync(): void {
   subscribeAuth((snap) => {
     if (snap.status === 'authenticated' && snap.user) {
       userId = snap.user.id;
-      void loadFromAccount(userId);
+      // Load once per uid — TOKEN_REFRESHED / focus re-auths report the same
+      // user and must not re-run the load-merge-grants round trip.
+      if (loadedUid !== userId) {
+        loadedUid = userId;
+        void loadFromAccount(userId);
+      }
     } else {
       userId = null;
+      loadedUid = null;
+      lastSavedKey = null;
     }
   });
 
   subscribeEconomy(() => {
     // `loading` guards the importProgress→event echo from bouncing back up.
     if (!userId || loading) return;
-    if (saveTimer !== null) window.clearTimeout(saveTimer);
+    const now = Date.now();
+    if (firstDirtyAt === null) firstDirtyAt = now;
+    if (saveTimer !== null) {
+      window.clearTimeout(saveTimer);
+      saveTimer = null;
+      // Max-wait: continuous activity (scraping every <1.5 s) restarts the
+      // debounce forever — force a save once the dirty window gets old.
+      if (now - firstDirtyAt >= SAVE_MAX_WAIT_MS) {
+        void saveNow(userId);
+        return;
+      }
+    }
     saveTimer = window.setTimeout(() => {
+      saveTimer = null;
       if (userId) void saveNow(userId);
     }, SAVE_DEBOUNCE_MS);
   });

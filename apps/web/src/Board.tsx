@@ -3,6 +3,7 @@ import { type Editor, EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
+import './board.css';
 
 interface BoardProps {
   slug: string;

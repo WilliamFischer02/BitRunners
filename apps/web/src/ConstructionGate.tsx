@@ -13,7 +13,13 @@ export function ConstructionGate({ children }: { children: ReactNode }): JSX.Ele
 
   useEffect(() => {
     let cancelled = false;
-    const unsub = subscribeAuth(() => {
+    // Refetch only when the signed-in user actually changes — TOKEN_REFRESHED
+    // and focus re-auth events report the same uid and don't affect the gate.
+    let lastUid: string | null | undefined;
+    const unsub = subscribeAuth((snap) => {
+      const uid = snap.user?.id ?? null;
+      if (uid === lastUid) return;
+      lastUid = uid;
       void (async () => {
         const [on, role] = await Promise.all([fetchUnderConstruction(), getMyRole()]);
         if (cancelled) return;

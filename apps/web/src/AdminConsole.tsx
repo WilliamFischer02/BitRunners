@@ -37,13 +37,17 @@ export function AdminConsole(): JSX.Element | null {
   const [isAdmin, setIsAdmin] = useState(false);
   const [open, setOpen] = useState(false);
 
-  useEffect(
-    () =>
-      subscribeAuth(() => {
-        void getMyRole().then((r) => setIsAdmin(r === 'admin'));
-      }),
-    [],
-  );
+  useEffect(() => {
+    // Role only changes with the user — skip refetch on same-uid auth events
+    // (token refresh / focus re-auth).
+    let lastUid: string | null | undefined;
+    return subscribeAuth((snap) => {
+      const uid = snap.user?.id ?? null;
+      if (uid === lastUid) return;
+      lastUid = uid;
+      void getMyRole().then((r) => setIsAdmin(r === 'admin'));
+    });
+  }, []);
 
   if (!isAdmin) return null;
   return (

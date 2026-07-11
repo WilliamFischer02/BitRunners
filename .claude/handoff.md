@@ -1,3 +1,65 @@
+# Handoff — 2026-07-11, Performance pass (baseline → P0–P3 → guardrails)
+
+Fully-autonomous perf pass on **`claude/perf-pass-2026-07-11`** (branched off
+`main` @ `f8d1f77`). Six atomic commits, one per tier, each with a devlog
+(0137–0142). Gates green on every commit: biome (targeted) · typecheck 8/8 ·
+test 46/46 · build 5/5. **No new dependencies. No migrations. No server
+behavior changes** (`apps/server` untouched — the one server read was to
+verify the idle-sweep before the move dirty-check). `gh` unauthed → no PR
+opened (same precedent as prior batches); compare URL:
+`https://github.com/WilliamFischer02/BitRunners/compare/main...claude/perf-pass-2026-07-11`
+
+| Tier | Commit | Devlog | What |
+|---|---|---|---|
+| Baseline + `?perf=1` HUD | `8a24421` | 0137 | chunk-size record; zero-dep fps/heap/counter overlay (`perf.ts`) |
+| P0 economy event storm | `a858af1` | 0138 | microtask-coalesced economy dispatch+persist; ScrapeMenu batching; ProfileIcon rain off React |
+| P1 load path + bundle | `ae376bf` | 0139 | `Game.tsx` lazy split + prefetch; vendor manualChunks (function form!); lazy AdminConsole/AuthCallback; idle economy-sync; lazy+cached dialogue; board.css split |
+| P2 render loop | `7281956` | 0140 | FreqLock imperative blip layer (no 60fps setState); scene tick: cached host size, hoisted allocs, style-write skip, pooled minimap emits |
+| P3 network + auth | `0ff5578` | 0141 | ONE shared subscribeAuth; uid-guarded loads/refetches; skip-identical saves + pending-only flush + 15s max-wait; coalesced colyseus listeners; sendMove dirty-check w/ 10s keepalive |
+| Guardrails | (this commit) | 0142 | `check-bundle.mjs` budget gate (+ pkg script); `docs/PERFORMANCE.md`; decisions.md pattern lock |
+
+## Before → after (headline numbers)
+
+| metric | before | after |
+|---|---|---|
+| boot path (title screen, JS+CSS gzip) | ~308 kB | ~76 kB (−75%; game streams in behind title) |
+| entry chunk | 289 kB gzip | ~12 kB gzip |
+| economy events per scrape burst | 1 dispatch + 1 localStorage write per unit | 1 per microtask batch |
+| FreqLock React renders during a song | ~60/s × 60 s | event-driven only (taps/misses) |
+| scene tick layout reads / allocations | ~240 clientWidth reads/s; per-tick allocs | 0 / 0 (cached + hoisted + pooled) |
+| GoTrue subscriptions / logSignIn per sign-in | ~16 / ~16 dup session_events rows | 1 / 1 |
+| economy saves of unchanged state | every flush + every tab-hide | 0 (blob-key skip; ≤15 s dirty window) |
+| onUpdate per movement patch | up to 3 | 1 |
+| outbound moves while stationary | 15/s | 1 per 10 s keepalive |
+
+## Owner actions
+
+1. **Open the PR** (compare URL above) and merge when happy — all client-side,
+   Pages-only deploy.
+2. **Optional CI wiring** (needs your explicit OK per the workflow rule): add
+   `pnpm --filter @bitrunners/web check-bundle` after the web build step in the
+   Pages workflow so the bundle budget gates deploys.
+3. **Visual sanity pass** with `?perf=1`: title → class-select (no fetch stall
+   — Game prefetches during title), freq_lock feel (blips identical, now
+   imperative), remote name tags still track, AFK tab stays connected >2 min
+   (keepalive vs the 120 s idle sweep).
+
+## Notes / cautions for next session
+
+- **Do not make the client fully silent** — server idle sweep is
+  message-driven (details in decisions.md 2026-07-11 + PERFORMANCE.md).
+- **manualChunks must stay function-form** (object form drags colyseus onto
+  boot via rollup's CJS helper — devlog 0139).
+- Local build sizes exclude the supabase entry import (`VITE_SUPABASE_*` unset
+  locally → tree-shaken); CI/prod entry will be slightly larger. Budgets have
+  10× headroom.
+- `profile.ts` still refreshes identity per auth event — deliberate (see 0141
+  behavior notes), don't "fix" without checking rep-chip freshness.
+- Deferred (flagged, not built): shared-auth-driven refactor of TitleScreen's
+  own supabase usage; ScrapeMenu stays in the Game chunk (hot always-mounted).
+
+---
+
 # Handoff — 2026-07-02, Round-2 owner fixes (8 items) on top of mega-batch 2
 
 Same branch (`claude/mega-batch-2026-07-01`). 5 more atomic commits addressing
