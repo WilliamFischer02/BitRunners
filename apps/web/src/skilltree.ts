@@ -193,6 +193,14 @@ export function evaluateNode(node: SkillNode): BuyResult {
   return { ok: true };
 }
 
+/** Prestige eligibility half the economy module can't see: every tree node
+ *  except Corporate Greed Protocol must be maxed. Blocks the instant
+ *  re-prestige loop (prestige wipes the tree, so this stays false until the
+ *  runner genuinely rebuilds). */
+export function prestigeTreeComplete(): boolean {
+  return SKILL_NODES.every((n) => n.id === 't.greed' || isNodeMaxed(n));
+}
+
 export function buyNode(node: SkillNode): boolean {
   const ev = evaluateNode(node);
   if (!ev.ok) return false;

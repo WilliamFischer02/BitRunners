@@ -630,6 +630,18 @@ export function calculateAura(faction: Faction): boolean {
 }
 
 /** Prestige unlocks once the runner has minted at least one aura. */
+/** Compact display formatting for large counters — k/M/B/T tiers keep the
+ *  HUD legible all the way to (and past) a trillion. Number precision is
+ *  exact to 2^53 (~9e15), so counting to 1e12 is safely inside range. */
+export function fmtCompact(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n < 1000) return String(Math.floor(n));
+  if (n < 1_000_000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`;
+  if (n < 1_000_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n < 1_000_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
+  return `${(n / 1_000_000_000_000).toFixed(2)}T`;
+}
+
 export function isPrestigeUnlocked(): boolean {
   return state.lifetimeAuras >= 1;
 }
@@ -650,16 +662,15 @@ export function prestigeBuffGain(): number {
 /** Prestige reset: burn the scrape buffers + skill-tree levels for tokens
  *  and a permanent, aura-scaled scrape-yield buff (prestigeBuffGain). Owned
  *  items, equipped slots, reputation, badges, lifetime stats, the prestige
- *  count, and the two permanent capstones (Supercomputer, Corporate Greed
- *  Protocol) are preserved. One-way; idempotent (a no-progress re-prestige
- *  still awards the base payout + at least +1 buff). */
+ *  count, and Corporate Greed Protocol are preserved. The SUPERCOMPUTER
+ *  resets with the rest of the tree (owner call, devlog 0143): keeping it
+ *  let a prestiged runner re-farm at capstone speed from turn one, which
+ *  trivialised every later prestige. One-way. */
 export function prestigeReset(): boolean {
   if (!isPrestigeUnlocked()) return false;
   const payout = prestigeTokenPayout();
-  // Keep the expensive permanent capstones through the wipe.
+  // Corporate Greed is the ONLY upgrade that survives the wipe.
   const keptUpgrades: Record<string, number> = {};
-  if ((state.upgrades.supercomputer ?? 0) >= 1)
-    keptUpgrades.supercomputer = state.upgrades.supercomputer as number;
   if ((state.upgrades.greed ?? 0) >= 1) keptUpgrades.greed = state.upgrades.greed as number;
   state = {
     ...state,
