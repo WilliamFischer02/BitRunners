@@ -318,9 +318,14 @@ let glyphAtlases: {
 function getGlyphAtlases(): NonNullable<typeof glyphAtlases> {
   if (!glyphAtlases) {
     glyphAtlases = {
-      worldAtlas: buildGlyphAtlas({ ramp: ' .·-:;=+*░#▒▓█', cellSize: 4, fontSize: 6 }),
-      characterAtlas: buildGlyphAtlas({ ramp: " '.,:;-+=*#%&@", cellSize: 4, fontSize: 6 }),
-      edgeAtlas: buildGlyphAtlas({ ramp: ' ▀▄▌▐█', cellSize: 4, fontSize: 6 }),
+      // cellSize 3 (was 4): finer ASCII grid per player feedback ("pixels too
+      // big"). cellSize 2 was rejected — the atlas canvas is cellSize px tall,
+      // so a 2px cell cannot hold a legible glyph (6px monospace glyphs are
+      // ~3.6px wide → hard corruption of neighbour cells, not just blur), and
+      // it 4×es ascii-pass texel work vs 2.25× for 3. Devlog 0145.
+      worldAtlas: buildGlyphAtlas({ ramp: ' .·-:;=+*░#▒▓█', cellSize: 3, fontSize: 6 }),
+      characterAtlas: buildGlyphAtlas({ ramp: " '.,:;-+=*#%&@", cellSize: 3, fontSize: 6 }),
+      edgeAtlas: buildGlyphAtlas({ ramp: ' ▀▄▌▐█', cellSize: 3, fontSize: 6 }),
     };
   }
   return glyphAtlases;
@@ -1272,13 +1277,16 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   composer.addPass(asciiPass);
 
   // CRT/diode finishing pass (scanlines + vignette + faint chromatic split).
-  // On by default; ?crt=off disables it (perf escape hatch on weak devices).
-  const crtEnabled =
-    typeof window === 'undefined' ||
-    new URLSearchParams(window.location.search).get('crt') !== 'off';
-  const crtPass = crtEnabled
-    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.05 })
-    : null;
+  // On by default; ?crt=off disables it (perf escape hatch on weak devices);
+  // ?crt=strong restores the pre-0145 heavier grade for A/B comparison.
+  const crtParam =
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('crt');
+  const crtPass =
+    crtParam === 'off'
+      ? null
+      : crtParam === 'strong'
+        ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.05 })
+        : createCrtPass({ scanline: 0.06, vignette: 0.2, aberration: 0.02 });
   if (crtPass) composer.addPass(crtPass);
 
   composer.addPass(new OutputPass());
