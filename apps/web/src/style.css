@@ -6161,3 +6161,55 @@ dialog.panel::backdrop {
     top: calc(12px + clamp(120px, 18vw, 156px) + 10px + clamp(56px, 8.4vw, 72px));
   }
 }
+
+/* ── The Admin transmission face (overlay card while dialogue is open) ── */
+.transmission-face {
+  position: fixed;
+  top: 52px;
+  left: 8vw;
+  z-index: 39; /* under .dialogue-root (40) — never covers the text box */
+  pointer-events: none;
+  background: rgba(4, 3, 10, 0.88);
+  border: 1px solid #4a3a78;
+  border-radius: 4px;
+  padding: 6px 10px 8px;
+  box-shadow: 0 0 0 1px rgba(180, 139, 255, 0.2), 0 0 22px rgba(180, 139, 255, 0.25);
+  animation: transmission-face-in 240ms ease-out;
+}
+@keyframes transmission-face-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.transmission-face-head {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #b48bff;
+  margin-bottom: 4px;
+}
+.transmission-face-pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: min(9px, 1.9vw);
+  line-height: 1.02;
+  color: #d4ecdd;
+  text-shadow: 0 0 6px rgba(180, 139, 255, 0.35);
+  white-space: pre;
+}
+@media (max-width: 640px) {
+  .transmission-face {
+    top: 44px;
+    left: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .transmission-face {
+    animation: none;
+  }
+}

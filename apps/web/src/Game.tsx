@@ -16,6 +16,7 @@ import { ScrapeMenu } from './ScrapeMenu.js';
 import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
 import { Starmap } from './Starmap.js';
 import { TetherChat } from './TetherChat.js';
+import { TransmissionFace } from './TransmissionFace.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startAccountNudge } from './account-nudge.js';
@@ -201,6 +202,7 @@ export function Game({ className }: GameProps): JSX.Element {
       <TetherChat />
       <BadgeToast />
       <MissionDialogue />
+      {adminDialogueOpen && <TransmissionFace />}
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
       {grantToast && (
         <output className="grant-toast">
