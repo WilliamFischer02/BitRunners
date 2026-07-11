@@ -97,6 +97,16 @@ export function isValidThemeKey(key: unknown): key is string {
   return typeof key === 'string' && THEME_KEY_RE.test(key);
 }
 
+// Equipped-cosmetic item ids live in apps/web/src/shop.ts (e.g.
+// "cloth.head.norm_visor", "pet.byte_pup"). Same situation as theme keys:
+// the server can't import the web catalog, so it shape-validates only —
+// receiving clients re-validate against the catalog before rendering
+// (never trust the wire).
+const ITEM_ID_RE = /^[a-z0-9_.]{1,32}$/;
+export function isValidItemId(id: unknown): id is string {
+  return typeof id === 'string' && ITEM_ID_RE.test(id);
+}
+
 // Name-tag styling (weight + tint). Mirrors the curated vocabulary in
 // apps/web/src/name-style.ts; kept here so the server can shape-validate the
 // 'identity' wire and other clients can render a remote runner's styled name

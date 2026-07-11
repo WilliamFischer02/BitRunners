@@ -44,4 +44,24 @@ export function getEquippedAppearance(): EquippedAppearance {
   return out;
 }
 
+/**
+ * Resolve a WIRE-SUPPLIED item id into a render descriptor for a remote
+ * runner. Never trust the wire: the id must exist in the shop catalog, be a
+ * rarity-bearing cosmetic, and match the slot it arrived on — anything else
+ * renders the base shell (`null`). Same descriptor shape the local rig uses,
+ * so scene.ts re-uses one applySkin path for local + remote.
+ */
+export function resolveSlotAppearance(itemId: string, slot: EquipSlot): SlotAppearance | null {
+  if (!itemId) return null;
+  const item = getShopItem(itemId);
+  if (!item || !item.rarity || item.slot !== slot) return null;
+  return {
+    itemId,
+    rarity: item.rarity,
+    palette: item.visual?.palette ?? 'default',
+    effect: item.visual?.effect ?? null,
+    texture: item.visual?.texture ?? null,
+  };
+}
+
 export { subscribeAppearance };

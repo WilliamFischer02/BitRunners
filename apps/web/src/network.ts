@@ -16,6 +16,10 @@ export interface RemotePlayer {
   nameWeight: string;
   nameTint: string;
   level: number;
+  equippedHead: string;
+  equippedChest: string;
+  equippedLegs: string;
+  equippedPet: string;
 }
 
 export interface IdentityUpdate {
@@ -25,6 +29,10 @@ export interface IdentityUpdate {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
 }
 
 export interface TetherPeerSummary {
@@ -63,6 +71,10 @@ export interface JoinOptions {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
   /** Supabase auth uid — lets the server enforce one live session per account. */
   userId?: string;
 }
@@ -103,6 +115,10 @@ interface PlayerSchema {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -121,6 +137,10 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     nameWeight: p.nameWeight ?? '',
     nameTint: p.nameTint ?? '',
     level: p.level ?? 0,
+    equippedHead: p.equippedHead ?? '',
+    equippedChest: p.equippedChest ?? '',
+    equippedLegs: p.equippedLegs ?? '',
+    equippedPet: p.equippedPet ?? '',
   };
 }
 
@@ -145,6 +165,10 @@ export async function joinSphere(
   if (joinOpts.nameWeight) opts.nameWeight = joinOpts.nameWeight;
   if (joinOpts.nameTint) opts.nameTint = joinOpts.nameTint;
   if (joinOpts.level) opts.level = joinOpts.level;
+  if (joinOpts.equippedHead) opts.equippedHead = joinOpts.equippedHead;
+  if (joinOpts.equippedChest) opts.equippedChest = joinOpts.equippedChest;
+  if (joinOpts.equippedLegs) opts.equippedLegs = joinOpts.equippedLegs;
+  if (joinOpts.equippedPet) opts.equippedPet = joinOpts.equippedPet;
   if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
@@ -227,6 +251,12 @@ export async function joinSphere(
         playerCb.listen('nameWeight', fireIdentity);
         playerCb.listen('nameTint', fireIdentity);
         playerCb.listen('level', fireIdentity);
+        // Equipped cosmetics (P3) — coalesced into the same identity
+        // microtask, so a 4-field appearance change fires ONE onIdentity.
+        playerCb.listen('equippedHead', fireIdentity);
+        playerCb.listen('equippedChest', fireIdentity);
+        playerCb.listen('equippedLegs', fireIdentity);
+        playerCb.listen('equippedPet', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
@@ -308,7 +338,11 @@ export async function joinSphere(
         update.equippedTheme === undefined &&
         update.nameWeight === undefined &&
         update.nameTint === undefined &&
-        update.level === undefined
+        update.level === undefined &&
+        update.equippedHead === undefined &&
+        update.equippedChest === undefined &&
+        update.equippedLegs === undefined &&
+        update.equippedPet === undefined
       ) {
         return;
       }

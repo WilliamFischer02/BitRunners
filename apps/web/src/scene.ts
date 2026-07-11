@@ -42,6 +42,7 @@ import {
   type EquippedAppearance,
   type SlotAppearance,
   getEquippedAppearance,
+  resolveSlotAppearance,
   subscribeAppearance,
 } from './appearance.js';
 import { BADGES } from './badges.js';
@@ -257,42 +258,69 @@ const REMOTE_LOOKS: Record<string, RemoteLook> = {
   web_puller: { armor: 0x251a3a, dark: 0x18102a, emissive: 0x4a2880 },
 };
 
-function buildRemoteAvatar(className: string): Group {
+// Extended remote-avatar build: the head/torso/legs meshes get their OWN
+// armour material (was one shared material) so equipped cosmetics can tint
+// each slot independently on remotes (P3, devlog 0147). The skin targets use
+// the same SkinTarget shape as the local rig, so one applySkin path serves
+// both. petAnchor hovers beside the torso for the (optional) remote pet mesh.
+interface RemoteAvatarBuild {
+  group: Group;
+  skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget };
+  petAnchor: Group;
+}
+
+function buildRemoteAvatar(className: string): RemoteAvatarBuild {
   const look = REMOTE_LOOKS[className] ?? REMOTE_LOOKS.bit_spekter;
   if (!look) throw new Error('unreachable');
   const g = new Group();
-  const armor = new MeshStandardMaterial({
+  const armorOpts = {
     color: look.armor,
     roughness: 0.7,
     metalness: 0.2,
     emissive: look.emissive,
     emissiveIntensity: 0.45,
-  });
+  };
+  const headMat = new MeshStandardMaterial(armorOpts);
+  const torsoMat = new MeshStandardMaterial(armorOpts);
+  const legsMat = new MeshStandardMaterial(armorOpts);
   const dark = new MeshStandardMaterial({
     color: look.dark,
     roughness: 0.8,
     metalness: 0.1,
   });
-  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), armor);
+  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), headMat);
   head.position.y = 1.58;
   head.scale.set(1.0, 1.05, 0.92);
   g.add(head);
   const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), dark);
   visor.position.set(0, 1.58, 0.31);
   g.add(visor);
-  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armor);
+  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), torsoMat);
   torso.position.y = 0.98;
   g.add(torso);
   const belt = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), dark);
   belt.position.y = 0.62;
   g.add(belt);
-  const legs = new MeshClass(new BoxGeometry(0.68, 0.6, 0.32), armor);
+  const legs = new MeshClass(new BoxGeometry(0.68, 0.6, 0.32), legsMat);
   legs.position.y = 0.32;
   g.add(legs);
   const boots = new MeshClass(new BoxGeometry(0.74, 0.12, 0.36), dark);
   boots.position.set(0, 0.06, 0.04);
   g.add(boots);
-  return g;
+  const petAnchor = new Group();
+  petAnchor.position.set(0, 1.4, 0);
+  g.add(petAnchor);
+  const snap = (mat: MeshStandardMaterialType): SkinTarget => ({
+    mat,
+    baseColor: mat.color.getHex(),
+    baseEmissive: mat.emissive.getHex(),
+    baseEmissiveIntensity: mat.emissiveIntensity,
+  });
+  return {
+    group: g,
+    skin: { head: snap(headMat), chest: snap(torsoMat), legs: snap(legsMat) },
+    petAnchor,
+  };
 }
 
 // SkinTarget + the per-class rigs live in `./class-rigs.ts` — the BitSpekter
@@ -1480,6 +1508,20 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (netSession) netSession.sendIdentity({ level: next });
   });
 
+  // Broadcast equipped cosmetics on change so remotes re-skin (P3). All four
+  // fields go in ONE identity message ('' clears a slot); the initial state
+  // rides the join payload. Wire ids are re-validated on the receiving side.
+  const unsubscribeAppearanceNet = subscribeAppearance(() => {
+    if (!netSession) return;
+    const a = getEquippedAppearance();
+    netSession.sendIdentity({
+      equippedHead: a.head?.itemId ?? '',
+      equippedChest: a.chest?.itemId ?? '',
+      equippedLegs: a.legs?.itemId ?? '',
+      equippedPet: a.pet?.itemId ?? '',
+    });
+  });
+
   // Class string for a REMOTE runner's styled name from the wire values.
   // Remotes that send a non-default style are signed in by construction, so we
   // pass signedIn=true; guests transmit empty strings → no class.
@@ -1538,8 +1580,68 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     /** Last-written tag transform — skips the DOM write when unchanged
      *  (stationary remotes + stationary camera). Perf P2, devlog 0140. */
     lastTagCss: string;
+    // Equipped-cosmetic rendering (P3). null for NPCs (dweller shells have
+    // no skin targets). lastAppearanceKey skips re-applying when an identity
+    // patch didn't touch the four appearance fields.
+    skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget } | null;
+    petAnchor: Group | null;
+    petMesh: Mesh | null;
+    petGeom: BufferGeometry | null;
+    petMat: MeshStandardMaterialType | null;
+    petId: string | null;
+    lastAppearanceKey: string;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  // ── Remote equipped-cosmetics (P3, devlog 0147) ─────────────────────────
+  // Wire ids are re-validated against the shop catalog by
+  // resolveSlotAppearance (never trust the wire); unknown/invalid ids render
+  // the base shell. Reuses the local applySkin + petGeometryFor helpers.
+  const disposeRemotePet = (ra: RemoteAvatar): void => {
+    if (ra.petMesh && ra.petAnchor) ra.petAnchor.remove(ra.petMesh);
+    ra.petGeom?.dispose();
+    ra.petMat?.dispose();
+    ra.petMesh = null;
+    ra.petGeom = null;
+    ra.petMat = null;
+    ra.petId = null;
+  };
+
+  interface RemoteAppearanceFields {
+    equippedHead: string;
+    equippedChest: string;
+    equippedLegs: string;
+    equippedPet: string;
+  }
+
+  function applyRemoteAppearance(ra: RemoteAvatar, p: RemoteAppearanceFields): void {
+    if (!ra.skin || !ra.petAnchor) return; // NPC shell — no cosmetic targets
+    const key = `${p.equippedHead}|${p.equippedChest}|${p.equippedLegs}|${p.equippedPet}`;
+    if (key === ra.lastAppearanceKey) return; // identity patch didn't touch appearance
+    ra.lastAppearanceKey = key;
+    applySkin(ra.skin.head, resolveSlotAppearance(p.equippedHead, 'head'));
+    applySkin(ra.skin.chest, resolveSlotAppearance(p.equippedChest, 'chest'));
+    applySkin(ra.skin.legs, resolveSlotAppearance(p.equippedLegs, 'legs'));
+    const pet = resolveSlotAppearance(p.equippedPet, 'pet');
+    if (pet) {
+      if (!ra.petMesh || ra.petId !== pet.itemId) {
+        disposeRemotePet(ra);
+        ra.petGeom = petGeometryFor(pet.itemId);
+        ra.petMat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 });
+        ra.petMesh = new MeshClass(ra.petGeom, ra.petMat);
+        ra.petMesh.position.set(0.5, 0, 0.1);
+        ra.petAnchor.add(ra.petMesh);
+        ra.petId = pet.itemId;
+      }
+      if (ra.petMat) {
+        setSaturated(ra.petMat.color, paletteHex(pet.palette));
+        setSaturated(ra.petMat.emissive, paletteHex(pet.palette));
+        ra.petMat.emissiveIntensity = pet.texture ? 1.8 : 1.1;
+      }
+    } else if (ra.petMesh) {
+      disposeRemotePet(ra);
+    }
+  }
   // Reusable buffer published to minimap-state once per tick. Lifetime
   // matches the scene; cleared on dispose so the minimap doesn't keep
   // showing ghosts after the user leaves the room.
@@ -1752,6 +1854,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       // a second tab kicks the first instead of leaving an AFK ghost.
       const userId = (await getCurrentUserId()) ?? undefined;
       if (sceneDisposed) return;
+      // Current equipped cosmetics ride the join payload (re-computed per
+      // (re)connect so reconnects carry the latest outfit).
+      const joinAppearance = getEquippedAppearance();
       try {
         const session = await joinSphere(
           serverUrl,
@@ -1764,6 +1869,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             nameWeight: localIdentity.signedIn ? localNameStyle.weight : undefined,
             nameTint: localIdentity.signedIn ? localNameStyle.tint : undefined,
             level: localLevel,
+            equippedHead: joinAppearance.head?.itemId,
+            equippedChest: joinAppearance.chest?.itemId,
+            equippedLegs: joinAppearance.legs?.itemId,
+            equippedPet: joinAppearance.pet?.itemId,
             userId,
           },
           {
@@ -1771,10 +1880,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               if (remoteAvatars.has(p.id)) return;
               // Server NPCs (id "npc:*") get a dweller silhouette routed by
               // className (the server cycles dweller.robot|husk|spirit).
-              // Human remotes get the per-class palette shell.
-              const group = p.id.startsWith('npc:')
-                ? buildDweller(p.className ?? 'dweller.robot')
-                : buildRemoteAvatar(p.className ?? 'bit_spekter');
+              // Human remotes get the per-class palette shell + skin targets
+              // for equipped-cosmetic rendering (P3).
+              const isNpc = p.id.startsWith('npc:');
+              const build = isNpc ? null : buildRemoteAvatar(p.className ?? 'bit_spekter');
+              const group = build ? build.group : buildDweller(p.className ?? 'dweller.robot');
               const dx = wrapDelta(p.x - rig.root.position.x);
               const dz = wrapDelta(p.z - rig.root.position.z);
               group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
@@ -1791,7 +1901,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 tagBadge: tag.badgeSpan,
                 tagLevel: tag.levelSpan,
                 lastTagCss: '',
+                skin: build ? build.skin : null,
+                petAnchor: build ? build.petAnchor : null,
+                petMesh: null,
+                petGeom: null,
+                petMat: null,
+                petId: null,
+                lastAppearanceKey: '',
               };
+              if (build) applyRemoteAppearance(ra, p);
               applyTag(
                 ra.tagEl,
                 ra.tagName,
@@ -1816,6 +1934,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             onLeave(id) {
               const ra = remoteAvatars.get(id);
               if (!ra) return;
+              disposeRemotePet(ra);
               // Release tap-lock if the locked target just disconnected.
               if (lockedTarget?.id === id) {
                 releaseLock(lockedTarget);
@@ -1853,6 +1972,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               );
               ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
               applyLevel(ra.tagLevel, p.level);
+              applyRemoteAppearance(ra, p);
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);
@@ -2794,6 +2914,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // scene instance.
     publishMinimapRemotes([]);
     unsubscribeIdentity();
+    unsubscribeAppearanceNet();
     unsubscribeNameStyle();
     unsubscribeLevel();
     unsubscribeMission();

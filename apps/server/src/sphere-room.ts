@@ -11,6 +11,7 @@ import {
   isValidBadgeKey,
   isValidDisplayName,
   isValidEmote,
+  isValidItemId,
   isValidNameTint,
   isValidNameWeight,
   isValidTetherBody,
@@ -227,6 +228,10 @@ export class SphereRoom extends Room<SphereState> {
           nameWeight?: unknown;
           nameTint?: unknown;
           level?: unknown;
+          equippedHead?: unknown;
+          equippedChest?: unknown;
+          equippedLegs?: unknown;
+          equippedPet?: unknown;
         },
       ) => {
         this.lastSeen.set(client.sessionId, Date.now());
@@ -259,6 +264,28 @@ export class SphereRoom extends Room<SphereState> {
         }
         if (msg?.level !== undefined) {
           p.level = clampLevel(msg.level);
+        }
+        // Equipped cosmetics (P3): shape-gate only — the web shop catalog
+        // is not importable here; clients re-validate before rendering.
+        if (msg?.equippedHead !== undefined) {
+          if (msg.equippedHead === '' || isValidItemId(msg.equippedHead)) {
+            p.equippedHead = msg.equippedHead as string;
+          }
+        }
+        if (msg?.equippedChest !== undefined) {
+          if (msg.equippedChest === '' || isValidItemId(msg.equippedChest)) {
+            p.equippedChest = msg.equippedChest as string;
+          }
+        }
+        if (msg?.equippedLegs !== undefined) {
+          if (msg.equippedLegs === '' || isValidItemId(msg.equippedLegs)) {
+            p.equippedLegs = msg.equippedLegs as string;
+          }
+        }
+        if (msg?.equippedPet !== undefined) {
+          if (msg.equippedPet === '' || isValidItemId(msg.equippedPet)) {
+            p.equippedPet = msg.equippedPet as string;
+          }
         }
       },
     );
@@ -546,6 +573,10 @@ export class SphereRoom extends Room<SphereState> {
           nameTint?: string;
           level?: number;
           userId?: string;
+          equippedHead?: string;
+          equippedChest?: string;
+          equippedLegs?: string;
+          equippedPet?: string;
         }
       | undefined,
   ): void {
@@ -584,6 +615,18 @@ export class SphereRoom extends Room<SphereState> {
     }
     if (options?.level !== undefined) {
       p.level = clampLevel(options.level);
+    }
+    if (options?.equippedHead && isValidItemId(options.equippedHead)) {
+      p.equippedHead = options.equippedHead;
+    }
+    if (options?.equippedChest && isValidItemId(options.equippedChest)) {
+      p.equippedChest = options.equippedChest;
+    }
+    if (options?.equippedLegs && isValidItemId(options.equippedLegs)) {
+      p.equippedLegs = options.equippedLegs;
+    }
+    if (options?.equippedPet && isValidItemId(options.equippedPet)) {
+      p.equippedPet = options.equippedPet;
     }
     // Scatter spawn coords so newcomers don't all stack at (0,0). The
     // PlayerState schema defaults x/z to 0; without this every avatar
