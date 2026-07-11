@@ -416,8 +416,61 @@ export const DIALOGUE_DEFAULTS: readonly DialogueEntry[] = [
 const byKey = new Map<string, DialogueEntry>(DIALOGUE_DEFAULTS.map((e) => [e.key, e]));
 const overrides = new Map<string, string[]>();
 
+// Overrides are cached in localStorage so returning players get the owner's
+// edited lines instantly, without a boot-time table fetch (perf P1, 0139).
+const CACHE_KEY = 'bitrunners.dialogue.overrides.v1';
+
+function applyRows(rows: ReadonlyMap<string, string[]> | Record<string, unknown>): void {
+  const entries = rows instanceof Map ? rows.entries() : Object.entries(rows);
+  for (const [key, lines] of entries) {
+    if (Array.isArray(lines)) {
+      overrides.set(
+        key,
+        lines.filter((l): l is string => typeof l === 'string'),
+      );
+    }
+  }
+}
+
+// Seed from the cache synchronously at module load — cheap, no network.
+try {
+  const raw = localStorage.getItem(CACHE_KEY);
+  if (raw) applyRows(JSON.parse(raw) as Record<string, unknown>);
+} catch {
+  /* corrupt or unavailable cache — in-code defaults still work */
+}
+
+let loadStarted = false;
+
+/** Refresh overrides from Supabase, once per session, in the background.
+ *  Triggered lazily by the first dialogue read instead of at boot — the
+ *  first read may serve cached (or default) lines while the fetch runs. */
+function ensureDialogueLoaded(): void {
+  if (loadStarted) return;
+  loadStarted = true;
+  void (async () => {
+    const sb = getSupabase();
+    if (!sb) return;
+    const { data, error } = await sb.from('dialogue').select('key, lines');
+    if (error || !data) return;
+    // Replace wholesale so overrides deleted server-side also drop locally.
+    overrides.clear();
+    const cache: Record<string, unknown> = {};
+    for (const row of data as { key: string; lines: unknown }[]) {
+      cache[row.key] = row.lines;
+    }
+    applyRows(cache);
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+    } catch {
+      /* storage unavailable — fetch-per-session still works */
+    }
+  })();
+}
+
 /** Lines for a key: admin override if present, else the in-code default. */
 export function getLines(key: string): string[] {
+  ensureDialogueLoaded();
   return overrides.get(key) ?? byKey.get(key)?.lines ?? [];
 }
 
@@ -426,24 +479,9 @@ export function getLine(key: string): string {
   return getLines(key)[0] ?? '';
 }
 
-/** Fetch admin overrides once at startup. No-op when auth isn't configured. */
-export async function initDialogue(): Promise<void> {
-  const sb = getSupabase();
-  if (!sb) return;
-  const { data, error } = await sb.from('dialogue').select('key, lines');
-  if (error || !data) return;
-  for (const row of data as { key: string; lines: unknown }[]) {
-    if (Array.isArray(row.lines)) {
-      overrides.set(
-        row.key,
-        row.lines.filter((l): l is string => typeof l === 'string'),
-      );
-    }
-  }
-}
-
 /** Admin editor: every entry with its current (override-or-default) lines. */
 export function listDialogue(): DialogueEntry[] {
+  ensureDialogueLoaded();
   return DIALOGUE_DEFAULTS.map((e) => ({ key: e.key, label: e.label, lines: getLines(e.key) }));
 }
 

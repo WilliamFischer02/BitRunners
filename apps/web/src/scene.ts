@@ -305,6 +305,27 @@ export interface SceneControls {
   triggerEmote(text: string): void;
 }
 
+// Glyph atlases are pure functions of their ramps — built once per page load
+// and shared across scene restarts ("change runner") instead of re-rasterised
+// per startScene. Module-lifetime resource: never disposed (a few KB of
+// canvas each). Perf pass P1, devlog 0139.
+let glyphAtlases: {
+  worldAtlas: ReturnType<typeof buildGlyphAtlas>;
+  characterAtlas: ReturnType<typeof buildGlyphAtlas>;
+  edgeAtlas: ReturnType<typeof buildGlyphAtlas>;
+} | null = null;
+
+function getGlyphAtlases(): NonNullable<typeof glyphAtlases> {
+  if (!glyphAtlases) {
+    glyphAtlases = {
+      worldAtlas: buildGlyphAtlas({ ramp: ' .·-:;=+*░#▒▓█', cellSize: 4, fontSize: 6 }),
+      characterAtlas: buildGlyphAtlas({ ramp: " '.,:;-+=*#%&@", cellSize: 4, fontSize: 6 }),
+      edgeAtlas: buildGlyphAtlas({ ramp: ' ▀▄▌▐█', cellSize: 4, fontSize: 6 }),
+    };
+  }
+  return glyphAtlases;
+}
+
 export function startScene(host: HTMLElement, classNameArg: string): SceneControls {
   // `?class=NAME` overrides the boot-selected class for visual QA of locked
   // classes (server_speaker etc. don't appear in the live class grid yet —
@@ -1214,21 +1235,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   const characterTarget = new WebGLRenderTarget(1, 1, { format: RGBAFormat });
 
-  const worldAtlas = buildGlyphAtlas({
-    ramp: ' .·-:;=+*░#▒▓█',
-    cellSize: 4,
-    fontSize: 6,
-  });
-  const characterAtlas = buildGlyphAtlas({
-    ramp: " '.,:;-+=*#%&@",
-    cellSize: 4,
-    fontSize: 6,
-  });
-  const edgeAtlas = buildGlyphAtlas({
-    ramp: ' ▀▄▌▐█',
-    cellSize: 4,
-    fontSize: 6,
-  });
+  const { worldAtlas, characterAtlas, edgeAtlas } = getGlyphAtlases();
 
   const useNormals =
     typeof window !== 'undefined' &&
@@ -2728,9 +2735,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     normalsMaterial?.dispose();
     skyboxMaterial.dispose();
     renderer.dispose();
-    worldAtlas.texture.dispose();
-    characterAtlas.texture.dispose();
-    edgeAtlas.texture.dispose();
+    // Glyph atlas textures are module-lifetime (shared across restarts) —
+    // intentionally not disposed here. See getGlyphAtlases().
     tendrilGeom.dispose();
     for (const t of tendrils) t.mat.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);

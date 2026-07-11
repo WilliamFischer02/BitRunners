@@ -1,70 +1,20 @@
-import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
-import { AccountNudge } from './AccountNudge.js';
-import { AdminConsole } from './AdminConsole.js';
-import { AdminDialogue } from './AdminDialogue.js';
-import { AuthCallback } from './AuthCallback.js';
-import { BadgeToast } from './BadgeToast.js';
-import { BadgesModal } from './BadgesModal.js';
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { Boot } from './Boot.js';
 import { ConstructionGate } from './ConstructionGate.js';
-import { CreditsHud } from './CreditsHud.js';
-import { EmoteWheel } from './EmoteWheel.js';
-import { GreedGlow } from './GreedGlow.js';
-import { Landmarks } from './Landmarks.js';
-import { MissionDialogue } from './MissionDialogue.js';
-import { Objectives } from './Objectives.js';
-import { ProfileIcon } from './ProfileIcon.js';
-import { Protocols } from './Protocols.js';
-import { Samm } from './Samm.js';
-import { ScrapeMenu } from './ScrapeMenu.js';
-import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
-import { Starmap } from './Starmap.js';
-import { TetherChat } from './TetherChat.js';
 import { TitleScreen } from './TitleScreen.js';
-import { Tutorial } from './Tutorial.js';
-import { UsernameEditor } from './UsernameEditor.js';
-import { startAccountNudge } from './account-nudge.js';
-import { startBadgeMonitor } from './badge-notifications.js';
-import { startLevel } from './level.js';
-import { startMissionServerLoad } from './mission-server-load.js';
-import { startMissionSync } from './mission-sync.js';
-import { startIdentity } from './profile.js';
-import {
-  CIRCUIT_PATCH_OPEN_EVENT,
-  CORE_RUN_OPEN_EVENT,
-  FREQ_LOCK_OPEN_EVENT,
-} from './protocols-registry.js';
-import { type SceneControls, startScene } from './scene.js';
-import { startSignupGrant } from './signup-grant.js';
 import { BootDissolve } from './transitions/BootDissolve.js';
-import { startVisibilityWatcher } from './visibility.js';
-
-// Boot the identity + badge-notification + visibility + signup-grant +
-// mission-sync subsystems once. Each is idempotent.
-startIdentity();
-startBadgeMonitor();
-startVisibilityWatcher();
-startSignupGrant();
-startLevel();
-// Account-needed nudge: watches auth so nudgeAccount() knows guest vs signed-in
-// and wires the badge-earned trigger. Idempotent.
-startAccountNudge();
-startMissionSync();
-// Reads server-side mission progress on sign-in and rebuilds local state
-// from it (server is the source of truth — must start after mission-sync so
-// the local write path is already listening).
-startMissionServerLoad();
 
 const Board = lazy(() => import('./Board.js').then((m) => ({ default: m.Board })));
 const BoardsLanding = lazy(() =>
   import('./BoardsLanding.js').then((m) => ({ default: m.BoardsLanding })),
 );
-// freq_lock rhythm minigame — lazy chunk, loaded on first launch (4.13).
-const FreqLock = lazy(() => import('./FreqLock.js'));
-// circuit_patch routing minigame — lazy chunk (mega-batch 2 · 4.4).
-const CircuitPatch = lazy(() => import('./CircuitPatch.js'));
-// core_run shrinking-maze minigame overlay — lazy chunk (mega-batch 2 · 4.5).
-const CoreRun = lazy(() => import('./CoreRun.js'));
+const AuthCallback = lazy(() =>
+  import('./AuthCallback.js').then((m) => ({ default: m.AuthCallback })),
+);
+// The whole game surface (three.js scene + every in-game panel) is a lazy
+// chunk so the title screen paints without paying for it. Prefetched in the
+// background as soon as the Shell mounts (perf pass P1, devlog 0139).
+const Game = lazy(() => import('./Game.js').then((m) => ({ default: m.Game })));
 
 const BOARD_HASH_PREFIX = '#board/';
 const BOARD_HOSTNAME = 'write.bitrunners.app';
@@ -140,9 +90,17 @@ export function App(): JSX.Element {
       </Suspense>
     );
   } else if (route?.kind === 'auth-verified') {
-    content = <AuthCallback route="verified" />;
+    content = (
+      <Suspense fallback={null}>
+        <AuthCallback route="verified" />
+      </Suspense>
+    );
   } else if (route?.kind === 'auth-recovery') {
-    content = <AuthCallback route="recovery" />;
+    content = (
+      <Suspense fallback={null}>
+        <AuthCallback route="recovery" />
+      </Suspense>
+    );
   } else {
     content = <Shell />;
   }
@@ -162,6 +120,12 @@ function Shell(): JSX.Element {
   const [phase, setPhase] = useState<Phase>('title');
   const [chosenClass, setChosenClass] = useState<string>('bit_spekter');
   const [reselect, setReselect] = useState(false);
+
+  // Warm the Game chunk (scene + panels + subsystem starts) while the player
+  // reads the title screen, so class-select → game has no chunk-fetch stall.
+  useEffect(() => {
+    void import('./Game.js');
+  }, []);
 
   const onSelect = useCallback((className: string) => {
     setChosenClass(className);
@@ -188,141 +152,19 @@ function Shell(): JSX.Element {
       {phase === 'boot' && <Boot onSelect={onSelect} startAtSelect={reselect} />}
       {phase === 'transition' && (
         <>
-          <Game className={chosenClass} />
+          {/* BootDissolve stays outside Suspense so the dissolve covers any
+              residual chunk fetch instead of waiting behind it. */}
+          <Suspense fallback={null}>
+            <Game className={chosenClass} />
+          </Suspense>
           <BootDissolve onDone={onTransitionDone} />
         </>
       )}
-      {phase === 'game' && <Game className={chosenClass} />}
+      {phase === 'game' && (
+        <Suspense fallback={null}>
+          <Game className={chosenClass} />
+        </Suspense>
+      )}
     </>
-  );
-}
-
-interface GameProps {
-  className: string;
-}
-
-interface GrantDetail {
-  credits: number;
-  tokens: number;
-}
-
-function Game({ className }: GameProps): JSX.Element {
-  const hostRef = useRef<HTMLDivElement>(null);
-  const controlsRef = useRef<SceneControls | null>(null);
-  const [adminDialogueOpen, setAdminDialogueOpen] = useState(false);
-  const [sammInRange, setSammInRange] = useState(false);
-  const [grantToast, setGrantToast] = useState<GrantDetail | null>(null);
-  const [freqLockOpen, setFreqLockOpen] = useState(false);
-  const [circuitOpen, setCircuitOpen] = useState(false);
-  const [coreRunOpen, setCoreRunOpen] = useState(false);
-  const grantDismissRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    const onOpen = (): void => setFreqLockOpen(true);
-    window.addEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(FREQ_LOCK_OPEN_EVENT, onOpen);
-  }, []);
-
-  useEffect(() => {
-    const onOpen = (): void => setCircuitOpen(true);
-    window.addEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(CIRCUIT_PATCH_OPEN_EVENT, onOpen);
-  }, []);
-
-  useEffect(() => {
-    const onOpen = (): void => setCoreRunOpen(true);
-    window.addEventListener(CORE_RUN_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(CORE_RUN_OPEN_EVENT, onOpen);
-  }, []);
-
-  useEffect(() => {
-    if (!hostRef.current) return;
-    const controls = startScene(hostRef.current, className);
-    controlsRef.current = controls;
-    return () => {
-      controlsRef.current = null;
-      controls.dispose();
-    };
-  }, [className]);
-
-  useEffect(() => {
-    const onEncounter = (): void => setAdminDialogueOpen(true);
-    window.addEventListener('bitrunners:admin-encounter', onEncounter);
-    const onSammRange = (e: Event): void => {
-      setSammInRange((e as CustomEvent<{ inRange?: boolean }>).detail?.inRange ?? false);
-    };
-    window.addEventListener('bitrunners:samm-range', onSammRange);
-    return () => {
-      window.removeEventListener('bitrunners:admin-encounter', onEncounter);
-      window.removeEventListener('bitrunners:samm-range', onSammRange);
-    };
-  }, []);
-
-  useEffect(() => {
-    const onGrant = (e: Event): void => {
-      const d = (e as CustomEvent<GrantDetail>).detail;
-      if (!d || (d.credits <= 0 && d.tokens <= 0)) return;
-      setGrantToast(d);
-      if (grantDismissRef.current !== null) window.clearTimeout(grantDismissRef.current);
-      grantDismissRef.current = window.setTimeout(() => setGrantToast(null), 4500);
-    };
-    window.addEventListener('bitrunners:grant-received', onGrant);
-    return () => window.removeEventListener('bitrunners:grant-received', onGrant);
-  }, []);
-
-  const onEmote = useCallback((glyph: string) => {
-    controlsRef.current?.triggerEmote(glyph);
-  }, []);
-
-  return (
-    <div ref={hostRef} className="canvas-host">
-      <div className="hint">{className} · arrows / wasd / stick</div>
-      <CreditsHud />
-      <ProfileIcon className={className} />
-      <Protocols />
-      <ScrapeMenu />
-      <ShopInventoryModal />
-      <Objectives />
-      <EmoteWheel onEmote={onEmote} onInventory={() => openShopInventory('inventory')} />
-      {freqLockOpen && (
-        <Suspense fallback={null}>
-          <FreqLock onClose={() => setFreqLockOpen(false)} />
-        </Suspense>
-      )}
-      {circuitOpen && (
-        <Suspense fallback={null}>
-          <CircuitPatch onClose={() => setCircuitOpen(false)} />
-        </Suspense>
-      )}
-      {coreRunOpen && (
-        <Suspense fallback={null}>
-          <CoreRun onClose={() => setCoreRunOpen(false)} />
-        </Suspense>
-      )}
-      <Samm inRange={sammInRange} />
-      <AccountNudge />
-      <GreedGlow />
-      <Landmarks />
-      <Tutorial />
-      <Starmap />
-      <AdminConsole />
-      <UsernameEditor />
-      <BadgesModal />
-      <TetherChat />
-      <BadgeToast />
-      <MissionDialogue />
-      {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
-      {grantToast && (
-        <output className="grant-toast">
-          {grantToast.credits > 0 && (
-            <span className="grant-toast-amount">+{grantToast.credits.toLocaleString()}¢</span>
-          )}
-          {grantToast.tokens > 0 && (
-            <span className="grant-toast-amount">+{grantToast.tokens.toLocaleString()}◈</span>
-          )}
-          <span className="grant-toast-label">admin grant received</span>
-        </output>
-      )}
-    </div>
   );
 }

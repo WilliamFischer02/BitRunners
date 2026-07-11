@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import './board.css';
 
 const MIN_SLUG_LENGTH = 16;
 const SLUG_RE = /^[A-Za-z0-9_-]+$/;
