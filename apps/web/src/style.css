@@ -6213,3 +6213,38 @@ dialog.panel::backdrop {
     animation: none;
   }
 }
+
+/* ════════ data_scrape guided tour (devlog 0148) ════════
+   Reuses the .tutorial-card / .tutorial-btn typography, but the scrape panel
+   backdrop sits at z 50 — so the tour card (52) and its highlight ring (51)
+   get their own layer above it. Fixed to the bottom edge so it never covers
+   the SCRAPE button or the tabulate rows at the top of the panel. */
+.tutorial-card.scrape-tutorial {
+  position: fixed;
+  bottom: 10px;
+  top: auto;
+  z-index: 52;
+}
+.scrape-tutorial-wait {
+  margin-top: 6px;
+  font-size: var(--ui-text-sm, 11px);
+  color: #93e0b1;
+  opacity: 0.85;
+}
+.scrape-tutorial-highlight {
+  position: fixed;
+  pointer-events: none;
+  z-index: 51;
+  border: 2px dashed #93e0b1;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(147, 224, 177, 0.18), 0 0 14px rgba(147, 224, 177, 0.42);
+  transition: top 140ms ease, left 140ms ease, width 140ms ease, height 140ms ease;
+  animation: tutorial-highlight-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-tutorial-highlight {
+    animation: none;
+    transition: none;
+    opacity: 0.85;
+  }
+}

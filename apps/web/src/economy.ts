@@ -101,6 +101,10 @@ export interface EconomyState {
   // circuit_patch level progress: index (0–9) of the level the runner resumes
   // on next session. Wins on the frontier level advance it. Additive.
   circuitLevel: number;
+  // One-shot flag: the data_scrape guided tour (devlog 0148) was completed
+  // or skipped. Additive — old blobs default false. Account-synced so the
+  // tour doesn't replay on every device.
+  scrapeTutorialSeen: boolean;
   updatedAt: number;
 }
 
@@ -181,6 +185,7 @@ function defaultState(): EconomyState {
     circuitFirstClear: false,
     botPrefs: { ...DEFAULT_BOT_PREFS },
     circuitLevel: 0,
+    scrapeTutorialSeen: false,
     updatedAt: 0,
   };
 }
@@ -287,6 +292,7 @@ function normalize(parsed: EconomyState): EconomyState {
     // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
     // player past the last level.
     circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
+    scrapeTutorialSeen: p.scrapeTutorialSeen === true,
   };
 }
 
@@ -717,6 +723,17 @@ export function completeTutorial(): void {
     ? state.unlocks
     : [...state.unlocks, 'server_speaker'];
   state = { ...state, tutorialDone: true, unlocks };
+  persist();
+}
+
+export function isScrapeTutorialSeen(): boolean {
+  return state.scrapeTutorialSeen;
+}
+
+/** Mark the data_scrape guided tour seen — fired on finish AND on skip. */
+export function markScrapeTutorialSeen(): void {
+  if (state.scrapeTutorialSeen) return;
+  state = { ...state, scrapeTutorialSeen: true };
   persist();
 }
 

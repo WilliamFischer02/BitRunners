@@ -68,7 +68,10 @@ function progressScore(s: Partial<EconomyState>): number {
     len(s.unlocks) * 25 +
     n(s.repCorporate) +
     n(s.repBitrunner) +
-    (s.circuitFirstClear ? 100 : 0)
+    (s.circuitFirstClear ? 100 : 0) +
+    // Small weight: a blob that has seen the scrape tour beats a truly empty
+    // account row, but never outweighs real earning progress.
+    (s.scrapeTutorialSeen ? 10 : 0)
   );
 }
 

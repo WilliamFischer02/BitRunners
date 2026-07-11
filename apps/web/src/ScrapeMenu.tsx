@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { EmoticonSubmission } from './EmoticonSubmission.js';
 import { LeaderboardModal } from './Leaderboard.js';
+import { ScrapeTutorial } from './ScrapeTutorial.js';
 import { ThemeView } from './ThemeShop.js';
 import { nudgeAccount } from './account-nudge.js';
 import {
@@ -1010,6 +1011,8 @@ function ScrapePanel({ initialView, onClose }: ScrapePanelProps): JSX.Element {
             </button>
           </div>
         </header>
+
+        <ScrapeTutorial eco={eco} view={view} />
 
         {view === 'scrape' && (
           <>
