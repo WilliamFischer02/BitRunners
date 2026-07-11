@@ -1325,6 +1325,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   composer.addPass(new OutputPass());
 
+  // Dev-only asset viewer (P6, docs/assets/PIPELINE.md): ?asset=<pack>/<name>
+  // drops a manifest .glb a few units in front of spawn so the owner can
+  // eyeball it through the full ASCII pipeline. Dynamic import keeps the
+  // registry + GLTFLoader entirely out of the Game chunk unless the flag is
+  // used; a bad id just warns.
+  const assetParam =
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('asset');
+  if (assetParam) {
+    void import('./assets-registry.js')
+      .then(({ loadModel }) => loadModel(assetParam))
+      .then((model) => {
+        model.position.set(0, 0, 4);
+        scene.add(model);
+      })
+      .catch((err) => console.warn('[bitrunners] asset viewer:', err));
+  }
+
   const fpsEl = document.createElement('div');
   fpsEl.className = 'fps';
   fpsEl.textContent = '-- fps';
