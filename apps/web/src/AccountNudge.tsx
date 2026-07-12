@@ -12,6 +12,7 @@ const REASON_LINE: Record<NudgeReason, string> = {
   mission: 'you just completed an objective.',
   badge: 'you just earned a badge.',
   emote: 'you just changed your emote loadout.',
+  plot: 'you just built on your data_base plot.',
 };
 
 export function AccountNudge(): JSX.Element | null {

@@ -94,7 +94,14 @@ import {
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
-import { VOXEL_AIR, countBlocks, createEmptyPlot, isValidBlockId, setVoxel } from './voxel-core.js';
+import { VOXEL_AIR, countBlocks, isValidBlockId, setVoxel } from './voxel-core.js';
+import {
+  PLOT_RELOADED_EVENT,
+  flushPlotSave,
+  getPlotBlocks,
+  initVoxelPlotSync,
+  notePlotEdited,
+} from './voxel-plot-store.js';
 import {
   PLOT_HALF_X,
   PLOT_HALF_Z,
@@ -2520,11 +2527,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const plotGroup = new Group();
   plotGroup.visible = false;
   scene.add(plotGroup);
+  // Persistence (Stage B): the store owns the ONE grid identity (localStorage
+  // for guests, save_voxel_plot RPC once signed in + migration 0019 applied).
+  initVoxelPlotSync();
   let plotActive = false;
   let plotTab: 'regedit' | 'corporeal' = 'regedit';
   let plotArena: PlotArena | null = null;
-  // Session-lifetime grid (Stage B swaps in the persistence store). Created
-  // on first entry so players who never open data_base pay nothing.
+  // Working grid, fetched from the store on entry. Stable identity — remote
+  // adoption copies in place and fires PLOT_RELOADED_EVENT.
   let plotBlocks: Uint8Array | null = null;
   let plotTool: 'block' | 'eraser' = 'block';
   let plotBlockId = 1; // concrete
@@ -2560,7 +2570,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   function enterPlot(): void {
     if (plotActive || mazeActive || voidActive) return;
-    if (!plotBlocks) plotBlocks = createEmptyPlot();
+    plotBlocks = getPlotBlocks();
     if (!plotArena) {
       plotArena = new PlotArena(plotBlocks);
       plotGroup.add(plotArena.group);
@@ -2597,6 +2607,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     rig.root.position.x = savedRigX;
     rig.root.position.z = savedRigZ;
     facing = savedFacing;
+    flushPlotSave(); // persist any pending edits the debounce hasn't flushed
     fireMaze('bitrunners:plot-exit');
   }
 
@@ -2638,12 +2649,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       const c = pick.erase;
       if (c && setVoxel(plotBlocks, c.x, c.y, c.z, VOXEL_AIR)) {
         plotArena.markDirty();
+        notePlotEdited();
         firePlotEdited();
       }
     } else {
       const c = pick.place;
       if (c && setVoxel(plotBlocks, c.x, c.y, c.z, plotBlockId)) {
         plotArena.markDirty();
+        notePlotEdited();
         firePlotEdited();
       }
     }
@@ -2758,11 +2771,20 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       plotDepth = Math.max(0, Math.min(12, Math.floor(n)));
     }
   };
+  const onPlotReloaded = (): void => {
+    // Remote plot adopted (sign-in on another device's build): the store
+    // copied into the SAME buffer, so a remesh + counter refresh suffices.
+    if (plotArena && plotBlocks) {
+      plotArena.markDirty();
+      firePlotEdited();
+    }
+  };
   window.addEventListener('bitrunners:data-base-enter', onDataBaseEnter);
   window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
   window.addEventListener('bitrunners:plot-tab', onPlotTab);
   window.addEventListener('bitrunners:plot-tool', onPlotTool);
   window.addEventListener('bitrunners:plot-depth', onPlotDepth);
+  window.addEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
 
   const GLITCH_TRIGGER = 2.4;
   let glitchInRange = false;
@@ -3309,6 +3331,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     window.removeEventListener('bitrunners:plot-tab', onPlotTab);
     window.removeEventListener('bitrunners:plot-tool', onPlotTool);
     window.removeEventListener('bitrunners:plot-depth', onPlotDepth);
+    window.removeEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
+    flushPlotSave();
     renderer.domElement.removeEventListener('pointerdown', onPlotPointerDown);
     renderer.domElement.removeEventListener('pointermove', onPlotPointerMove);
     renderer.domElement.removeEventListener('pointerup', onPlotPointerUp);

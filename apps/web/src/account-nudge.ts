@@ -12,7 +12,7 @@
 import { BADGE_EARNED_EVENT } from './badge-notifications.js';
 import { isAuthConfigured, subscribeAuth } from './supabase.js';
 
-export type NudgeReason = 'minigame' | 'shop' | 'mission' | 'badge' | 'emote';
+export type NudgeReason = 'minigame' | 'shop' | 'mission' | 'badge' | 'emote' | 'plot';
 
 export const ACCOUNT_NUDGE_EVENT = 'bitrunners:account-nudge';
 
