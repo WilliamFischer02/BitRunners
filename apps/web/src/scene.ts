@@ -92,9 +92,8 @@ import {
   tickLock,
 } from './target-lock.js';
 import {
-  isTargeting,
+  getTetherState,
   leaveTether,
-  sendTetherRequest,
   setTetherSink,
   tetherDeclined,
   tetherEstablished,
@@ -115,6 +114,7 @@ import {
 import {
   PLOT_HALF_X,
   PLOT_HALF_Z,
+  PLOT_HEIGHT,
   PlotArena,
   type VoxelPick,
   pickVoxel,
@@ -1471,6 +1471,76 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   fpsEl.textContent = '-- fps';
   host.appendChild(fpsEl);
 
+  // ── Jump (devlog 0156) ──────────────────────────────────────────────
+  // Ballistic hop above the current mode's ground plane. vy 5.2 / g -14 →
+  // ~0.97u apex, ~0.74s airtime — snappy, no double-jump. Space triggers it
+  // (skipping typing/dialog targets and events something else already
+  // preventDefault'd, e.g. the protocols rack); the centre-bottom spacebar
+  // keycap triggers it on tap/click. XZ collision, wrap and netcode are
+  // untouched — the move payload carries no y field.
+  const JUMP_VY = 5.2;
+  const JUMP_GRAVITY = -14;
+  let jumpH = 0;
+  let jumpVy = 0;
+  function jumpAllowed(): boolean {
+    // Everywhere the rig walks (world / maze / void / Corporeal plot). The
+    // RegEdit viewport has no body to jump.
+    return !(plotActive && plotTab === 'regedit');
+  }
+  function tryJump(): void {
+    if (!jumpAllowed()) return;
+    if (jumpH > 0 || jumpVy !== 0) return; // airborne — no double-jump
+    jumpVy = JUMP_VY;
+  }
+  const jumpBtn = document.createElement('button');
+  jumpBtn.type = 'button';
+  jumpBtn.className = 'jump-btn';
+  jumpBtn.setAttribute('aria-label', 'jump');
+  const jumpCap = document.createElement('span');
+  jumpCap.className = 'jump-btn-cap';
+  jumpCap.textContent = 'jump';
+  jumpBtn.appendChild(jumpCap);
+  host.appendChild(jumpBtn);
+  function refreshJumpBtn(): void {
+    // Hidden in the RegEdit viewport (no body), visible everywhere else.
+    jumpBtn.style.display = plotActive && plotTab === 'regedit' ? 'none' : '';
+  }
+  const onJumpPress = (ev: PointerEvent): void => {
+    ev.preventDefault(); // no focus grab — Space stays a world jump key
+    jumpBtn.classList.add('is-pressed');
+    tryJump();
+  };
+  const onJumpRelease = (): void => jumpBtn.classList.remove('is-pressed');
+  jumpBtn.addEventListener('pointerdown', onJumpPress);
+  jumpBtn.addEventListener('pointerup', onJumpRelease);
+  jumpBtn.addEventListener('pointercancel', onJumpRelease);
+  jumpBtn.addEventListener('pointerleave', onJumpRelease);
+  // Keyboard activation of a focused keycap still jumps (no-ops mid-air).
+  const onJumpClick = (): void => tryJump();
+  jumpBtn.addEventListener('click', onJumpClick);
+  const onJumpKey = (e: KeyboardEvent): void => {
+    if (e.code !== 'Space') return;
+    if (e.repeat || e.defaultPrevented) return;
+    const t = e.target as HTMLElement | null;
+    if (t) {
+      const tag = t.tagName;
+      if (
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        tag === 'BUTTON' ||
+        tag === 'A' ||
+        t.isContentEditable
+      ) {
+        return; // typing / activating UI — not a jump
+      }
+      if (typeof t.closest === 'function' && t.closest('dialog, [role="dialog"]')) return;
+    }
+    e.preventDefault(); // keep the page from scrolling
+    tryJump();
+  };
+  window.addEventListener('keydown', onJumpKey);
+
   // Declared up-front so subscribeIdentity()'s synchronous initial callback can
   // safely reference it (otherwise the `let` would be in the TDZ at first
   // invocation and the scene init would throw a black-screen ReferenceError).
@@ -1823,9 +1893,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     return { el, nameSpan, badgeSpan, levelSpan };
   }
 
-  // Tap-to-lock state. Click on a remote avatar or NPC dweller to lock the
-  // camera onto them + apply a pulsing emissive halo. Click them again, they
-  // disconnect, or they walk past LOCK_RELEASE_DISTANCE to release.
+  // Avatar taps (devlog 0156 tap-to-tether rework):
+  //   - no tether live → the tap ALWAYS initiates the tether flow for the
+  //     tapped runner (or dweller NPC — the bots auto-accept server-side, so
+  //     this stays testable solo). TetherChat.tsx owns the gates (sign-in /
+  //     approval / ToS) and fires the actual request. No cartridge, no
+  //     targeting arm step.
+  //   - request pending / tethered → taps fall back to the camera tap-lock
+  //     (follow your chat partner); tap again / disconnect / distance
+  //     releases. Blocked runners get neither (block list intact).
   const tapRaycaster = createTargetRaycaster();
   let lockedTarget: LockedTarget | null = null;
   const onCanvasClick = (ev: MouseEvent): void => {
@@ -1838,13 +1914,18 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const ndcY = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
     const hit = pickAvatar(tapRaycaster, camera, ndcX, ndcY, remoteAvatars);
     if (!hit) return; // tap on background — keep current lock as-is
-    // In tether targeting mode a tap offers a tether to the tapped runner
-    // (or dweller NPC) instead of locking the camera. The NPC bots
-    // auto-accept and chatter (server-side) so this is testable solo.
-    if (isTargeting()) {
+    if (isBlocked(hit.id)) return; // block list: no tether offer, no lock
+    const tetherStatus = getTetherState().status;
+    if (tetherStatus === 'idle') {
       const tapped = remoteAvatars.get(hit.id);
       const name = tapped?.tagName.textContent || 'runner';
-      sendTetherRequest({ id: hit.id, name });
+      try {
+        window.dispatchEvent(
+          new CustomEvent('bitrunners:tether-tap', { detail: { peer: { id: hit.id, name } } }),
+        );
+      } catch {
+        // non-DOM env — ignore
+      }
       return;
     }
     if (lockedTarget?.id === hit.id) {
@@ -2668,14 +2749,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   let plotVisit = false;
   let plotTool: 'block' | 'eraser' = 'block';
   let plotBlockId = 1; // concrete
-  let plotDepth = 0;
   // RegEdit orbit camera (spherical around a pannable focus). STOP-AND-ASK
-  // defaults — tune the sensitivities freely.
+  // defaults — tune the sensitivities freely. plotFocusY is the camera
+  // altitude, driven by the left-rail height slider (devlog 0156).
   let plotYaw = 0.7;
   let plotPitch = 0.55;
   let plotRadius = 30;
   let plotFocusX = 0;
-  const plotFocusY = 3;
+  let plotFocusY = 3;
   let plotFocusZ = 0;
   const PLOT_RADIUS_MIN = 8;
   const PLOT_RADIUS_MAX = 60;
@@ -2691,7 +2772,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const editing = tab === 'regedit';
     // The editor is a viewport, not a body — hide the rig while editing.
     rig.root.visible = !editing;
-    if (!editing) plotArena?.hideCursor();
+    refreshJumpBtn();
   }
 
   function firePlotEdited(): void {
@@ -2727,6 +2808,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     rig.root.position.z = plotGroup.position.z + PLOT_SPAWN.z;
     rig.root.position.y = plotGroup.position.y;
     facing = Math.PI; // face the pad center (toward −z)
+    // Fresh viewport per entry — matches the HUD's height-slider default.
+    plotFocusX = 0;
+    plotFocusZ = 0;
+    plotFocusY = 3;
     setWorldVisibleForMaze(false);
     skybox.visible = false;
     plotGroup.visible = true;
@@ -2769,8 +2854,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     const wasVisit = plotVisit;
     plotVisit = false;
     plotGroup.visible = false;
-    plotArena?.hideCursor();
     rig.root.visible = true;
+    refreshJumpBtn();
     setWorldVisibleForMaze(true);
     skybox.visible = true;
     rig.root.position.x = savedRigX;
@@ -2811,7 +2896,6 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       d.y,
       d.z,
       plotBlocks,
-      plotDepth,
     );
   }
 
@@ -2835,18 +2919,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
-  function refreshPlotCursor(clientX: number, clientY: number): void {
-    if (!plotArena) return;
-    const pick = plotPickAt(clientX, clientY);
-    const cell = pick ? (plotTool === 'eraser' ? pick.erase : pick.place) : null;
-    if (cell) plotArena.showCursor(cell, plotTool === 'eraser');
-    else plotArena.hideCursor();
-  }
-
   // RegEdit gestures on the canvas: one-pointer drag orbits (shift/right-drag
   // pans on desktop), a tap (<6 px) applies the tool, wheel + pinch zoom the
   // orbit radius, two-finger drag pans (touch). The joystick element sits
-  // above the canvas, so its touches never reach these handlers.
+  // above the canvas, so its touches never reach these handlers. No hover
+  // ghost/pre-placement highlight (devlog 0156) — the tap raycast against
+  // existing blocks/ground IS the target: place on the face hit, erase the
+  // hit block.
   let plotPtrId = -1;
   let plotPtrLastX = 0;
   let plotPtrLastY = 0;
@@ -2881,13 +2960,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   };
   const onPlotPointerMove = (ev: PointerEvent): void => {
     if (!plotEditing()) return;
-    if (plotPtrId !== ev.pointerId) {
-      // Desktop hover preview while not dragging.
-      if (ev.pointerType === 'mouse' && plotPtrId === -1) {
-        refreshPlotCursor(ev.clientX, ev.clientY);
-      }
-      return;
-    }
+    if (plotPtrId !== ev.pointerId) return;
     const dx = ev.clientX - plotPtrLastX;
     const dy = ev.clientY - plotPtrLastY;
     plotPtrLastX = ev.clientX;
@@ -2908,7 +2981,6 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (plotPtrMoved < 6 && ev.button !== 2) {
       const pick = plotPickAt(ev.clientX, ev.clientY);
       if (pick) applyPlotTool(pick);
-      refreshPlotCursor(ev.clientX, ev.clientY);
     }
   };
   const onPlotContextMenu = (ev: Event): void => {
@@ -2939,10 +3011,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       }
     }
   };
-  const onPlotDepth = (ev: Event): void => {
-    const n = (ev as CustomEvent<{ depth?: number }>).detail?.depth;
+  const onPlotHeight = (ev: Event): void => {
+    // Left-rail height slider (devlog 0156): drives the RegEdit camera
+    // altitude (the orbit focus height).
+    const n = (ev as CustomEvent<{ height?: number }>).detail?.height;
     if (typeof n === 'number' && Number.isFinite(n)) {
-      plotDepth = Math.max(0, Math.min(12, Math.floor(n)));
+      plotFocusY = Math.max(0, Math.min(PLOT_HEIGHT, n));
     }
   };
   const onPlotReloaded = (): void => {
@@ -3000,7 +3074,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
   window.addEventListener('bitrunners:plot-tab', onPlotTab);
   window.addEventListener('bitrunners:plot-tool', onPlotTool);
-  window.addEventListener('bitrunners:plot-depth', onPlotDepth);
+  window.addEventListener('bitrunners:plot-height', onPlotHeight);
   window.addEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
 
   // ── RAMHATTAN collectables + keeper proximity (P8) ───────────────────────
@@ -3204,8 +3278,22 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     elapsed += dt;
 
     const m = input.intent();
-    // RegEdit is a viewport, not a walk mode — movement input is ignored there.
-    const moving = (m.x !== 0 || m.y !== 0) && !(plotActive && plotTab === 'regedit');
+    // RegEdit is a viewport, not a walk mode — movement input pans the
+    // camera instead (devlog 0156): the stick/WASD slides the orbit focus in
+    // the ground plane, screen-relative (up = away from camera), speed
+    // scaled by the orbit radius so panning feels constant on screen.
+    const plotViewport = plotActive && plotTab === 'regedit';
+    if (plotViewport && (m.x !== 0 || m.y !== 0)) {
+      const panSpeed = plotRadius * 0.55 * dt;
+      const rightX = Math.cos(plotYaw);
+      const rightZ = -Math.sin(plotYaw);
+      const fwdX = -Math.sin(plotYaw);
+      const fwdZ = -Math.cos(plotYaw);
+      plotFocusX += (m.x * rightX - m.y * fwdX) * panSpeed;
+      plotFocusZ += (m.x * rightZ - m.y * fwdZ) * panSpeed;
+      clampPlotFocus();
+    }
+    const moving = (m.x !== 0 || m.y !== 0) && !plotViewport;
 
     if (moving) {
       tempFwd.subVectors(rig.root.position, camera.position).setY(0).normalize();
@@ -3253,6 +3341,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       facing = Math.atan2(tempMove.x, tempMove.z);
     }
     rig.root.rotation.y = facing;
+
+    // Jump physics (devlog 0156): ballistic arc over the mode's ground
+    // plane. root.y = base + jumpH keeps the sky-grid plot base intact and
+    // lands exactly at ground height across mode transitions.
+    if (jumpVy !== 0 || jumpH > 0) {
+      jumpVy += JUMP_GRAVITY * dt;
+      jumpH += jumpVy * dt;
+      if (jumpH <= 0) {
+        jumpH = 0;
+        jumpVy = 0;
+      }
+    }
+    rig.root.position.y = (plotActive ? plotGroup.position.y : 0) + jumpH;
 
     const targetActive = moving ? 1 : 0;
     walkActive += (targetActive - walkActive) * Math.min(dt * 6, 1);
@@ -3623,7 +3724,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     window.removeEventListener('bitrunners:data-base-exit', onDataBaseExit);
     window.removeEventListener('bitrunners:plot-tab', onPlotTab);
     window.removeEventListener('bitrunners:plot-tool', onPlotTool);
-    window.removeEventListener('bitrunners:plot-depth', onPlotDepth);
+    window.removeEventListener('bitrunners:plot-height', onPlotHeight);
     window.removeEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
     flushPlotSave();
     renderer.domElement.removeEventListener('pointerdown', onPlotPointerDown);
@@ -3649,6 +3750,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     petGeom?.dispose();
     petMat?.dispose();
     input.dispose();
+    window.removeEventListener('keydown', onJumpKey);
+    if (jumpBtn.parentNode === host) host.removeChild(jumpBtn);
     renderer.domElement.removeEventListener('click', onCanvasClick);
     renderer.domElement.removeEventListener('wheel', onWheel);
     renderer.domElement.removeEventListener('touchstart', onTouchStart);

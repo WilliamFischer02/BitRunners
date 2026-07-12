@@ -6,58 +6,53 @@ import { PLOT_HALF_X, PLOT_HALF_Z, pickVoxel, slideMoveVoxel } from './voxel-sce
 const lx = (x: number): number => x + 0.5 - PLOT_HALF_X;
 const lz = (z: number): number => z + 0.5 - PLOT_HALF_Z;
 
-describe('pickVoxel — DDA surface selection', () => {
+describe('pickVoxel — DDA nearest-surface selection (devlog 0156: no depth slider)', () => {
   it('empty plot: straight-down ray lands a pad placement cell', () => {
     const g = createEmptyPlot();
-    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 0);
+    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g);
     expect(pick).toEqual({ erase: null, place: { x: 5, y: 0, z: 7 } });
   });
 
   it('single block: erase = the block, place = the cell above', () => {
     const g = createEmptyPlot();
     setVoxel(g, 5, 0, 7, 1);
-    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 0);
+    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g);
     expect(pick?.erase).toEqual({ x: 5, y: 0, z: 7 });
     expect(pick?.place).toEqual({ x: 5, y: 1, z: 7 });
   });
 
-  it('a contiguous solid column is ONE surface', () => {
+  it('a contiguous solid column resolves to its top surface', () => {
     const g = createEmptyPlot();
     setVoxel(g, 5, 0, 7, 1);
     setVoxel(g, 5, 1, 7, 1);
     setVoxel(g, 5, 2, 7, 1);
-    const d0 = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 0);
-    expect(d0?.erase).toEqual({ x: 5, y: 2, z: 7 });
-    // Depth 1 over-reaches (only one surface) → clamps to the deepest found.
-    const d1 = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 1);
-    expect(d1?.erase).toEqual({ x: 5, y: 2, z: 7 });
+    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g);
+    expect(pick?.erase).toEqual({ x: 5, y: 2, z: 7 });
+    expect(pick?.place).toEqual({ x: 5, y: 3, z: 7 });
   });
 
-  it('depth slider reaches the second surface behind an air gap', () => {
+  it('the nearest surface wins across an air gap', () => {
     const g = createEmptyPlot();
     setVoxel(g, 5, 4, 7, 2); // upper slab
     setVoxel(g, 5, 0, 7, 1); // lower slab, 3-cell air gap between
-    const d0 = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 0);
-    expect(d0?.erase).toEqual({ x: 5, y: 4, z: 7 });
-    expect(d0?.place).toEqual({ x: 5, y: 5, z: 7 });
-    const d1 = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g, 1);
-    expect(d1?.erase).toEqual({ x: 5, y: 0, z: 7 });
-    expect(d1?.place).toEqual({ x: 5, y: 1, z: 7 });
+    const pick = pickVoxel(lx(5), 30, lz(7), 0, -1, 0, g);
+    expect(pick?.erase).toEqual({ x: 5, y: 4, z: 7 });
+    expect(pick?.place).toEqual({ x: 5, y: 5, z: 7 });
   });
 
   it('horizontal ray hits the side face and places in front of it', () => {
     const g = createEmptyPlot();
     setVoxel(g, 10, 0, 12, 4);
     // Ray flying at block-half height along +x toward the block.
-    const pick = pickVoxel(lx(2), 0.5, lz(12), 1, 0, 0, g, 0);
+    const pick = pickVoxel(lx(2), 0.5, lz(12), 1, 0, 0, g);
     expect(pick?.erase).toEqual({ x: 10, y: 0, z: 12 });
     expect(pick?.place).toEqual({ x: 9, y: 0, z: 12 });
   });
 
   it('ray that misses the grid entirely returns null', () => {
     const g = createEmptyPlot();
-    expect(pickVoxel(0, 40, 0, 0, 1, 0, g, 0)).toBeNull(); // straight up
-    expect(pickVoxel(PLOT_HALF_X + 50, 5, 0, 1, 0, 0, g, 0)).toBeNull(); // parallel, outside
+    expect(pickVoxel(0, 40, 0, 0, 1, 0, g)).toBeNull(); // straight up
+    expect(pickVoxel(PLOT_HALF_X + 50, 5, 0, 1, 0, 0, g)).toBeNull(); // parallel, outside
   });
 });
 

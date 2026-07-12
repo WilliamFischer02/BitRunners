@@ -1,28 +1,42 @@
-// Protocols registry — the catalog of cartridges shown in the carousel.
+// Protocols registry — the catalog of cartridges shown in the PROTOCOLS rack.
 //
 // A "protocol" in canon is a program a runner launches to mine the cloud
-// for data. Each registered protocol becomes a cartridge tile in the
-// Protocols carousel (Protocols.tsx). Clicking a tile dispatches the
-// protocol's launch event; the relevant content panel handles open state
-// on its own. This keeps the carousel itself stateless about panel
-// internals — it's a hub, not a host.
+// for data. Each registered protocol becomes a cartridge row inside the
+// PROTOCOLS button's expanding rack (Protocols.tsx). Selecting one
+// dispatches the protocol's launch event; the relevant content panel
+// handles open state on its own. This keeps the rack itself stateless
+// about panel internals — it's a hub, not a host.
 //
-// Phase 3 will add `tether_hop`; for now we ship Scrape and Objectives.
+// Devlog 0156: tether_chat and data_base left the rack. Tether now rides
+// tap-to-tether (tap any runner in the world — scene.ts + TetherChat.tsx);
+// the Data Base opens from the left-rail chip in Game.tsx via
+// openDataBase(). Both former launch events remain live wire below.
 
 export type ProtocolKey =
   | 'scrape'
   | 'objectives'
   | 'shop'
-  | 'tether_chat'
   | 'freq_lock'
   | 'circuit_patch'
-  | 'core_run'
-  | 'data_base';
+  | 'core_run';
 
 export const FREQ_LOCK_OPEN_EVENT = 'bitrunners:open-freq-lock';
 export const CIRCUIT_PATCH_OPEN_EVENT = 'bitrunners:open-circuit-patch';
 export const CORE_RUN_OPEN_EVENT = 'bitrunners:open-core-run';
 export const DATA_BASE_OPEN_EVENT = 'bitrunners:open-data-base';
+
+/** Cartridge edge tint. Legacy faction hints (br / neutral / corp) plus the
+ *  devlog-0156 variety palette so each remaining cartridge reads distinct. */
+export type ProtocolTint =
+  | 'br'
+  | 'neutral'
+  | 'corp'
+  | 'cyan'
+  | 'amber'
+  | 'magenta'
+  | 'lime'
+  | 'violet'
+  | 'orange';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -32,9 +46,8 @@ export interface ProtocolEntry {
   flavor: string;
   /** Iconic glyph centered on the cartridge face. */
   glyph: string;
-  /** Faction tint hint for the cartridge edge (purple = BitRunner-leaning,
-   *  amber = neutral cloud, orange = Corporate-leaning). */
-  tint: 'br' | 'neutral' | 'corp';
+  /** Tint for the cartridge label band — see ProtocolTint. */
+  tint: ProtocolTint;
   /** Whether the cartridge is available to insert. Locked cartridges show
    *  a `// LOCKED` banner instead of the launch button. */
   available: boolean;
@@ -61,6 +74,17 @@ export function openObjectives(): void {
   }
 }
 
+/** Opens the Data Base (voxel plot). Fired by the left-rail chip in
+ *  Game.tsx — the same event the retired data_base cartridge dispatched,
+ *  so the scene/HUD wiring is untouched. */
+export function openDataBase(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(DATA_BASE_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export { PROTOCOLS_LAUNCH_EVENT, OBJECTIVES_OPEN_EVENT };
 
 // Lazy events so this registry stays UI-dep free.
@@ -77,14 +101,6 @@ function launchShop(): void {
     window.dispatchEvent(
       new CustomEvent('bitrunners:open-shop-inventory', { detail: { tab: 'shop' } }),
     );
-  } catch {
-    // non-DOM env — ignore
-  }
-}
-
-function launchTetherChat(): void {
-  try {
-    window.dispatchEvent(new CustomEvent('bitrunners:open-tether-chat'));
   } catch {
     // non-DOM env — ignore
   }
@@ -114,21 +130,13 @@ function launchCoreRun(): void {
   }
 }
 
-function launchDataBase(): void {
-  try {
-    window.dispatchEvent(new CustomEvent(DATA_BASE_OPEN_EVENT));
-  } catch {
-    // non-DOM env — ignore
-  }
-}
-
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
     label: 'data_scrape',
     flavor: 'mine the cloud for bits',
     glyph: '⌬',
-    tint: 'neutral',
+    tint: 'amber',
     available: true,
     launch: launchScrape,
   },
@@ -137,7 +145,7 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     label: 'objectives',
     flavor: 'walk the cloud, ping the depots',
     glyph: '⌖',
-    tint: 'br',
+    tint: 'cyan',
     available: true,
     launch: openObjectives,
   },
@@ -146,25 +154,16 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     label: 'shop',
     flavor: 'cosmetics + credits',
     glyph: '⌶',
-    tint: 'corp',
+    tint: 'orange',
     available: true,
     launch: launchShop,
-  },
-  {
-    key: 'tether_chat',
-    label: 'tether_chat',
-    flavor: 'tap a runner · talk',
-    glyph: '⌥',
-    tint: 'br',
-    available: true,
-    launch: launchTetherChat,
   },
   {
     key: 'freq_lock',
     label: 'freq_lock',
     flavor: 'lock the signal · earn credits',
     glyph: '♫',
-    tint: 'neutral',
+    tint: 'magenta',
     available: true,
     launch: launchFreqLock,
   },
@@ -173,7 +172,7 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     label: 'circuit_patch',
     flavor: 'route power + data · earn credits',
     glyph: '⌗',
-    tint: 'neutral',
+    tint: 'lime',
     available: true,
     launch: launchCircuitPatch,
   },
@@ -182,17 +181,8 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     label: 'core_run',
     flavor: 'reach the core · beat the dissolve',
     glyph: '⍟',
-    tint: 'br',
+    tint: 'violet',
     available: true,
     launch: launchCoreRun,
-  },
-  {
-    key: 'data_base',
-    label: 'data_base',
-    flavor: 'your plot · build in voxels',
-    glyph: '⌂',
-    tint: 'br',
-    available: true,
-    launch: launchDataBase,
   },
 ];

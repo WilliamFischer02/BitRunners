@@ -10,14 +10,23 @@
 // voxels in one frame costs one rebuild).
 //
 // Picking: a 3D DDA (Amanatides–Woo) walk through the grid along the pointer
-// ray. Surface crossings (air→solid) are collected in ray order; the
-// selection-depth slider indexes into them (depth 0 = nearest surface).
-// Falls back to the pad plane (y=0) so an empty plot is still buildable.
-// Runs on pointer events only — never per frame — so its small allocations
-// are fine.
+// ray. The NEAREST air→solid surface crossing wins (devlog 0156 removed the
+// depth-selection slider): place lands on the face hit, erase removes the
+// hit block. Falls back to the pad plane (y=0) so an empty plot is still
+// buildable. Runs on pointer events only — never per frame — so its small
+// allocations are fine.
+//
+// Block-face texturing (devlog 0156): every block material shares a tiny
+// procedural canvas map with a dark frame on the face border, so adjacent
+// blocks — same type or not — read separated. Chosen over per-block
+// EdgesGeometry/LineSegments overlays: InstancedMesh can't batch line
+// segments, so edge meshes would have cost one rebuild + draw call per
+// block; the border map costs zero extra draw calls. wood_frame gets its
+// own map with vertical grain stripes under the same frame.
 
 import {
   BoxGeometry,
+  CanvasTexture,
   DynamicDrawUsage,
   EdgesGeometry,
   GridHelper,
@@ -28,6 +37,7 @@ import {
   Matrix4,
   Mesh,
   MeshStandardMaterial,
+  SRGBColorSpace,
 } from 'three';
 import {
   PLOT_D,
@@ -76,15 +86,70 @@ export function cellCenter(
   out.z = (z + 0.5) * VOXEL_SIZE - PLOT_HALF_Z;
 }
 
+// ── Block-face textures (devlog 0156) ──────────────────────────────────────
+// Module-lifetime singletons (a few KB of canvas each, shared by every
+// PlotArena — same convention as the glyph atlases; never disposed). Both
+// are near-white so the material `color` supplies the hue: as a `map` the
+// texture multiplies base color, and as an `emissiveMap` it multiplies the
+// glow, so the dark frame reads on emissive blocks (neon_panel) too.
+
+const FACE_TEX_SIZE = 64;
+const FACE_FRAME_PX = 3; // ≈ semi-bold border at typical RegEdit zoom
+
+function makeFaceTexture(draw: (ctx: CanvasRenderingContext2D) => void): CanvasTexture | null {
+  if (typeof document === 'undefined') return null; // node/vitest — untextured
+  const canvas = document.createElement('canvas');
+  canvas.width = FACE_TEX_SIZE;
+  canvas.height = FACE_TEX_SIZE;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null; // jsdom without canvas — untextured
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
+  draw(ctx);
+  // Dark frame on the face border — per-block edge separation.
+  ctx.strokeStyle = 'rgba(16, 20, 24, 0.88)';
+  ctx.lineWidth = FACE_FRAME_PX * 2; // stroke straddles the edge: half lands inside
+  ctx.strokeRect(0, 0, FACE_TEX_SIZE, FACE_TEX_SIZE);
+  const tex = new CanvasTexture(canvas);
+  tex.colorSpace = SRGBColorSpace;
+  return tex;
+}
+
+let faceTextures: { border: CanvasTexture | null; wood: CanvasTexture | null } | null = null;
+
+function getFaceTextures(): NonNullable<typeof faceTextures> {
+  if (!faceTextures) {
+    faceTextures = {
+      border: makeFaceTexture(() => {
+        // frame only
+      }),
+      wood: makeFaceTexture((ctx) => {
+        // Vertical grain: deterministic pseudo-random columns of varying
+        // width/brightness (grayscale so the light-brown base hue holds).
+        let x = 0;
+        let seed = 0x9e37;
+        const rand = (): number => {
+          seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+          return seed / 0x7fffffff;
+        };
+        while (x < FACE_TEX_SIZE) {
+          const w = 2 + Math.floor(rand() * 5);
+          const shade = 176 + Math.floor(rand() * 70);
+          ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+          ctx.fillRect(x, 0, w, FACE_TEX_SIZE);
+          x += w;
+        }
+      }),
+    };
+  }
+  return faceTextures;
+}
+
 export class PlotArena {
   readonly group = new Group();
   blocks: Uint8Array;
 
   private readonly typeMeshes: InstancedMesh[] = [];
-  private readonly cursorMesh: Mesh;
-  private readonly cursorEdges: LineSegments;
-  private readonly cursorFillMat: MeshStandardMaterial;
-  private readonly cursorEdgeMat: LineBasicMaterial;
   private readonly disposables: Array<{ dispose(): void }> = [];
   private dirty = true;
   private readonly scratchMat = new Matrix4();
@@ -117,17 +182,24 @@ export class PlotArena {
     this.disposables.push(boundsGeo, boundsMat);
 
     // One InstancedMesh per launch block type, shared unit-cube geometry.
+    // Every material carries the shared border map (+ grain for wood) so
+    // block faces read separated — see the texture note at the top.
     const cubeGeo = new BoxGeometry(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
     this.disposables.push(cubeGeo);
+    const { border, wood } = getFaceTextures();
     for (const def of VOXEL_BLOCKS) {
       const mat = new MeshStandardMaterial({
         color: def.color,
         roughness: def.roughness,
         metalness: def.metalness,
       });
+      const tex = def.key === 'wood_frame' ? (wood ?? border) : border;
+      if (tex) mat.map = tex;
       if (def.emissive !== 0) {
         mat.emissive.setHex(def.emissive);
         mat.emissiveIntensity = def.emissiveIntensity;
+        // Frame darkens the glow too, else the border drowns in emissive.
+        if (tex) mat.emissiveMap = tex;
       }
       const mesh = new InstancedMesh(cubeGeo, mat, PLOT_VOLUME);
       mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -138,25 +210,6 @@ export class PlotArena {
       this.typeMeshes.push(mesh);
       this.disposables.push(mat, mesh);
     }
-
-    // Voxel cursor: translucent cell + bright edges, recolored per tool.
-    const curGeo = new BoxGeometry(VOXEL_SIZE * 1.02, VOXEL_SIZE * 1.02, VOXEL_SIZE * 1.02);
-    this.cursorFillMat = new MeshStandardMaterial({
-      color: 0x0a1a12,
-      emissive: 0x7effc0,
-      emissiveIntensity: 0.7,
-      transparent: true,
-      opacity: 0.3,
-      depthWrite: false,
-    });
-    this.cursorMesh = new Mesh(curGeo, this.cursorFillMat);
-    const curEdgeGeo = new EdgesGeometry(curGeo);
-    this.cursorEdgeMat = new LineBasicMaterial({ color: 0x7effc0 });
-    this.cursorEdges = new LineSegments(curEdgeGeo, this.cursorEdgeMat);
-    this.cursorMesh.visible = false;
-    this.cursorEdges.visible = false;
-    this.group.add(this.cursorMesh, this.cursorEdges);
-    this.disposables.push(curGeo, curEdgeGeo, this.cursorFillMat, this.cursorEdgeMat);
   }
 
   /** Swap the backing grid (store reload) and force a remesh. */
@@ -206,25 +259,6 @@ export class PlotArena {
     }
   }
 
-  /** Show the voxel cursor on a cell. Mint = place, ember = erase. */
-  showCursor(cell: VoxelCell, erasing: boolean): void {
-    const color = erasing ? 0xff9c6b : 0x7effc0;
-    this.cursorFillMat.emissive.setHex(color);
-    this.cursorEdgeMat.color.setHex(color);
-    const cx = (cell.x + 0.5) * VOXEL_SIZE - PLOT_HALF_X;
-    const cy = (cell.y + 0.5) * VOXEL_SIZE;
-    const cz = (cell.z + 0.5) * VOXEL_SIZE - PLOT_HALF_Z;
-    this.cursorMesh.position.set(cx, cy, cz);
-    this.cursorEdges.position.set(cx, cy, cz);
-    this.cursorMesh.visible = true;
-    this.cursorEdges.visible = true;
-  }
-
-  hideCursor(): void {
-    this.cursorMesh.visible = false;
-    this.cursorEdges.visible = false;
-  }
-
   dispose(): void {
     for (const d of this.disposables) d.dispose();
     this.disposables.length = 0;
@@ -234,14 +268,12 @@ export class PlotArena {
 // ── Picking ────────────────────────────────────────────────────────────────
 
 /**
- * Walk the pointer ray through the grid and resolve the depth-selected
- * surface. Inputs are LOCAL to the arena group (caller subtracts the group's
- * world position — the group never rotates/scales).
- *
- * depth counts air→solid surface crossings along the ray (0 = nearest). When
- * the ray crosses fewer surfaces than requested, the deepest one wins
- * (friendlier than a dead slider). With no solid crossing at all, the pad
- * plane (y=0) provides a placement cell.
+ * Walk the pointer ray through the grid and resolve the NEAREST air→solid
+ * surface (devlog 0156 dropped the depth slider — placement targets purely
+ * what the ray hits: place lands on the face hit, erase removes the hit
+ * block). Inputs are LOCAL to the arena group (caller subtracts the group's
+ * world position — the group never rotates/scales). With no solid crossing
+ * at all, the pad plane (y=0) provides a placement cell.
  */
 export function pickVoxel(
   ox: number,
@@ -251,7 +283,6 @@ export function pickVoxel(
   dy: number,
   dz: number,
   blocks: Uint8Array,
-  depth: number,
 ): VoxelPick | null {
   // Grid space: cell (x,y,z) spans [x,x+1)×[y,y+1)×[z,z+1).
   let gx = (ox + PLOT_HALF_X) / VOXEL_SIZE;
@@ -319,11 +350,8 @@ export function pickVoxel(
   let prevY = -1;
   let prevZ = -1;
   let hasPrev = false;
-  let hitCount = 0;
-  let best: VoxelPick | null = null;
   const spanLimit = tMax - tStart;
   let traveled = 0;
-  const wantDepth = Math.max(0, Math.floor(depth));
 
   for (let steps = 0; steps < PLOT_W + PLOT_H + PLOT_D + 3; steps++) {
     if (!inBounds(cx, cy, cz)) break;
@@ -341,10 +369,7 @@ export function pickVoxel(
           getVoxel(blocks, prevX, prevY, prevZ) === VOXEL_AIR
             ? { x: prevX, y: prevY, z: prevZ }
             : null;
-        best = { erase: { x: cx, y: cy, z: cz }, place };
-        if (hitCount === wantDepth) return best;
-        hitCount++;
-        // Deeper requested: keep walking; `best` stays the deepest so far.
+        return { erase: { x: cx, y: cy, z: cz }, place };
       }
     }
     prevX = cx;
@@ -367,7 +392,6 @@ export function pickVoxel(
     if (traveled > spanLimit) break;
   }
 
-  if (best) return best; // deepest surface when the slider over-reaches
   if (padT >= 0) {
     const px = Math.floor(gx + dx * (padT - tStart));
     const pz = Math.floor(gz + dz * (padT - tStart));

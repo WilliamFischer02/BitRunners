@@ -31,7 +31,7 @@ const STEPS: Step[] = [
   },
   {
     title: '// protocols',
-    body: 'tap the ⌬ protocols slot to open the cartridge carousel. drag (or use ←/→) between five cartridges: data_scrape, objectives, shop, tether_chat, and freq_lock. the centred one drops into the slot when you tap it.',
+    body: 'tap the ⌬ PROTOCOLS button — it unfolds into the cartridge rack: data_scrape, objectives, shop, freq_lock, circuit_patch, core_run. scroll (or ↑/↓) and tap a cartridge to insert it. want to chat? just tap another runner out in the world.',
     target: '.protocols-launch',
   },
   {
@@ -61,7 +61,7 @@ const STEPS: Step[] = [
   },
   {
     title: 'levels + missions',
-    body: 'open objectives from the carousel to see active missions. completing them earns badges; each badge bumps your Lv chip (cap Lv 20) which other runners can see on your nametag.',
+    body: 'open objectives from the protocols rack to see active missions. completing them earns badges; each badge bumps your Lv chip (cap Lv 20) which other runners can see on your nametag.',
     target: '.protocols-launch',
   },
   {

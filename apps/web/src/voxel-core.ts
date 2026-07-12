@@ -36,9 +36,11 @@ export interface VoxelBlockDef {
   key: string;
   /** Palette button label. */
   label: string;
-  /** Base color (hex). Grayscale-leaning per the visual identity; neon_panel
-   *  is the deliberate emissive exception (reads as glow through the ASCII
-   *  pass via brightness). */
+  /** Base color (hex). Devlog 0156 gave every type a distinct read:
+   *  concrete beige-gray, neon_panel neon green (the deliberate emissive
+   *  exception — reads as glow through the ASCII pass), wood_frame light
+   *  brown (+ vertical grain map in voxel-scene.ts), metal_frame pale
+   *  blue, asphalt near-black. */
   color: number;
   roughness: number;
   metalness: number;
@@ -52,7 +54,7 @@ export const VOXEL_BLOCKS: readonly VoxelBlockDef[] = [
     id: 1,
     key: 'concrete',
     label: 'concrete',
-    color: 0x8a8a8a,
+    color: 0xb3a894,
     roughness: 0.95,
     metalness: 0.0,
     emissive: 0,
@@ -62,17 +64,17 @@ export const VOXEL_BLOCKS: readonly VoxelBlockDef[] = [
     id: 2,
     key: 'neon_panel',
     label: 'neon_panel',
-    color: 0x0e2a2c,
+    color: 0x0a2412,
     roughness: 0.4,
     metalness: 0.1,
-    emissive: 0x2ff5e0,
-    emissiveIntensity: 1.6,
+    emissive: 0x3aff6e,
+    emissiveIntensity: 1.7,
   },
   {
     id: 3,
     key: 'wood_frame',
     label: 'wood_frame',
-    color: 0x9a7b52,
+    color: 0xb98f5f,
     roughness: 0.85,
     metalness: 0.0,
     emissive: 0,
@@ -82,7 +84,7 @@ export const VOXEL_BLOCKS: readonly VoxelBlockDef[] = [
     id: 4,
     key: 'metal_frame',
     label: 'metal_frame',
-    color: 0xb8bec4,
+    color: 0xaac6de,
     roughness: 0.35,
     metalness: 0.85,
     emissive: 0,
@@ -92,7 +94,7 @@ export const VOXEL_BLOCKS: readonly VoxelBlockDef[] = [
     id: 5,
     key: 'asphalt',
     label: 'asphalt',
-    color: 0x3a3d40,
+    color: 0x141517,
     roughness: 0.7,
     metalness: 0.15,
     emissive: 0,
