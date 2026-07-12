@@ -71,7 +71,10 @@ function progressScore(s: Partial<EconomyState>): number {
     (s.circuitFirstClear ? 100 : 0) +
     // Small weight: a blob that has seen the scrape tour beats a truly empty
     // account row, but never outweighs real earning progress.
-    (s.scrapeTutorialSeen ? 10 : 0)
+    (s.scrapeTutorialSeen ? 10 : 0) +
+    // RAMHATTAN shards (P8): collected ids must survive cross-device merges
+    // or shard-hunting guests get wiped by an emptier account row.
+    len(s.ramhattanFound) * 50
   );
 }
 

@@ -31,6 +31,7 @@ import {
   MeshNormalMaterial,
   MeshStandardMaterial,
   type MeshStandardMaterial as MeshStandardMaterialType,
+  OctahedronGeometry,
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
@@ -79,6 +80,7 @@ import { type NameStyle, getNameStyle, nameStyleClass, subscribeNameStyle } from
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
+import { isShardCollected, pickUpShard } from './ramhattan.js';
 import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
 import { getCurrentUserId, subscribeAuth } from './supabase.js';
 import {
@@ -145,6 +147,43 @@ const LOCK_RELEASE_DISTANCE = 14;
 // Coords shared by the meshes (worldTile) + tick logic (proximity/sequence).
 const GLITCH_SWITCH = { x: -22, z: 24 };
 const VAULT = { x: 26, z: -18, half: 3.5 };
+
+// RAMHATTAN district (mega-batch 3 · P8, first buildable slice) — parked in
+// the SW-deep quadrant, the emptiest region of the doubled map (nearest
+// neighbors: crate cluster (-10,-12), outer rust pillar (-24,-20), long wall
+// slab (-6,-24)). Buildings stay |coord| ≤ 34 so wrap-collision corner cases
+// don't matter (same rule as the mega-batch-2 interior fill). Street runs
+// east-west along z = -28. Full design doc: docs/design/ramhattan.md.
+const RAMHATTAN = { x: -24, z: -28 };
+// Building footprints: x, z, half-extents, height. Colliders below mirror
+// these — keep the two lists in sync.
+const RAMHATTAN_BUILDINGS: readonly {
+  x: number;
+  z: number;
+  hx: number;
+  hz: number;
+  h: number;
+  dark: boolean;
+}[] = [
+  // north row
+  { x: -31, z: -24.8, hx: 2.2, hz: 1.6, h: 5.2, dark: false },
+  { x: -25.5, z: -24.6, hx: 2.0, hz: 1.8, h: 3.6, dark: true },
+  { x: -19.5, z: -24.8, hx: 1.8, hz: 1.5, h: 4.4, dark: false },
+  // south row
+  { x: -30, z: -31.6, hx: 1.9, hz: 1.7, h: 4.0, dark: true },
+  { x: -24, z: -31.8, hx: 2.3, hz: 1.5, h: 5.6, dark: false },
+  { x: -17.5, z: -31.4, hx: 1.7, hz: 1.8, h: 3.2, dark: true },
+];
+const RAMHATTAN_KEEPER = { x: -24, z: -27.2 };
+const RAMHATTAN_KEEPER_TRIGGER = 2.4;
+// Collectable data shards, tucked into the district's gaps (never inside a
+// building footprint). Ids persist in the economy blob — see ramhattan.ts.
+const RAMHATTAN_SHARDS: readonly { id: string; x: number; z: number }[] = [
+  { id: 'shard.east_alley', x: -16.5, z: -25.5 },
+  { id: 'shard.west_gap', x: -33, z: -29.5 },
+  { id: 'shard.south_gutter', x: -23.5, z: -34 },
+];
+const RAMHATTAN_SHARD_TRIGGER = 1.2;
 // Where the runner returns to after leaving the void — just south of the door.
 const VAULT_RETURN = { x: 26, z: -13 };
 // The four pressure plates, in the order they must be stepped (1→2→3→4).
@@ -195,6 +234,9 @@ const COLLIDERS: readonly BoxCollider[] = [
   { x: VAULT.x - VAULT.half, z: VAULT.z, hx: 0.2, hz: VAULT.half }, // west
   { x: VAULT.x - 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-left
   { x: VAULT.x + 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-right
+  // RAMHATTAN district (P8) — building footprints + the keeper.
+  ...RAMHATTAN_BUILDINGS.map((b) => ({ x: b.x, z: b.z, hx: b.hx, hz: b.hz })),
+  { x: RAMHATTAN_KEEPER.x, z: RAMHATTAN_KEEPER.z, hx: 0.35, hz: 0.3 },
 ];
 
 // Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
@@ -754,6 +796,62 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   addBeacon(6.0, -5.5); // SAMM
   addBeacon(5.5, 5.5); // obelisk / The Admin
   addBeacon(GLITCH_SWITCH.x, GLITCH_SWITCH.z); // glitch switch
+
+  // ── RAMHATTAN district blockout (mega-batch 3 · P8, first slice) ─────────
+  // Grayscale building masses + an asphalt strip + sparse emissive signage,
+  // all from primitives (P6 assets slot in on the next batch). Two shared
+  // building materials per the material-sharing convention; buildings scale
+  // ONE unit box. Inside worldTile → tiles across the 3×3 wrap like every
+  // other prop. Colliders live in COLLIDERS above (kept in sync).
+  {
+    const bldLightMat = new MeshStandardMaterial({ color: 0x565b60, roughness: 0.92 });
+    const bldDarkMat = new MeshStandardMaterial({ color: 0x33383d, roughness: 0.85 });
+    const unitBox = new BoxGeometry(1, 1, 1);
+    for (const b of RAMHATTAN_BUILDINGS) {
+      const bld = new MeshClass(unitBox, b.dark ? bldDarkMat : bldLightMat);
+      bld.scale.set(b.hx * 2, b.h, b.hz * 2);
+      bld.position.set(b.x, b.h / 2, b.z);
+      worldTile.add(bld);
+    }
+    // Street: a dark asphalt strip along the district's east-west spine.
+    const streetMat = new MeshStandardMaterial({ color: 0x2b2e31, roughness: 0.7 });
+    const street = new MeshClass(unitBox, streetMat);
+    street.scale.set(21, 0.04, 3.2);
+    street.position.set(RAMHATTAN.x, 0.02, RAMHATTAN.z);
+    worldTile.add(street);
+    // Signage: three thin emissive strips on street-facing faces — the
+    // district's neon reads through the ASCII pass as glow.
+    const neonCyanMat = new MeshStandardMaterial({
+      color: 0x0a1216,
+      emissive: 0x6cf0ff,
+      emissiveIntensity: 1.5,
+      roughness: 0.4,
+    });
+    const neonEmberMat = new MeshStandardMaterial({
+      color: 0x160c08,
+      emissive: 0xff6a20,
+      emissiveIntensity: 1.4,
+      roughness: 0.4,
+    });
+    const signA = new MeshClass(unitBox, neonCyanMat);
+    signA.scale.set(1.6, 0.35, 0.08);
+    signA.position.set(-25.5, 2.6, -26.45); // over the keeper's storefront
+    worldTile.add(signA);
+    const signB = new MeshClass(unitBox, neonEmberMat);
+    signB.scale.set(0.3, 2.2, 0.08);
+    signB.position.set(-30.2, 2.4, -29.85); // vertical sign, south row
+    worldTile.add(signB);
+    const signC = new MeshClass(unitBox, neonCyanMat);
+    signC.scale.set(1.1, 0.3, 0.08);
+    signC.position.set(-19.5, 3.4, -26.35); // north-east marquee
+    worldTile.add(signC);
+    // The keeper: a static dweller-pattern NPC minding the storefront
+    // (client-local prop, not a server NPC — concept per the design doc).
+    const keeper = buildDweller('dweller.husk');
+    keeper.position.set(RAMHATTAN_KEEPER.x, 0, RAMHATTAN_KEEPER.z);
+    keeper.rotation.y = Math.PI; // face the street (south)
+    worldTile.add(keeper);
+  }
 
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
@@ -2876,6 +2974,48 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   window.addEventListener('bitrunners:plot-depth', onPlotDepth);
   window.addEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
 
+  // ── RAMHATTAN collectables + keeper proximity (P8) ───────────────────────
+  // Shards are scene-root (not tiled) so a collected one vanishes outright;
+  // the pickup distance is wrap-aware, so grabbing one while standing on a
+  // wrap clone still works (the mesh just renders on the canonical tile).
+  const shardGeom = new OctahedronGeometry(0.28);
+  const shardMat = new MeshStandardMaterial({
+    color: 0x0a1a12,
+    emissive: 0x7effc0,
+    emissiveIntensity: 1.6,
+    roughness: 0.4,
+  });
+  const shardMeshes: { id: string; x: number; z: number; mesh: Mesh }[] = [];
+  for (const s of RAMHATTAN_SHARDS) {
+    const mesh = new MeshClass(shardGeom, shardMat);
+    mesh.position.set(s.x, 0.85, s.z);
+    mesh.visible = !isShardCollected(s.id);
+    scene.add(mesh);
+    shardMeshes.push({ id: s.id, x: s.x, z: s.z, mesh });
+  }
+  let keeperInRange = false;
+  function checkRamhattan(): void {
+    // Keeper prompt — edge-triggered range event (SAMM pattern).
+    const kdx = wrapDelta(rig.root.position.x - RAMHATTAN_KEEPER.x);
+    const kdz = wrapDelta(rig.root.position.z - RAMHATTAN_KEEPER.z);
+    const near = kdx * kdx + kdz * kdz < RAMHATTAN_KEEPER_TRIGGER * RAMHATTAN_KEEPER_TRIGGER;
+    if (near !== keeperInRange) {
+      keeperInRange = near;
+      fireMaze('bitrunners:ramhattan-keeper-range', { inRange: near });
+    }
+    // Shards: idle spin + bob on the uncollected ones, wrap-aware pickup.
+    for (const s of shardMeshes) {
+      if (!s.mesh.visible) continue;
+      s.mesh.rotation.y = elapsed * 1.3;
+      s.mesh.position.y = 0.85 + Math.sin(elapsed * 2.1) * 0.08;
+      const dx = wrapDelta(rig.root.position.x - s.x);
+      const dz = wrapDelta(rig.root.position.z - s.z);
+      if (dx * dx + dz * dz < RAMHATTAN_SHARD_TRIGGER * RAMHATTAN_SHARD_TRIGGER) {
+        if (pickUpShard(s.id)) s.mesh.visible = false;
+      }
+    }
+  }
+
   const GLITCH_TRIGGER = 2.4;
   let glitchInRange = false;
   function checkGlitchSwitch(): void {
@@ -3117,6 +3257,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       checkMissionApproach();
       checkGlitchSwitch();
       checkVaultPlates();
+      checkRamhattan();
       // Pulse the active checkpoint's emissive intensity so the runner reads
       // the "next" target without staring. Cheap — one material mutation per
       // active checkpoint per frame.
@@ -3505,6 +3646,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // intentionally not disposed here. See getGlyphAtlases().
     tendrilGeom.dispose();
     for (const t of tendrils) t.mat.dispose();
+    shardGeom.dispose();
+    shardMat.dispose();
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (netEl.parentNode === host) host.removeChild(netEl);
     if (playerTagEl.parentNode === host) host.removeChild(playerTagEl);

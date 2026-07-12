@@ -11,6 +11,7 @@ import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Protocols } from './Protocols.js';
+import { RamhattanKeeper } from './RamhattanKeeper.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu } from './ScrapeMenu.js';
 import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
@@ -222,6 +223,7 @@ export function Game({ className }: GameProps): JSX.Element {
         </Suspense>
       )}
       <Samm inRange={sammInRange} />
+      <RamhattanKeeper />
       <AccountNudge />
       <GreedGlow />
       <Landmarks />

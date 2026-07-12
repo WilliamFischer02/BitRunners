@@ -411,6 +411,20 @@ export const DIALOGUE_DEFAULTS: readonly DialogueEntry[] = [
       '// the admin question is now a corporate asset.',
     ],
   },
+  // RAMHATTAN shopkeeper (mega-batch 3 · P8, first slice). PLACEHOLDER copy —
+  // deliberately thin: the keeper's name, faction ties, and stock are open
+  // owner Q&A (docs/design/ramhattan.md §lore). Editable via the admin
+  // dialogue console like every other entry.
+  {
+    key: 'ramhattan.keeper.greeting',
+    label: 'RAMHATTAN keeper · greeting',
+    lines: [
+      'you found the district. most runners walk right past the off-ramp.',
+      'RAMHATTAN. streets older than the wrap, or so the paint says.',
+      "shop's not open yet — inventory trouble. check back after a sync.",
+      '// heard there are loose data shards in the alleys. finders keepers.',
+    ],
+  },
 ];
 
 const byKey = new Map<string, DialogueEntry>(DIALOGUE_DEFAULTS.map((e) => [e.key, e]));
