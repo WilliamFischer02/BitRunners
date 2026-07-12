@@ -6248,3 +6248,152 @@ dialog.panel::backdrop {
     opacity: 0.85;
   }
 }
+
+/* ── data_base voxel-plot HUD (mega-batch 3 · P7A) ──────────────────────────
+   Slim top bar over the scene's plot mode: mode tabs + (RegEdit only) the
+   block palette, eraser and selection-depth slider. Same fixed-wrap /
+   pointer-events split as the core_run HUD. */
+.plot-hud-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+}
+.plot-hud {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(560px, calc(100vw - 16px));
+  padding: 6px 8px;
+  background: rgba(7, 10, 9, 0.88);
+  border: 1px solid #2a3340;
+  border-radius: 4px;
+  color: #d4ecdd;
+}
+.plot-hud-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plot-title {
+  color: #b48bff;
+  font-size: var(--ui-text-sm, 12px);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.plot-tabs {
+  display: flex;
+  gap: 4px;
+}
+.plot-count {
+  margin-left: auto;
+  font-size: var(--ui-text-xs, 10px);
+  color: #93e0b1;
+  white-space: nowrap;
+}
+.plot-exit {
+  font: inherit;
+  font-size: var(--ui-text-sm, 11px);
+  color: #ff9c6b;
+  background: none;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  padding: 4px 8px;
+  min-height: 32px;
+  cursor: pointer;
+}
+.plot-exit:hover {
+  border-color: #ff9c6b;
+}
+.plot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plot-palette {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.plot-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: var(--ui-tap-min, 44px);
+  min-height: var(--ui-tap-min, 44px);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 9px;
+  color: #8fa79b;
+  background: #0b0e0d;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.plot-block.is-on {
+  color: #d4ecdd;
+  background: #12201a;
+  border-color: #93e0b1;
+}
+.plot-swatch {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+.plot-swatch-eraser {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #ff9c6b;
+  background: #1a0f0c;
+}
+.plot-block-label {
+  font-size: 9px;
+  line-height: 1;
+}
+.plot-depth {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.plot-depth-label {
+  font-size: var(--ui-text-xs, 10px);
+  color: #8fa79b;
+  white-space: nowrap;
+}
+.plot-depth input[type="range"] {
+  width: 110px;
+  accent-color: #93e0b1;
+}
+.plot-hint {
+  font-size: var(--ui-text-xs, 10px);
+  color: #5d7267;
+  text-align: center;
+}
+@media (max-width: 540px) {
+  .plot-hud {
+    width: calc(100vw - 12px);
+    padding: 5px 6px;
+  }
+  .plot-depth input[type="range"] {
+    width: 80px;
+  }
+  .plot-hint {
+    display: none;
+  }
+}

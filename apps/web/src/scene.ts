@@ -27,10 +27,12 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
+  Raycaster,
   Scene,
   ShaderMaterial,
   SphereGeometry,
   Uniform,
+  Vector2,
   Vector3,
   WebGLRenderTarget,
   WebGLRenderer,
@@ -92,6 +94,15 @@ import {
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
+import { VOXEL_AIR, countBlocks, createEmptyPlot, isValidBlockId, setVoxel } from './voxel-core.js';
+import {
+  PLOT_HALF_X,
+  PLOT_HALF_Z,
+  PlotArena,
+  type VoxelPick,
+  pickVoxel,
+  slideMoveVoxel,
+} from './voxel-scene.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -1705,6 +1716,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const tapRaycaster = createTargetRaycaster();
   let lockedTarget: LockedTarget | null = null;
   const onCanvasClick = (ev: MouseEvent): void => {
+    // data_base owns canvas taps while open (RegEdit editing; remotes are
+    // hidden in the plot anyway, so tap-lock has nothing to hit).
+    if (plotActive) return;
     const rect = renderer.domElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const ndcX = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1737,6 +1751,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     ev.preventDefault();
     const dir = ev.deltaY > 0 ? 1 : -1;
     const factor = dir > 0 ? 1.1 : 1 / 1.1;
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit viewport: wheel zooms the orbit radius, not the follow cam.
+      plotRadius = clampPlotRadius(plotRadius * factor);
+      return;
+    }
     setZoom(cameraZoom * factor);
   };
   renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
@@ -1752,16 +1771,44 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (!a || !b) return 0;
     return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   };
+  const touchMidX = (t: TouchList): number => {
+    const a = t[0];
+    const b = t[1];
+    return a && b ? (a.clientX + b.clientX) / 2 : 0;
+  };
+  const touchMidY = (t: TouchList): number => {
+    const a = t[0];
+    const b = t[1];
+    return a && b ? (a.clientY + b.clientY) / 2 : 0;
+  };
   const onTouchStart = (ev: TouchEvent): void => {
     if (ev.touches.length < 2) return;
     pinchStartDist = touchDistance(ev.touches);
     pinchStartZoom = cameraZoom;
+    if (plotActive && plotTab === 'regedit') {
+      // Second finger down: the pinch owns the gesture — cancel any orbit
+      // drag and record the baseline for zoom (distance) + pan (midpoint).
+      plotPtrId = -1;
+      plotPinchStartRadius = plotRadius;
+      plotPanLastX = touchMidX(ev.touches);
+      plotPanLastY = touchMidY(ev.touches);
+    }
   };
   const onTouchMove = (ev: TouchEvent): void => {
     if (ev.touches.length < 2 || pinchStartDist <= 0) return;
     ev.preventDefault();
     const d = touchDistance(ev.touches);
     if (d <= 0) return;
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit: pinch zooms the orbit radius, midpoint drift pans the focus.
+      plotRadius = clampPlotRadius(plotPinchStartRadius * (pinchStartDist / d));
+      const mx = touchMidX(ev.touches);
+      const my = touchMidY(ev.touches);
+      plotPan(mx - plotPanLastX, my - plotPanLastY);
+      plotPanLastX = mx;
+      plotPanLastY = my;
+      return;
+    }
     // Pinch CLOSER (fingers spread) zooms IN — i.e. smaller cameraZoom.
     setZoom(pinchStartZoom * (pinchStartDist / d));
   };
@@ -2224,7 +2271,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // ('cloud' vs 'void'); the maze is solo, so everything hides there. Applied
   // on join, on zone patches, and on local zone transitions — never per frame.
   function applyRemoteZoneVisibility(ra: RemoteAvatar): void {
-    const visible = !mazeActive && ra.zone === (voidActive ? 'void' : 'cloud');
+    // The plot is solo in Stage A (like the maze); Stage C swaps this for a
+    // zone comparison so plot-mates render.
+    const visible = !mazeActive && !plotActive && ra.zone === (voidActive ? 'void' : 'cloud');
     ra.group.visible = visible;
     ra.tagEl.style.display = visible ? '' : 'none';
   }
@@ -2352,7 +2401,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
-  const onCoreRunEnter = (): void => enterMaze();
+  const onCoreRunEnter = (): void => {
+    // Launching core_run from inside data_base: leave the plot first so the
+    // maze's save/restore of the rig position captures cloud coords.
+    if (plotActive) exitPlot();
+    enterMaze();
+  };
   const onCoreRunAbort = (): void => {
     if (mazeActive) {
       exitMaze();
@@ -2454,6 +2508,262 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (dx * dx + dz * dz < 1.4 * 1.4) exitVoid();
   }
 
+  // ── data_base voxel plot (P7 Stage A) ────────────────────────────────────
+  // Player-owned voxel plot rendered in the same scene via the maze/void
+  // pattern: world tiles hide, the plot arena shows, the rig teleports.
+  // Stage A is CLIENT-LOCAL (outbound moves freeze like the maze; Stage C
+  // moves plots to the sky grid + zone wire). Two tabs, driven by the
+  // DataBase.tsx HUD over window events:
+  //   RegEdit   — orbit/pan/zoom editor; rig hidden; taps place/erase voxels
+  //   Corporeal — normal walk mode clamped to the plot, colliding with blocks
+  const PLOT_SPAWN = { x: 0, z: PLOT_HALF_Z - 3 };
+  const plotGroup = new Group();
+  plotGroup.visible = false;
+  scene.add(plotGroup);
+  let plotActive = false;
+  let plotTab: 'regedit' | 'corporeal' = 'regedit';
+  let plotArena: PlotArena | null = null;
+  // Session-lifetime grid (Stage B swaps in the persistence store). Created
+  // on first entry so players who never open data_base pay nothing.
+  let plotBlocks: Uint8Array | null = null;
+  let plotTool: 'block' | 'eraser' = 'block';
+  let plotBlockId = 1; // concrete
+  let plotDepth = 0;
+  // RegEdit orbit camera (spherical around a pannable focus). STOP-AND-ASK
+  // defaults — tune the sensitivities freely.
+  let plotYaw = 0.7;
+  let plotPitch = 0.55;
+  let plotRadius = 30;
+  let plotFocusX = 0;
+  const plotFocusY = 3;
+  let plotFocusZ = 0;
+  const PLOT_RADIUS_MIN = 8;
+  const PLOT_RADIUS_MAX = 60;
+  const clampPlotRadius = (r: number): number =>
+    Math.max(PLOT_RADIUS_MIN, Math.min(PLOT_RADIUS_MAX, r));
+  const clampPlotFocus = (): void => {
+    plotFocusX = Math.max(-PLOT_HALF_X - 6, Math.min(PLOT_HALF_X + 6, plotFocusX));
+    plotFocusZ = Math.max(-PLOT_HALF_Z - 6, Math.min(PLOT_HALF_Z + 6, plotFocusZ));
+  };
+
+  function setPlotTab(tab: 'regedit' | 'corporeal'): void {
+    plotTab = tab;
+    const editing = tab === 'regedit';
+    // The editor is a viewport, not a body — hide the rig while editing.
+    rig.root.visible = !editing;
+    if (!editing) plotArena?.hideCursor();
+  }
+
+  function firePlotEdited(): void {
+    if (plotBlocks) fireMaze('bitrunners:plot-edited', { blocks: countBlocks(plotBlocks) });
+  }
+
+  function enterPlot(): void {
+    if (plotActive || mazeActive || voidActive) return;
+    if (!plotBlocks) plotBlocks = createEmptyPlot();
+    if (!plotArena) {
+      plotArena = new PlotArena(plotBlocks);
+      plotGroup.add(plotArena.group);
+    } else {
+      plotArena.setBlocks(plotBlocks);
+    }
+    savedRigX = rig.root.position.x;
+    savedRigZ = rig.root.position.z;
+    savedFacing = facing;
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
+    rig.root.position.x = PLOT_SPAWN.x;
+    rig.root.position.z = PLOT_SPAWN.z;
+    facing = Math.PI; // face the pad center (toward −z)
+    setWorldVisibleForMaze(false);
+    skybox.visible = false;
+    plotGroup.visible = true;
+    plotActive = true;
+    setPlotTab('regedit');
+    fireMaze('bitrunners:plot-enter');
+    firePlotEdited(); // seed the HUD block counter
+  }
+
+  function exitPlot(): void {
+    if (!plotActive) return;
+    plotActive = false;
+    plotGroup.visible = false;
+    plotArena?.hideCursor();
+    rig.root.visible = true;
+    setWorldVisibleForMaze(true);
+    skybox.visible = true;
+    rig.root.position.x = savedRigX;
+    rig.root.position.z = savedRigZ;
+    facing = savedFacing;
+    fireMaze('bitrunners:plot-exit');
+  }
+
+  function updatePlot(): void {
+    // Batched remesh: any number of same-frame edits cost one rebuild.
+    plotArena?.update();
+  }
+
+  // Pointer → grid pick. Pointer-event-driven only (never per frame), so the
+  // Raycaster reuse below is thrift, not a hot-path requirement.
+  const plotRaycaster = new Raycaster();
+  const plotNdc = new Vector2();
+  function plotPickAt(clientX: number, clientY: number): VoxelPick | null {
+    if (!plotBlocks) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    plotNdc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    plotRaycaster.setFromCamera(plotNdc, camera);
+    const o = plotRaycaster.ray.origin;
+    const d = plotRaycaster.ray.direction;
+    return pickVoxel(
+      o.x - plotGroup.position.x,
+      o.y - plotGroup.position.y,
+      o.z - plotGroup.position.z,
+      d.x,
+      d.y,
+      d.z,
+      plotBlocks,
+      plotDepth,
+    );
+  }
+
+  function applyPlotTool(pick: VoxelPick): void {
+    if (!plotBlocks || !plotArena) return;
+    if (plotTool === 'eraser') {
+      const c = pick.erase;
+      if (c && setVoxel(plotBlocks, c.x, c.y, c.z, VOXEL_AIR)) {
+        plotArena.markDirty();
+        firePlotEdited();
+      }
+    } else {
+      const c = pick.place;
+      if (c && setVoxel(plotBlocks, c.x, c.y, c.z, plotBlockId)) {
+        plotArena.markDirty();
+        firePlotEdited();
+      }
+    }
+  }
+
+  function refreshPlotCursor(clientX: number, clientY: number): void {
+    if (!plotArena) return;
+    const pick = plotPickAt(clientX, clientY);
+    const cell = pick ? (plotTool === 'eraser' ? pick.erase : pick.place) : null;
+    if (cell) plotArena.showCursor(cell, plotTool === 'eraser');
+    else plotArena.hideCursor();
+  }
+
+  // RegEdit gestures on the canvas: one-pointer drag orbits (shift/right-drag
+  // pans on desktop), a tap (<6 px) applies the tool, wheel + pinch zoom the
+  // orbit radius, two-finger drag pans (touch). The joystick element sits
+  // above the canvas, so its touches never reach these handlers.
+  let plotPtrId = -1;
+  let plotPtrLastX = 0;
+  let plotPtrLastY = 0;
+  let plotPtrMoved = 0;
+  let plotPanMode = false;
+  let plotPinchStartRadius = plotRadius;
+  let plotPanLastX = 0;
+  let plotPanLastY = 0;
+
+  function plotPan(dxPix: number, dyPix: number): void {
+    const s = plotRadius * 0.0016;
+    const rightX = Math.cos(plotYaw);
+    const rightZ = -Math.sin(plotYaw);
+    const upX = Math.sin(plotYaw);
+    const upZ = Math.cos(plotYaw);
+    plotFocusX += -dxPix * s * rightX + dyPix * s * upX;
+    plotFocusZ += -dxPix * s * rightZ + dyPix * s * upZ;
+    clampPlotFocus();
+  }
+
+  const plotEditing = (): boolean => plotActive && plotTab === 'regedit';
+
+  const onPlotPointerDown = (ev: PointerEvent): void => {
+    if (!plotEditing()) return;
+    if (ev.pointerType === 'touch' && !ev.isPrimary) return; // pinch owns multi-touch
+    plotPtrId = ev.pointerId;
+    plotPtrLastX = ev.clientX;
+    plotPtrLastY = ev.clientY;
+    plotPtrMoved = 0;
+    plotPanMode = ev.button === 2 || ev.shiftKey;
+    renderer.domElement.setPointerCapture?.(ev.pointerId);
+  };
+  const onPlotPointerMove = (ev: PointerEvent): void => {
+    if (!plotEditing()) return;
+    if (plotPtrId !== ev.pointerId) {
+      // Desktop hover preview while not dragging.
+      if (ev.pointerType === 'mouse' && plotPtrId === -1) {
+        refreshPlotCursor(ev.clientX, ev.clientY);
+      }
+      return;
+    }
+    const dx = ev.clientX - plotPtrLastX;
+    const dy = ev.clientY - plotPtrLastY;
+    plotPtrLastX = ev.clientX;
+    plotPtrLastY = ev.clientY;
+    plotPtrMoved += Math.abs(dx) + Math.abs(dy);
+    if (plotPanMode) {
+      plotPan(dx, dy);
+    } else {
+      plotYaw -= dx * 0.007;
+      plotPitch = Math.max(0.12, Math.min(1.45, plotPitch + dy * 0.007));
+    }
+  };
+  const onPlotPointerUp = (ev: PointerEvent): void => {
+    if (plotPtrId !== ev.pointerId) return;
+    plotPtrId = -1;
+    renderer.domElement.releasePointerCapture?.(ev.pointerId);
+    if (!plotEditing()) return;
+    if (plotPtrMoved < 6 && ev.button !== 2) {
+      const pick = plotPickAt(ev.clientX, ev.clientY);
+      if (pick) applyPlotTool(pick);
+      refreshPlotCursor(ev.clientX, ev.clientY);
+    }
+  };
+  const onPlotContextMenu = (ev: Event): void => {
+    if (plotActive) ev.preventDefault(); // right-drag pans, not menus
+  };
+  renderer.domElement.addEventListener('pointerdown', onPlotPointerDown);
+  renderer.domElement.addEventListener('pointermove', onPlotPointerMove);
+  renderer.domElement.addEventListener('pointerup', onPlotPointerUp);
+  renderer.domElement.addEventListener('pointercancel', onPlotPointerUp);
+  renderer.domElement.addEventListener('contextmenu', onPlotContextMenu);
+
+  const onDataBaseEnter = (): void => enterPlot();
+  const onDataBaseExit = (): void => exitPlot();
+  const onPlotTab = (ev: Event): void => {
+    if (!plotActive) return;
+    const tab = (ev as CustomEvent<{ tab?: string }>).detail?.tab;
+    if (tab === 'regedit' || tab === 'corporeal') setPlotTab(tab);
+  };
+  const onPlotTool = (ev: Event): void => {
+    const d = (ev as CustomEvent<{ tool?: string; blockId?: number }>).detail;
+    if (d?.tool === 'eraser') {
+      plotTool = 'eraser';
+    } else if (d?.tool === 'block') {
+      plotTool = 'block';
+      if (typeof d.blockId === 'number' && d.blockId !== VOXEL_AIR && isValidBlockId(d.blockId)) {
+        plotBlockId = d.blockId;
+      }
+    }
+  };
+  const onPlotDepth = (ev: Event): void => {
+    const n = (ev as CustomEvent<{ depth?: number }>).detail?.depth;
+    if (typeof n === 'number' && Number.isFinite(n)) {
+      plotDepth = Math.max(0, Math.min(12, Math.floor(n)));
+    }
+  };
+  window.addEventListener('bitrunners:data-base-enter', onDataBaseEnter);
+  window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
+  window.addEventListener('bitrunners:plot-tab', onPlotTab);
+  window.addEventListener('bitrunners:plot-tool', onPlotTool);
+  window.addEventListener('bitrunners:plot-depth', onPlotDepth);
+
   const GLITCH_TRIGGER = 2.4;
   let glitchInRange = false;
   function checkGlitchSwitch(): void {
@@ -2551,6 +2861,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   ];
 
   function updateFeetArrow(): void {
+    if (plotActive) {
+      // The plot has no landmarks (exit lives in the HUD) — no arrow.
+      feetArrow.visible = false;
+      return;
+    }
     let dx = 0;
     let dz = 0;
     let show = false;
@@ -2599,7 +2914,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     elapsed += dt;
 
     const m = input.intent();
-    const moving = m.x !== 0 || m.y !== 0;
+    // RegEdit is a viewport, not a walk mode — movement input is ignored there.
+    const moving = (m.x !== 0 || m.y !== 0) && !(plotActive && plotTab === 'regedit');
 
     if (moving) {
       tempFwd.subVectors(rig.root.position, camera.position).setY(0).normalize();
@@ -2608,24 +2924,38 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       if (tempMove.lengthSq() > 1) tempMove.normalize();
       // Obstacle collision: try the candidate XZ position; slide along walls.
       const speed = (runEnabled ? RUN_SPEED : WALK_SPEED) * dt;
-      slideMoveInto(
-        rig.root.position,
-        rig.root.position.x + tempMove.x * speed,
-        rig.root.position.z + tempMove.z * speed,
-        PLAYER_RADIUS,
-        mazeActive ? mazeColliders : voidActive ? voidColliders : COLLIDERS,
-      );
-      if (mazeActive) {
-        // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
-        clampToMaze(rig.root.position);
-      } else if (voidActive) {
-        // Void room is a bounded dark area (no wrap); clamp to its extent.
-        clampToVoid(rig.root.position);
+      if (plotActive) {
+        // Corporeal mode: grid-sampled voxel collision + plot AABB clamp
+        // (no torus wrap — the plot is bounded like the void).
+        if (plotBlocks) {
+          slideMoveVoxel(
+            rig.root.position,
+            rig.root.position.x + tempMove.x * speed,
+            rig.root.position.z + tempMove.z * speed,
+            PLAYER_RADIUS,
+            plotBlocks,
+          );
+        }
       } else {
-        if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
-        else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
-        if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
-        else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+        slideMoveInto(
+          rig.root.position,
+          rig.root.position.x + tempMove.x * speed,
+          rig.root.position.z + tempMove.z * speed,
+          PLAYER_RADIUS,
+          mazeActive ? mazeColliders : voidActive ? voidColliders : COLLIDERS,
+        );
+        if (mazeActive) {
+          // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
+          clampToMaze(rig.root.position);
+        } else if (voidActive) {
+          // Void room is a bounded dark area (no wrap); clamp to its extent.
+          clampToVoid(rig.root.position);
+        } else {
+          if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
+          else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
+          if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
+          else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+        }
       }
       facing = Math.atan2(tempMove.x, tempMove.z);
     }
@@ -2664,6 +2994,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       updateMaze();
     } else if (voidActive) {
       updateVoid();
+    } else if (plotActive) {
+      updatePlot();
     } else {
       checkObeliskApproach();
       checkSammApproach();
@@ -2711,44 +3043,60 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     updateFeetArrow();
 
-    // Camera follow target: locked avatar if any (auto-release on distance),
-    // otherwise the local rig. The remote avatar's group.position is already
-    // wrapped near the local player in the remote-interpolation block below,
-    // so following it is seamless across the seam.
-    let followX = rig.root.position.x;
-    let followY = rig.root.position.y;
-    let followZ = rig.root.position.z;
-    if (lockedTarget) {
-      const ra = remoteAvatars.get(lockedTarget.id);
-      if (!ra) {
-        releaseLock(lockedTarget);
-        lockedTarget = null;
-      } else {
-        const ldx = wrapDelta(ra.tx - rig.root.position.x);
-        const ldz = wrapDelta(ra.tz - rig.root.position.z);
-        if (Math.hypot(ldx, ldz) > LOCK_RELEASE_DISTANCE) {
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit viewport: free orbit around the pannable plot focus. The
+      // follow camera (and tap-lock) resumes the moment the tab flips back.
+      const cosP = Math.cos(plotPitch);
+      camera.position.set(
+        plotGroup.position.x + plotFocusX + Math.sin(plotYaw) * cosP * plotRadius,
+        plotGroup.position.y + plotFocusY + Math.sin(plotPitch) * plotRadius,
+        plotGroup.position.z + plotFocusZ + Math.cos(plotYaw) * cosP * plotRadius,
+      );
+      camera.lookAt(
+        plotGroup.position.x + plotFocusX,
+        plotGroup.position.y + plotFocusY,
+        plotGroup.position.z + plotFocusZ,
+      );
+    } else {
+      // Camera follow target: locked avatar if any (auto-release on distance),
+      // otherwise the local rig. The remote avatar's group.position is already
+      // wrapped near the local player in the remote-interpolation block below,
+      // so following it is seamless across the seam.
+      let followX = rig.root.position.x;
+      let followY = rig.root.position.y;
+      let followZ = rig.root.position.z;
+      if (lockedTarget) {
+        const ra = remoteAvatars.get(lockedTarget.id);
+        if (!ra) {
           releaseLock(lockedTarget);
           lockedTarget = null;
         } else {
-          tickLock(lockedTarget, elapsed);
-          followX = ra.group.position.x;
-          followY = 0;
-          followZ = ra.group.position.z;
+          const ldx = wrapDelta(ra.tx - rig.root.position.x);
+          const ldz = wrapDelta(ra.tz - rig.root.position.z);
+          if (Math.hypot(ldx, ldz) > LOCK_RELEASE_DISTANCE) {
+            releaseLock(lockedTarget);
+            lockedTarget = null;
+          } else {
+            tickLock(lockedTarget, elapsed);
+            followX = ra.group.position.x;
+            followY = 0;
+            followZ = ra.group.position.z;
+          }
         }
       }
+      camera.position.set(
+        followX + cameraOffset.x * cameraZoom,
+        followY + cameraOffset.y * cameraZoom,
+        followZ + cameraOffset.z * cameraZoom,
+      );
+      camera.lookAt(followX, followY + 0.9, followZ);
     }
-    camera.position.set(
-      followX + cameraOffset.x * cameraZoom,
-      followY + cameraOffset.y * cameraZoom,
-      followZ + cameraOffset.z * cameraZoom,
-    );
-    camera.lookAt(followX, followY + 0.9, followZ);
 
     // Remote avatars: draw at the periodic image nearest the local player,
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
     // bigger than half the board is a seam wrap by either player — snap, since
     // the 3x3 tiles are visually identical there anyway.
-    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
+    if (!mazeActive && !plotActive && !voidActive && remoteAvatars.size > 0) {
       const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
       for (const ra of remoteAvatars.values()) {
         const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
@@ -2771,7 +3119,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // shared world (the rig is off in the maze arena's coordinate space).
     // Void moves DO send (P5): the void is shared space now — void-mates see
     // each other via the zone filter; cloud runners hide void coords anyway.
-    if (!mazeActive && netSession && now - lastNetSend >= NET_SEND_MS) {
+    // Plot moves freeze like the maze for Stage A (client-local plot); Stage C
+    // unfreezes them behind the plot zone wire.
+    if (!mazeActive && !plotActive && netSession && now - lastNetSend >= NET_SEND_MS) {
       const sx = rig.root.position.x;
       const sz = rig.root.position.z;
       const moved =
@@ -2793,7 +3143,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the
     // HUD updates at the same cadence as outbound moves — once per ~67 ms.
-    if (!mazeActive && !voidActive && now - lastMinimapEmit >= NET_SEND_MS) {
+    if (!mazeActive && !plotActive && !voidActive && now - lastMinimapEmit >= NET_SEND_MS) {
       publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
       // Push live remote positions for the minimap dots. Re-using one
       // scratch array — at a full sphere we publish at most 40 entries
@@ -2877,7 +3227,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
-    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
+    if (!mazeActive && !plotActive && !voidActive && remoteAvatars.size > 0) {
       for (const ra of remoteAvatars.values()) {
         tempTag.set(ra.group.position.x, 2.55, ra.group.position.z);
         tempTag.project(camera);
@@ -2954,6 +3304,20 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
     window.removeEventListener('bitrunners:core-run-enter', onCoreRunEnter);
     window.removeEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+    window.removeEventListener('bitrunners:data-base-enter', onDataBaseEnter);
+    window.removeEventListener('bitrunners:data-base-exit', onDataBaseExit);
+    window.removeEventListener('bitrunners:plot-tab', onPlotTab);
+    window.removeEventListener('bitrunners:plot-tool', onPlotTool);
+    window.removeEventListener('bitrunners:plot-depth', onPlotDepth);
+    renderer.domElement.removeEventListener('pointerdown', onPlotPointerDown);
+    renderer.domElement.removeEventListener('pointermove', onPlotPointerMove);
+    renderer.domElement.removeEventListener('pointerup', onPlotPointerUp);
+    renderer.domElement.removeEventListener('pointercancel', onPlotPointerUp);
+    renderer.domElement.removeEventListener('contextmenu', onPlotContextMenu);
+    if (plotArena) {
+      plotArena.dispose();
+      plotArena = null;
+    }
     if (mazeArena) {
       mazeArena.dispose();
       mazeArena = null;

@@ -28,6 +28,7 @@ import { startIdentity } from './profile.js';
 import {
   CIRCUIT_PATCH_OPEN_EVENT,
   CORE_RUN_OPEN_EVENT,
+  DATA_BASE_OPEN_EVENT,
   FREQ_LOCK_OPEN_EVENT,
 } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
@@ -59,6 +60,8 @@ const FreqLock = lazy(() => import('./FreqLock.js'));
 const CircuitPatch = lazy(() => import('./CircuitPatch.js'));
 // core_run shrinking-maze minigame overlay — lazy chunk (mega-batch 2 · 4.5).
 const CoreRun = lazy(() => import('./CoreRun.js'));
+// data_base voxel-plot HUD — lazy chunk (mega-batch 3 · P7A).
+const DataBase = lazy(() => import('./DataBase.js'));
 // Admin console — heavy panel (dialogue editor, user table, grants). Only
 // admins ever see it, so non-admins never download the chunk (perf pass P1).
 const AdminConsole = lazy(() =>
@@ -106,6 +109,7 @@ export function Game({ className }: GameProps): JSX.Element {
   const [freqLockOpen, setFreqLockOpen] = useState(false);
   const [circuitOpen, setCircuitOpen] = useState(false);
   const [coreRunOpen, setCoreRunOpen] = useState(false);
+  const [dataBaseOpen, setDataBaseOpen] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -124,6 +128,12 @@ export function Game({ className }: GameProps): JSX.Element {
     const onOpen = (): void => setCoreRunOpen(true);
     window.addEventListener(CORE_RUN_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CORE_RUN_OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (): void => setDataBaseOpen(true);
+    window.addEventListener(DATA_BASE_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(DATA_BASE_OPEN_EVENT, onOpen);
   }, []);
 
   useEffect(() => {
@@ -188,6 +198,11 @@ export function Game({ className }: GameProps): JSX.Element {
       {coreRunOpen && (
         <Suspense fallback={null}>
           <CoreRun onClose={() => setCoreRunOpen(false)} />
+        </Suspense>
+      )}
+      {dataBaseOpen && (
+        <Suspense fallback={null}>
+          <DataBase onClose={() => setDataBaseOpen(false)} />
         </Suspense>
       )}
       <Samm inRange={sammInRange} />

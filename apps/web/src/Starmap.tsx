@@ -273,16 +273,21 @@ export function Starmap(): JSX.Element {
       setExpanded(false);
     };
     const onExit = (): void => setMazeHidden(false);
-    // maze mode (4.5) and the vault's void room (4.6) both hide the minimap.
+    // maze mode (4.5), the vault's void room (4.6) and the data_base plot
+    // (P7A) all hide the minimap — none of them map to cloud coordinates.
     window.addEventListener('bitrunners:maze-enter', onEnter);
     window.addEventListener('bitrunners:maze-exit', onExit);
     window.addEventListener('bitrunners:void-enter', onEnter);
     window.addEventListener('bitrunners:void-exit', onExit);
+    window.addEventListener('bitrunners:plot-enter', onEnter);
+    window.addEventListener('bitrunners:plot-exit', onExit);
     return () => {
       window.removeEventListener('bitrunners:maze-enter', onEnter);
       window.removeEventListener('bitrunners:maze-exit', onExit);
       window.removeEventListener('bitrunners:void-enter', onEnter);
       window.removeEventListener('bitrunners:void-exit', onExit);
+      window.removeEventListener('bitrunners:plot-enter', onEnter);
+      window.removeEventListener('bitrunners:plot-exit', onExit);
     };
   }, []);
 
