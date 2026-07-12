@@ -143,12 +143,15 @@ export function plotZone(idx: number): string {
   return `plot:${idx}`;
 }
 
-/** Parse 'plot:<idx>' → idx, or null for anything malformed / out of range. */
+/** Parse 'plot:<idx>' → idx, or null for anything malformed / out of range.
+ *  Canonical form only — 'plot:07' is rejected, because every zone
+ *  comparison in the codebase is string equality against plotZone(idx). */
 export function parsePlotZone(z: unknown): number | null {
   if (typeof z !== 'string' || !z.startsWith('plot:')) return null;
   const digits = z.slice(5);
   if (!/^\d{1,2}$/.test(digits)) return null;
   const n = Number(digits);
+  if (String(n) !== digits) return null;
   return n < PLOT_SLOTS ? n : null;
 }
 

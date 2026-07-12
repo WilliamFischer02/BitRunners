@@ -41,6 +41,11 @@ let loadedUid: string | null = null;
 let saveTimer: number | null = null;
 let dirty = false;
 let started = false;
+// True while adoptOrPush's fetch is in flight: remote saves are held back so
+// a debounced/hidden-flush save can't clobber the account row with the
+// pre-merge local grid mid-merge (economy-sync's `loading` guard, same bug
+// class). Local writes still happen.
+let loading = false;
 
 function loadLocal(): Uint8Array | null {
   try {
@@ -84,14 +89,25 @@ async function saveRemote(): Promise<void> {
 /** Fetch ANY user's plot (Stage C visits render the host's build). Null on
  *  any failure — missing row, unapplied migration, malformed blob. */
 export async function fetchPlotBlob(uid: string): Promise<Uint8Array | null> {
+  const r = await fetchPlotRow(uid);
+  return r?.blocks ?? null;
+}
+
+/** Sync-path fetch that DISTINGUISHES outcomes: null = transport/RPC error
+ *  (unknown truth — do nothing rash); {found:false} = the account really has
+ *  no row (safe to push); {found:true, blocks} = decoded build (blocks null
+ *  if the stored blob is malformed/future-version — also not push-safe). */
+async function fetchPlotRow(
+  uid: string,
+): Promise<{ found: boolean; blocks: Uint8Array | null } | null> {
   const sb = getSupabase();
   if (!sb) return null;
   try {
     const { data, error } = await sb.rpc('get_voxel_plot', { p_user: uid });
-    if (error) return null;
+    if (error) return null; // unapplied migration / offline — unknown truth
     const row = Array.isArray(data) ? data[0] : data;
-    if (!row || typeof row !== 'object') return null;
-    return decodePlotBlob((row as Record<string, unknown>).blob);
+    if (!row || typeof row !== 'object') return { found: false, blocks: null };
+    return { found: true, blocks: decodePlotBlob((row as Record<string, unknown>).blob) };
   } catch {
     return null;
   }
@@ -103,6 +119,12 @@ function flushSave(): void {
     saveTimer = null;
   }
   if (!dirty || !blocks) return;
+  if (loading) {
+    // Mid-merge: persist locally, keep dirty so the remote save re-arms
+    // after adoptOrPush resolves (it flushes at the end).
+    writeLocal();
+    return;
+  }
   dirty = false;
   writeLocal();
   void saveRemote();
@@ -126,22 +148,47 @@ export function flushPlotSave(): void {
 async function adoptOrPush(): Promise<void> {
   const uid = userId;
   if (!uid) return;
-  const remote = await fetchPlotBlob(uid);
-  if (userId !== uid) return; // signed out / switched mid-fetch
-  const local = getPlotBlocks();
-  if (remote && countBlocks(remote) >= countBlocks(local)) {
-    local.set(remote); // in place — the arena's reference stays valid
-    writeLocal();
-    try {
-      window.dispatchEvent(new CustomEvent(PLOT_RELOADED_EVENT));
-    } catch {
-      // non-DOM env — ignore
+  loading = true;
+  try {
+    const row = await fetchPlotRow(uid);
+    if (userId !== uid) return; // signed out / switched mid-fetch
+    if (row === null) {
+      // Transport/RPC error: we DON'T know what the account holds — never
+      // push over it blind (a flaky fetch must not let a 1-block guest grid
+      // clobber a 500-block build). Local stays local; a FUTURE edit on this
+      // device saves normally (active editing is consent), but we don't
+      // proactively flush pre-merge dirt here.
+      dirty = false;
+      writeLocal();
+      return;
     }
-  } else if (countBlocks(local) > 0) {
-    // Local build outranks the account row (or none exists) — push it up.
-    dirty = true;
-    flushSave();
+    const local = getPlotBlocks();
+    if (row.found && row.blocks === null) {
+      // Row exists but won't decode (future format?) — hands off entirely.
+      dirty = false;
+      writeLocal();
+      return;
+    }
+    const remote = row.blocks;
+    if (remote && countBlocks(remote) >= countBlocks(local)) {
+      // Denser build wins; tie → remote (the account is cross-device truth).
+      // Known edge (deliberate): an equal-count local REWORK loses to the
+      // account row — countBlocks can't see rearrangement.
+      local.set(remote); // in place — the arena's reference stays valid
+      writeLocal();
+      try {
+        window.dispatchEvent(new CustomEvent(PLOT_RELOADED_EVENT));
+      } catch {
+        // non-DOM env — ignore
+      }
+    } else if (countBlocks(local) > 0) {
+      // Local outranks the row (or the account has none) — push it up.
+      dirty = true;
+    }
+  } finally {
+    loading = false;
   }
+  flushSave(); // whatever became dirty during or from the merge goes up now
 }
 
 /** Wire auth + flush hooks. Idempotent; the scene calls it when the plot

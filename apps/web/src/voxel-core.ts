@@ -8,8 +8,10 @@
 // The codec is the persistence wire for BOTH localStorage (guests) and the
 // save_voxel_plot RPC (accounts, migration 0019): runs of [count, blockId]
 // flattened into a plain number[] inside a small versioned envelope. A
-// typical build is well under 2 KB; the theoretical worst case (alternating
-// blocks) is 2×9216 numbers, still far under the RPC's 64 KB cap.
+// typical build is well under 2 KB as JSON; the theoretical worst case
+// (alternating blocks) is 2×9216 numbers ≈ 221 KB as Postgres JSONB
+// (~12 bytes/number), which is why the RPC cap is 256 KB — every legal
+// grid fits.
 //
 // React-free and three.js-free; the InstancedMesh renderer lives in
 // voxel-scene.ts. Decoders NEVER throw on bad input — they return null so a

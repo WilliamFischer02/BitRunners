@@ -63,9 +63,11 @@ export interface NetworkCallbacks {
   /** Fired after the server drops our outbound message during moderation. */
   onTetherRejected?(reason: string): void;
   // data_base plot visits (P7C) — the server moved our zone to the host's
-  // plot (ok) or refused (denied: 'unavailable' | 'full').
+  // plot (ok) or refused (denied: 'unavailable' | 'no-build' | 'full').
   onVisitOk?(zone: string, hostUserId: string): void;
   onVisitDenied?(reason: string): void;
+  /** The server ended our visit (host left; the slot may be reassigned). */
+  onVisitEnded?(reason: string): void;
 }
 
 export interface JoinOptions {
@@ -323,6 +325,9 @@ export async function joinSphere(
   });
   room.onMessage('visit-denied', (msg: { reason?: string }) => {
     callbacks.onVisitDenied?.(msg?.reason ?? 'unavailable');
+  });
+  room.onMessage('visit-ended', (msg: { reason?: string }) => {
+    callbacks.onVisitEnded?.(msg?.reason ?? 'host-left');
   });
 
   // A newer tab for the same account just connected — the server is closing

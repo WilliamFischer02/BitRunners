@@ -4,9 +4,9 @@ import {
   EMOTE_GLYPHS,
   PLATFORM_HALF,
   PLATFORM_SIZE,
-  PLOT_COORD_MAX,
   PLOT_GUEST_CAP,
   PLOT_SLOTS,
+  PLOT_SPACING,
   TETHER_RATE_LIMIT_PER_MIN,
   TETHER_REQUEST_RATE_LIMIT_PER_MIN,
   WS_CLOSE_SESSION_SUPERSEDED,
@@ -22,6 +22,7 @@ import {
   isValidUserId,
   isValidZone,
   parsePlotZone,
+  plotSlotOrigin,
   plotZone,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
@@ -194,11 +195,16 @@ export class SphereRoom extends Room<SphereState> {
       if (!p) return;
       if (typeof msg?.x !== 'number' || typeof msg?.z !== 'number') return;
       if (!Number.isFinite(msg.x) || !Number.isFinite(msg.z)) return;
-      if (p.zone.startsWith('plot:')) {
+      const plotIdx = parsePlotZone(p.zone);
+      if (plotIdx !== null) {
         // Sky-grid plots (P7C) sit far outside the torus — wrapping would
-        // corrupt their coords, so clamp to the grid extent instead.
-        p.x = Math.max(-PLOT_COORD_MAX, Math.min(PLOT_COORD_MAX, msg.x));
-        p.z = Math.max(-PLOT_COORD_MAX, Math.min(PLOT_COORD_MAX, msg.z));
+        // corrupt their coords. Clamp to the CLAIMED slot's own extent
+        // (pad + margin), not the whole grid: a modded client must not be
+        // able to hover over someone else's pad while zoned to its own.
+        const origin = plotSlotOrigin(plotIdx);
+        const half = PLOT_SPACING / 2;
+        p.x = Math.max(origin.x - half, Math.min(origin.x + half, msg.x));
+        p.z = Math.max(origin.z - half, Math.min(origin.z + half, msg.z));
       } else {
         p.x = wrapAxis(msg.x);
         p.z = wrapAxis(msg.z);
@@ -340,6 +346,14 @@ export class SphereRoom extends Room<SphereState> {
         client.send('visit-denied', { reason: 'unavailable' });
         return;
       }
+      // Guest hosts have no account row, so there is no build to fetch —
+      // deny up front instead of walking the visitor through an empty pad
+      // that the host's own client renders as solid (P7C hardening).
+      const hostUid = this.userIdBySession.get(targetId);
+      if (!hostUid) {
+        client.send('visit-denied', { reason: 'no-build' });
+        return;
+      }
       const zone = plotZone(host.plotIndex);
       let guests = 0;
       for (const [id, q] of this.state.players.entries()) {
@@ -350,10 +364,7 @@ export class SphereRoom extends Room<SphereState> {
         return;
       }
       p.zone = zone;
-      client.send('visit-ok', {
-        zone,
-        hostUserId: this.userIdBySession.get(targetId) ?? '',
-      });
+      client.send('visit-ok', { zone, hostUserId: hostUid });
     });
 
     // ── Tether chat (PR 87) ────────────────────────────────────────────────
@@ -740,6 +751,20 @@ export class SphereRoom extends Room<SphereState> {
     }
     this.pendingFrom.delete(client.sessionId);
     this.requestRate.delete(client.sessionId);
+    // Plot-slot hygiene (P7C hardening): the leaver's slot index is about to
+    // be reusable, so sweep any visitors still in that plot zone back to the
+    // cloud — otherwise they'd haunt the NEXT owner's plot (rendering inside
+    // it AND consuming its guest cap). The swept clients get 'visit-ended'
+    // so their scene exits the plot cleanly.
+    const leaver = this.state.players.get(client.sessionId);
+    if (leaver && leaver.plotIndex >= 0) {
+      const zone = plotZone(leaver.plotIndex);
+      for (const [id, q] of this.state.players.entries()) {
+        if (id === client.sessionId || q.zone !== zone) continue;
+        q.zone = 'cloud';
+        this.findClient(id)?.send('visit-ended', { reason: 'host-left' });
+      }
+    }
     this.state.players.delete(client.sessionId);
     this.lastSeen.delete(client.sessionId);
     // Release the single-session registry slot — but only if this client is

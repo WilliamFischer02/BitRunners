@@ -5,9 +5,11 @@
 -- One row per account holding the palette-indexed RLE envelope produced by
 -- apps/web/src/voxel-core.ts ({v, w, h, d, runs}). Content is block ids only
 -- (no free text anywhere in the format), client-trusted like the economy
--- blob, and size-capped server-side. A typical build is < 2 KB; the
--- pathological worst case (full checkerboard) can exceed the cap, in which
--- case the client keeps its local copy and retries after the next edit.
+-- blob, and size-capped server-side. Sizing note: JSONB stores each runs
+-- number at ~12 bytes, so the absolute worst case (full 24×16×24
+-- checkerboard = 18,432 numbers) is ~221 KB — the 256 KB cap below admits
+-- EVERY legal grid while still bounding a hostile payload. (The economy
+-- blob's cap is 128 KB for comparison; a typical build here is < 25 KB.)
 --
 -- get_voxel_plot(p_user) deliberately reads ANY user's plot (authenticated
 -- callers only): Stage C plot visits render the HOST's plot on the guest's
@@ -41,8 +43,9 @@ BEGIN
   IF p_blob IS NULL OR jsonb_typeof(p_blob) <> 'object' THEN
     RAISE EXCEPTION 'invalid blob';
   END IF;
-  -- ~64 KB cap (brief default). Legitimate envelopes never approach it.
-  IF pg_column_size(p_blob) > 65536 THEN
+  -- 256 KB: admits the RLE worst case of a legal grid (~221 KB as JSONB —
+  -- see header) with margin; anything larger is not a real plot.
+  IF pg_column_size(p_blob) > 262144 THEN
     RAISE EXCEPTION 'blob too large';
   END IF;
   INSERT INTO public.voxel_plots (user_id, blob, version, updated_at)

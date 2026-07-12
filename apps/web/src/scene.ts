@@ -103,7 +103,7 @@ import {
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
-import { VOXEL_AIR, countBlocks, createEmptyPlot, isValidBlockId, setVoxel } from './voxel-core.js';
+import { VOXEL_AIR, countBlocks, isValidBlockId, setVoxel } from './voxel-core.js';
 import {
   PLOT_RELOADED_EVENT,
   fetchPlotBlob,
@@ -2205,6 +2205,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             onVisitDenied(reason) {
               tetherSystemNotice(`// plot visit denied — ${reason}`);
             },
+            onVisitEnded(_reason) {
+              onVisitEndedByServer();
+            },
             onDisconnect(_code) {
               if (sceneDisposed) return;
               netSession = null;
@@ -2738,7 +2741,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
 
   function enterPlot(): void {
-    if (plotActive || mazeActive || voidActive) return;
+    if (plotActive) return;
+    if (mazeActive || voidActive) {
+      // Denied (the cartridge is reachable from anywhere) — answer with the
+      // exit notification so the just-mounted HUD closes instead of
+      // deadlocking over a mode that never engaged.
+      fireMaze('bitrunners:plot-exit');
+      return;
+    }
     const idx = netSession?.getPlotIndex() ?? -1;
     const netZone = netSession && idx >= 0 ? plotZone(idx) : null;
     if (netZone) netSession?.sendZone(netZone);
@@ -2952,20 +2962,39 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (plotActive || mazeActive || voidActive || !netSession) return;
     netSession.sendVisit(target);
   };
+  /** Our ACTUAL zone right now, for restoring after a stale visit grant. */
+  function currentOwnZone(): string {
+    if (plotActive && plotNetZone) return plotNetZone;
+    if (voidActive) return 'void';
+    return 'cloud';
+  }
   function onVisitGranted(zone: string, hostUserId: string): void {
     if (plotActive || mazeActive || voidActive) {
-      // Stale grant (mode changed while in flight) — restore our real zone.
-      netSession?.sendZone(voidActive ? 'void' : 'cloud');
+      // Stale grant (mode changed while in flight) — restore our real zone
+      // (own plot included: sending 'cloud' here would ghost us into the
+      // overworld at wrapped sky coords).
+      netSession?.sendZone(currentOwnZone());
       return;
     }
     void fetchPlotBlob(hostUserId).then((blocks) => {
       if (plotActive || mazeActive || voidActive) {
-        netSession?.sendZone(voidActive ? 'void' : 'cloud');
+        netSession?.sendZone(currentOwnZone());
         return;
       }
-      enterPlotVisit(zone, blocks ?? createEmptyPlot());
+      if (!blocks) {
+        // No build data (migration 0019 unapplied, offline, malformed) —
+        // abort rather than walking a pad the host renders as solid.
+        netSession?.sendZone('cloud');
+        tetherSystemNotice('// plot visit aborted — no build data');
+        return;
+      }
+      enterPlotVisit(zone, blocks);
     });
   }
+  const onVisitEndedByServer = (): void => {
+    // Host left; our slot-mate context is gone (the slot may be reassigned).
+    if (plotActive && plotVisit) exitPlot();
+  };
   window.addEventListener('bitrunners:plot-visit', onPlotVisitRequest);
   window.addEventListener('bitrunners:data-base-enter', onDataBaseEnter);
   window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
@@ -2993,6 +3022,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     scene.add(mesh);
     shardMeshes.push({ id: s.id, x: s.x, z: s.z, mesh });
   }
+  // Collected-state can change OUTSIDE pickups (economy-sync adopting an
+  // account blob after startScene ran) — refresh on the coalesced economy
+  // events so cross-device shards neither ghost (visible but uncollectable)
+  // nor stay hidden after a revert. Event-driven, never per frame.
+  const refreshShardVisibility = (): void => {
+    for (const s of shardMeshes) s.mesh.visible = !isShardCollected(s.id);
+  };
+  window.addEventListener('bitrunners:economy-changed', refreshShardVisibility);
+  window.addEventListener('bitrunners:economy-synced', refreshShardVisibility);
   let keeperInRange = false;
   function checkRamhattan(): void {
     // Keeper prompt — edge-triggered range event (SAMM pattern).
@@ -3381,12 +3419,19 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // each other via the zone filter; cloud runners hide void coords anyway.
     // Plot moves send once the zone wire is live (P7C — plot-mates need
     // them); an offline/local plot stays frozen like the maze.
-    if (
-      !mazeActive &&
-      (!plotActive || plotNetZone !== null) &&
-      netSession &&
-      now - lastNetSend >= NET_SEND_MS
-    ) {
+    const modeFrozen = mazeActive || (plotActive && plotNetZone === null);
+    if (modeFrozen && netSession && now - lastNetSend >= MOVE_KEEPALIVE_MS) {
+      // Frozen ≠ silent: the server's idle sweep counts only inbound messages
+      // as liveness (decisions.md 2026-07-11), and a build session is
+      // open-ended — so ping the PARKED coords every 10 s. The avatar stays
+      // put for everyone else; lastSeen stays fresh.
+      netSession.sendMove(savedRigX, savedRigZ, savedFacing);
+      lastNetSend = now;
+      lastSentX = savedRigX;
+      lastSentZ = savedRigZ;
+      lastSentRotY = savedFacing;
+    }
+    if (!modeFrozen && netSession && now - lastNetSend >= NET_SEND_MS) {
       const sx = rig.root.position.x;
       const sz = rig.root.position.z;
       const moved =
@@ -3648,6 +3693,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     for (const t of tendrils) t.mat.dispose();
     shardGeom.dispose();
     shardMat.dispose();
+    window.removeEventListener('bitrunners:economy-changed', refreshShardVisibility);
+    window.removeEventListener('bitrunners:economy-synced', refreshShardVisibility);
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (netEl.parentNode === host) host.removeChild(netEl);
     if (playerTagEl.parentNode === host) host.removeChild(playerTagEl);
