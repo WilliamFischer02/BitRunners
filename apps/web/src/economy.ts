@@ -101,6 +101,14 @@ export interface EconomyState {
   // circuit_patch level progress: index (0–9) of the level the runner resumes
   // on next session. Wins on the frontier level advance it. Additive.
   circuitLevel: number;
+  // One-shot flag: the data_scrape guided tour (devlog 0148) was completed
+  // or skipped. Additive — old blobs default false. Account-synced so the
+  // tour doesn't replay on every device.
+  scrapeTutorialSeen: boolean;
+  // RAMHATTAN district collectables (mega-batch 3 · P8): ids of data shards
+  // already picked up. Additive array (ownedEmotes precedent) — collected
+  // shards never respawn, and the reward is granted exactly once per id.
+  ramhattanFound: string[];
   updatedAt: number;
 }
 
@@ -181,6 +189,8 @@ function defaultState(): EconomyState {
     circuitFirstClear: false,
     botPrefs: { ...DEFAULT_BOT_PREFS },
     circuitLevel: 0,
+    scrapeTutorialSeen: false,
+    ramhattanFound: [],
     updatedAt: 0,
   };
 }
@@ -287,6 +297,8 @@ function normalize(parsed: EconomyState): EconomyState {
     // Clamp to the valid level range (0–9) so a corrupt blob can't strand the
     // player past the last level.
     circuitLevel: Math.min(9, Math.max(0, Math.floor(fin(p.circuitLevel)))),
+    scrapeTutorialSeen: p.scrapeTutorialSeen === true,
+    ramhattanFound: strArray(p.ramhattanFound),
   };
 }
 
@@ -718,6 +730,38 @@ export function completeTutorial(): void {
     : [...state.unlocks, 'server_speaker'];
   state = { ...state, tutorialDone: true, unlocks };
   persist();
+}
+
+export function isScrapeTutorialSeen(): boolean {
+  return state.scrapeTutorialSeen;
+}
+
+/** Mark the data_scrape guided tour seen — fired on finish AND on skip. */
+export function markScrapeTutorialSeen(): void {
+  if (state.scrapeTutorialSeen) return;
+  state = { ...state, scrapeTutorialSeen: true };
+  persist();
+}
+
+/** RAMHATTAN shard reward. STOP-AND-ASK default — tune freely; changing it
+ *  only affects future pickups (collected ids never re-grant). */
+export const RAMHATTAN_SHARD_CREDITS = 250;
+
+export function getRamhattanFound(): readonly string[] {
+  return state.ramhattanFound;
+}
+
+/** Pick up a RAMHATTAN data shard: exactly-once per id, grants credits in
+ *  the same atomic spread (compound-mutator convention — one persist()). */
+export function collectRamhattanShard(id: string): boolean {
+  if (!id || state.ramhattanFound.includes(id)) return false;
+  state = {
+    ...state,
+    credits: state.credits + RAMHATTAN_SHARD_CREDITS,
+    ramhattanFound: [...state.ramhattanFound, id],
+  };
+  persist();
+  return true;
 }
 
 export function getOwned(): readonly string[] {

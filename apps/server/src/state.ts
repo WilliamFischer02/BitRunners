@@ -31,6 +31,21 @@ export class PlayerState extends Schema {
   @type('number') samaritanBitRunner = 0;
   @type('number') factionState = 0;
   @type('number') wallet = 0;
+  // Equipped cosmetics (mega-batch 3 P3) — shop item ids, shape-validated on
+  // the 'identity' message (isValidItemId, ≤32 chars). Appended fields = no
+  // protocol bump (same precedent as level). Receiving clients validate the
+  // ids against the shop catalog before rendering.
+  @type('string') equippedHead = '';
+  @type('string') equippedChest = '';
+  @type('string') equippedLegs = '';
+  @type('string') equippedPet = '';
+  // Zone presence (mega-batch 3 P5) — 'cloud' | 'void' | 'plot:<idx>'
+  // (isValidZone allowlist). Appended field = no protocol bump. Clients hide
+  // remote runners whose zone differs from their own; NPCs stay 'cloud'.
+  @type('string') zone = 'cloud';
+  // data_base sky-grid slot (mega-batch 3 P7C) — assigned per human at join
+  // (lowest free of PLOT_SLOTS), -1 for NPCs. Appended = no protocol bump.
+  @type('number') plotIndex = -1;
 }
 
 export class SphereState extends Schema {

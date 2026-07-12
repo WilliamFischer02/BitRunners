@@ -16,11 +16,13 @@ export type ProtocolKey =
   | 'tether_chat'
   | 'freq_lock'
   | 'circuit_patch'
-  | 'core_run';
+  | 'core_run'
+  | 'data_base';
 
 export const FREQ_LOCK_OPEN_EVENT = 'bitrunners:open-freq-lock';
 export const CIRCUIT_PATCH_OPEN_EVENT = 'bitrunners:open-circuit-patch';
 export const CORE_RUN_OPEN_EVENT = 'bitrunners:open-core-run';
+export const DATA_BASE_OPEN_EVENT = 'bitrunners:open-data-base';
 
 export interface ProtocolEntry {
   key: ProtocolKey;
@@ -112,6 +114,14 @@ function launchCoreRun(): void {
   }
 }
 
+function launchDataBase(): void {
+  try {
+    window.dispatchEvent(new CustomEvent(DATA_BASE_OPEN_EVENT));
+  } catch {
+    // non-DOM env — ignore
+  }
+}
+
 export const PROTOCOLS: readonly ProtocolEntry[] = [
   {
     key: 'scrape',
@@ -175,5 +185,14 @@ export const PROTOCOLS: readonly ProtocolEntry[] = [
     tint: 'br',
     available: true,
     launch: launchCoreRun,
+  },
+  {
+    key: 'data_base',
+    label: 'data_base',
+    flavor: 'your plot · build in voxels',
+    glyph: '⌂',
+    tint: 'br',
+    available: true,
+    launch: launchDataBase,
   },
 ];

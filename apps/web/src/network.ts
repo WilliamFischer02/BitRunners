@@ -16,6 +16,11 @@ export interface RemotePlayer {
   nameWeight: string;
   nameTint: string;
   level: number;
+  equippedHead: string;
+  equippedChest: string;
+  equippedLegs: string;
+  equippedPet: string;
+  zone: string;
 }
 
 export interface IdentityUpdate {
@@ -25,6 +30,10 @@ export interface IdentityUpdate {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
 }
 
 export interface TetherPeerSummary {
@@ -53,6 +62,12 @@ export interface NetworkCallbacks {
   onTetherEnded?(from: string): void;
   /** Fired after the server drops our outbound message during moderation. */
   onTetherRejected?(reason: string): void;
+  // data_base plot visits (P7C) — the server moved our zone to the host's
+  // plot (ok) or refused (denied: 'unavailable' | 'no-build' | 'full').
+  onVisitOk?(zone: string, hostUserId: string): void;
+  onVisitDenied?(reason: string): void;
+  /** The server ended our visit (host left; the slot may be reassigned). */
+  onVisitEnded?(reason: string): void;
 }
 
 export interface JoinOptions {
@@ -63,6 +78,10 @@ export interface JoinOptions {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
   /** Supabase auth uid — lets the server enforce one live session per account. */
   userId?: string;
 }
@@ -74,6 +93,13 @@ export interface NetworkSession {
   sendEmote(text: string): void;
   setClass(name: string): void;
   sendIdentity(update: IdentityUpdate): void;
+  /** Zone presence (P5/P7C) — 'cloud' | 'void' | 'plot:<idx>'. Server
+   *  allowlists, and only accepts our OWN plot index directly. */
+  sendZone(zone: string): void;
+  /** Ask the server to move our zone into another runner's plot (P7C). */
+  sendVisit(target: string): void;
+  /** Our server-assigned data_base sky-grid slot; -1 if unassigned. */
+  getPlotIndex(): number;
   sendTetherRequest(target: string): void;
   sendTetherAccept(from: string): void;
   sendTetherDecline(from: string): void;
@@ -103,6 +129,12 @@ interface PlayerSchema {
   nameWeight?: string;
   nameTint?: string;
   level?: number;
+  equippedHead?: string;
+  equippedChest?: string;
+  equippedLegs?: string;
+  equippedPet?: string;
+  zone?: string;
+  plotIndex?: number;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -121,6 +153,11 @@ function snapshot(p: PlayerSchema): RemotePlayer {
     nameWeight: p.nameWeight ?? '',
     nameTint: p.nameTint ?? '',
     level: p.level ?? 0,
+    equippedHead: p.equippedHead ?? '',
+    equippedChest: p.equippedChest ?? '',
+    equippedLegs: p.equippedLegs ?? '',
+    equippedPet: p.equippedPet ?? '',
+    zone: p.zone ?? 'cloud',
   };
 }
 
@@ -145,6 +182,10 @@ export async function joinSphere(
   if (joinOpts.nameWeight) opts.nameWeight = joinOpts.nameWeight;
   if (joinOpts.nameTint) opts.nameTint = joinOpts.nameTint;
   if (joinOpts.level) opts.level = joinOpts.level;
+  if (joinOpts.equippedHead) opts.equippedHead = joinOpts.equippedHead;
+  if (joinOpts.equippedChest) opts.equippedChest = joinOpts.equippedChest;
+  if (joinOpts.equippedLegs) opts.equippedLegs = joinOpts.equippedLegs;
+  if (joinOpts.equippedPet) opts.equippedPet = joinOpts.equippedPet;
   if (joinOpts.userId) opts.userId = joinOpts.userId;
   // Join a specific room by code (a friend's sphere) when given one; fall back
   // to matchmaking if that room is gone/full so the player still connects.
@@ -221,12 +262,21 @@ export async function joinSphere(
         playerCb.listen('x', fireUpdate);
         playerCb.listen('z', fireUpdate);
         playerCb.listen('rotY', fireUpdate);
+        // Zone rides the update path (not identity) — visibility filtering
+        // lives next to positioning in scene.ts's onUpdate handler.
+        playerCb.listen('zone', fireUpdate);
         playerCb.listen('displayName', fireIdentity);
         playerCb.listen('equippedBadge', fireIdentity);
         playerCb.listen('equippedTheme', fireIdentity);
         playerCb.listen('nameWeight', fireIdentity);
         playerCb.listen('nameTint', fireIdentity);
         playerCb.listen('level', fireIdentity);
+        // Equipped cosmetics (P3) — coalesced into the same identity
+        // microtask, so a 4-field appearance change fires ONE onIdentity.
+        playerCb.listen('equippedHead', fireIdentity);
+        playerCb.listen('equippedChest', fireIdentity);
+        playerCb.listen('equippedLegs', fireIdentity);
+        playerCb.listen('equippedPet', fireIdentity);
       } else if (playerCb && typeof playerCb.onChange === 'function') {
         playerCb.onChange(() => {
           fireEmote(player.emoteSeq ?? 0);
@@ -266,6 +316,18 @@ export async function joinSphere(
   });
   room.onMessage('tether-rejected', (msg: { reason?: string }) => {
     callbacks.onTetherRejected?.(msg?.reason ?? 'moderation');
+  });
+
+  // data_base plot visits (P7C).
+  room.onMessage('visit-ok', (msg: { zone?: string; hostUserId?: string }) => {
+    if (typeof msg?.zone !== 'string') return;
+    callbacks.onVisitOk?.(msg.zone, typeof msg.hostUserId === 'string' ? msg.hostUserId : '');
+  });
+  room.onMessage('visit-denied', (msg: { reason?: string }) => {
+    callbacks.onVisitDenied?.(msg?.reason ?? 'unavailable');
+  });
+  room.onMessage('visit-ended', (msg: { reason?: string }) => {
+    callbacks.onVisitEnded?.(msg?.reason ?? 'host-left');
   });
 
   // A newer tab for the same account just connected — the server is closing
@@ -308,11 +370,29 @@ export async function joinSphere(
         update.equippedTheme === undefined &&
         update.nameWeight === undefined &&
         update.nameTint === undefined &&
-        update.level === undefined
+        update.level === undefined &&
+        update.equippedHead === undefined &&
+        update.equippedChest === undefined &&
+        update.equippedLegs === undefined &&
+        update.equippedPet === undefined
       ) {
         return;
       }
       room.send('identity', update);
+    },
+    sendZone(zone) {
+      room.send('zone', { zone });
+    },
+    sendVisit(target) {
+      room.send('visit', { target });
+    },
+    getPlotIndex() {
+      // Own PlayerState (state is opaque to the client compiler — see the
+      // getStateCallbacks cast above for the same reason).
+      const players = (room.state as { players?: Map<string, PlayerSchema> }).players;
+      const self = players?.get?.(room.sessionId);
+      const idx = self?.plotIndex;
+      return typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 ? idx : -1;
     },
     sendTetherRequest(target) {
       room.send('tether-request', { target });

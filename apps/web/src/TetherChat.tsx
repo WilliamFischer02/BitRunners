@@ -226,6 +226,26 @@ function TetherPanel({
                   [ end ]
                 </button>
               </div>
+              <div className="panel-row">
+                <span className="panel-key">visit their data_base plot</span>
+                <button
+                  type="button"
+                  className="panel-toggle"
+                  onClick={() => {
+                    // Scene forwards this to the server's guest-capped
+                    // 'visit' message (P7C); read-only walk of their build.
+                    try {
+                      window.dispatchEvent(
+                        new CustomEvent('bitrunners:plot-visit', { detail: { target: peer.id } }),
+                      );
+                    } catch {
+                      // non-DOM env — ignore
+                    }
+                  }}
+                >
+                  [ visit ]
+                </button>
+              </div>
             </>
           )}
         </section>

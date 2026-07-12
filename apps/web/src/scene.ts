@@ -4,7 +4,14 @@ import {
   createCrtPass,
   setAsciiPassResolution,
 } from '@bitrunners/ascii';
-import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
+import {
+  PLATFORM_HALF,
+  PLATFORM_SIZE,
+  PLOT_BASE_Y,
+  parsePlotZone,
+  plotSlotOrigin,
+  plotZone,
+} from '@bitrunners/shared';
 import {
   BackSide,
   BoxGeometry,
@@ -24,13 +31,16 @@ import {
   MeshNormalMaterial,
   MeshStandardMaterial,
   type MeshStandardMaterial as MeshStandardMaterialType,
+  OctahedronGeometry,
   PerspectiveCamera,
   PlaneGeometry,
   RGBAFormat,
+  Raycaster,
   Scene,
   ShaderMaterial,
   SphereGeometry,
   Uniform,
+  Vector2,
   Vector3,
   WebGLRenderTarget,
   WebGLRenderer,
@@ -42,6 +52,7 @@ import {
   type EquippedAppearance,
   type SlotAppearance,
   getEquippedAppearance,
+  resolveSlotAppearance,
   subscribeAppearance,
 } from './appearance.js';
 import { BADGES } from './badges.js';
@@ -69,6 +80,7 @@ import { type NameStyle, getNameStyle, nameStyleClass, subscribeNameStyle } from
 import { type NetworkSession, getServerUrl, joinSphere } from './network.js';
 import { applyPetBehaviour, petGeometryFor } from './pets.js';
 import { type LocalIdentity, getIdentity, subscribeIdentity } from './profile.js';
+import { isShardCollected, pickUpShard } from './ramhattan.js';
 import { type CircuitFloorUniforms, createCircuitFloorMaterial } from './shaders/circuit-floor.js';
 import { getCurrentUserId, subscribeAuth } from './supabase.js';
 import {
@@ -91,6 +103,23 @@ import {
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
+import { VOXEL_AIR, countBlocks, isValidBlockId, setVoxel } from './voxel-core.js';
+import {
+  PLOT_RELOADED_EVENT,
+  fetchPlotBlob,
+  flushPlotSave,
+  getPlotBlocks,
+  initVoxelPlotSync,
+  notePlotEdited,
+} from './voxel-plot-store.js';
+import {
+  PLOT_HALF_X,
+  PLOT_HALF_Z,
+  PlotArena,
+  type VoxelPick,
+  pickVoxel,
+  slideMoveVoxel,
+} from './voxel-scene.js';
 
 const WALK_SPEED = 3.2;
 const RUN_SPEED = 5.6;
@@ -118,6 +147,43 @@ const LOCK_RELEASE_DISTANCE = 14;
 // Coords shared by the meshes (worldTile) + tick logic (proximity/sequence).
 const GLITCH_SWITCH = { x: -22, z: 24 };
 const VAULT = { x: 26, z: -18, half: 3.5 };
+
+// RAMHATTAN district (mega-batch 3 · P8, first buildable slice) — parked in
+// the SW-deep quadrant, the emptiest region of the doubled map (nearest
+// neighbors: crate cluster (-10,-12), outer rust pillar (-24,-20), long wall
+// slab (-6,-24)). Buildings stay |coord| ≤ 34 so wrap-collision corner cases
+// don't matter (same rule as the mega-batch-2 interior fill). Street runs
+// east-west along z = -28. Full design doc: docs/design/ramhattan.md.
+const RAMHATTAN = { x: -24, z: -28 };
+// Building footprints: x, z, half-extents, height. Colliders below mirror
+// these — keep the two lists in sync.
+const RAMHATTAN_BUILDINGS: readonly {
+  x: number;
+  z: number;
+  hx: number;
+  hz: number;
+  h: number;
+  dark: boolean;
+}[] = [
+  // north row
+  { x: -31, z: -24.8, hx: 2.2, hz: 1.6, h: 5.2, dark: false },
+  { x: -25.5, z: -24.6, hx: 2.0, hz: 1.8, h: 3.6, dark: true },
+  { x: -19.5, z: -24.8, hx: 1.8, hz: 1.5, h: 4.4, dark: false },
+  // south row
+  { x: -30, z: -31.6, hx: 1.9, hz: 1.7, h: 4.0, dark: true },
+  { x: -24, z: -31.8, hx: 2.3, hz: 1.5, h: 5.6, dark: false },
+  { x: -17.5, z: -31.4, hx: 1.7, hz: 1.8, h: 3.2, dark: true },
+];
+const RAMHATTAN_KEEPER = { x: -24, z: -27.2 };
+const RAMHATTAN_KEEPER_TRIGGER = 2.4;
+// Collectable data shards, tucked into the district's gaps (never inside a
+// building footprint). Ids persist in the economy blob — see ramhattan.ts.
+const RAMHATTAN_SHARDS: readonly { id: string; x: number; z: number }[] = [
+  { id: 'shard.east_alley', x: -16.5, z: -25.5 },
+  { id: 'shard.west_gap', x: -33, z: -29.5 },
+  { id: 'shard.south_gutter', x: -23.5, z: -34 },
+];
+const RAMHATTAN_SHARD_TRIGGER = 1.2;
 // Where the runner returns to after leaving the void — just south of the door.
 const VAULT_RETURN = { x: 26, z: -13 };
 // The four pressure plates, in the order they must be stepped (1→2→3→4).
@@ -168,6 +234,9 @@ const COLLIDERS: readonly BoxCollider[] = [
   { x: VAULT.x - VAULT.half, z: VAULT.z, hx: 0.2, hz: VAULT.half }, // west
   { x: VAULT.x - 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-left
   { x: VAULT.x + 2.25, z: VAULT.z + VAULT.half, hx: 1.25, hz: 0.2 }, // south-right
+  // RAMHATTAN district (P8) — building footprints + the keeper.
+  ...RAMHATTAN_BUILDINGS.map((b) => ({ x: b.x, z: b.z, hx: b.hx, hz: b.hz })),
+  { x: RAMHATTAN_KEEPER.x, z: RAMHATTAN_KEEPER.z, hx: 0.35, hz: 0.3 },
 ];
 
 // Shortest signed delta on the wrapping board. The world renders as a 3x3 tile
@@ -257,42 +326,69 @@ const REMOTE_LOOKS: Record<string, RemoteLook> = {
   web_puller: { armor: 0x251a3a, dark: 0x18102a, emissive: 0x4a2880 },
 };
 
-function buildRemoteAvatar(className: string): Group {
+// Extended remote-avatar build: the head/torso/legs meshes get their OWN
+// armour material (was one shared material) so equipped cosmetics can tint
+// each slot independently on remotes (P3, devlog 0147). The skin targets use
+// the same SkinTarget shape as the local rig, so one applySkin path serves
+// both. petAnchor hovers beside the torso for the (optional) remote pet mesh.
+interface RemoteAvatarBuild {
+  group: Group;
+  skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget };
+  petAnchor: Group;
+}
+
+function buildRemoteAvatar(className: string): RemoteAvatarBuild {
   const look = REMOTE_LOOKS[className] ?? REMOTE_LOOKS.bit_spekter;
   if (!look) throw new Error('unreachable');
   const g = new Group();
-  const armor = new MeshStandardMaterial({
+  const armorOpts = {
     color: look.armor,
     roughness: 0.7,
     metalness: 0.2,
     emissive: look.emissive,
     emissiveIntensity: 0.45,
-  });
+  };
+  const headMat = new MeshStandardMaterial(armorOpts);
+  const torsoMat = new MeshStandardMaterial(armorOpts);
+  const legsMat = new MeshStandardMaterial(armorOpts);
   const dark = new MeshStandardMaterial({
     color: look.dark,
     roughness: 0.8,
     metalness: 0.1,
   });
-  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), armor);
+  const head = new MeshClass(new SphereGeometry(0.34, 12, 8), headMat);
   head.position.y = 1.58;
   head.scale.set(1.0, 1.05, 0.92);
   g.add(head);
   const visor = new MeshClass(new BoxGeometry(0.5, 0.18, 0.06), dark);
   visor.position.set(0, 1.58, 0.31);
   g.add(visor);
-  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), armor);
+  const torso = new MeshClass(new BoxGeometry(0.78, 0.78, 0.46), torsoMat);
   torso.position.y = 0.98;
   g.add(torso);
   const belt = new MeshClass(new BoxGeometry(0.8, 0.08, 0.48), dark);
   belt.position.y = 0.62;
   g.add(belt);
-  const legs = new MeshClass(new BoxGeometry(0.68, 0.6, 0.32), armor);
+  const legs = new MeshClass(new BoxGeometry(0.68, 0.6, 0.32), legsMat);
   legs.position.y = 0.32;
   g.add(legs);
   const boots = new MeshClass(new BoxGeometry(0.74, 0.12, 0.36), dark);
   boots.position.set(0, 0.06, 0.04);
   g.add(boots);
-  return g;
+  const petAnchor = new Group();
+  petAnchor.position.set(0, 1.4, 0);
+  g.add(petAnchor);
+  const snap = (mat: MeshStandardMaterialType): SkinTarget => ({
+    mat,
+    baseColor: mat.color.getHex(),
+    baseEmissive: mat.emissive.getHex(),
+    baseEmissiveIntensity: mat.emissiveIntensity,
+  });
+  return {
+    group: g,
+    skin: { head: snap(headMat), chest: snap(torsoMat), legs: snap(legsMat) },
+    petAnchor,
+  };
 }
 
 // SkinTarget + the per-class rigs live in `./class-rigs.ts` — the BitSpekter
@@ -318,9 +414,14 @@ let glyphAtlases: {
 function getGlyphAtlases(): NonNullable<typeof glyphAtlases> {
   if (!glyphAtlases) {
     glyphAtlases = {
-      worldAtlas: buildGlyphAtlas({ ramp: ' .·-:;=+*░#▒▓█', cellSize: 4, fontSize: 6 }),
-      characterAtlas: buildGlyphAtlas({ ramp: " '.,:;-+=*#%&@", cellSize: 4, fontSize: 6 }),
-      edgeAtlas: buildGlyphAtlas({ ramp: ' ▀▄▌▐█', cellSize: 4, fontSize: 6 }),
+      // cellSize 3 (was 4): finer ASCII grid per player feedback ("pixels too
+      // big"). cellSize 2 was rejected — the atlas canvas is cellSize px tall,
+      // so a 2px cell cannot hold a legible glyph (6px monospace glyphs are
+      // ~3.6px wide → hard corruption of neighbour cells, not just blur), and
+      // it 4×es ascii-pass texel work vs 2.25× for 3. Devlog 0145.
+      worldAtlas: buildGlyphAtlas({ ramp: ' .·-:;=+*░#▒▓█', cellSize: 3, fontSize: 6 }),
+      characterAtlas: buildGlyphAtlas({ ramp: " '.,:;-+=*#%&@", cellSize: 3, fontSize: 6 }),
+      edgeAtlas: buildGlyphAtlas({ ramp: ' ▀▄▌▐█', cellSize: 3, fontSize: 6 }),
     };
   }
   return glyphAtlases;
@@ -640,6 +741,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // Plates: emissive floor tiles + 1..4 pip cubes. Materials kept so the tick
   // can brighten a plate as the sequence advances (clones share the material).
   const plateMats: MeshStandardMaterialType[] = [];
+  // Tile meshes kept too (P5): a lit plate depresses ~0.05y for tactile
+  // press feedback. NOTE: worldTile is cloned across the 3x3 torus tiles and
+  // clones share materials but NOT transforms — the depress shows on the
+  // center (playable) tile, which is the one underfoot when stepping.
+  const plateTiles: Mesh[] = [];
   const plateGeom = new BoxGeometry(1.2, 0.08, 1.2);
   const pipGeom = new BoxGeometry(0.16, 0.1, 0.16);
   const pipMat = new MeshStandardMaterial({
@@ -657,6 +763,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     plateMats.push(mat);
     const tile = new MeshClass(plateGeom, mat);
     tile.position.set(plate.x, 0.04, plate.z);
+    plateTiles.push(tile);
     worldTile.add(tile);
     for (let p = 0; p < plate.pips; p++) {
       const pip = new MeshClass(pipGeom, pipMat);
@@ -689,6 +796,62 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   addBeacon(6.0, -5.5); // SAMM
   addBeacon(5.5, 5.5); // obelisk / The Admin
   addBeacon(GLITCH_SWITCH.x, GLITCH_SWITCH.z); // glitch switch
+
+  // ── RAMHATTAN district blockout (mega-batch 3 · P8, first slice) ─────────
+  // Grayscale building masses + an asphalt strip + sparse emissive signage,
+  // all from primitives (P6 assets slot in on the next batch). Two shared
+  // building materials per the material-sharing convention; buildings scale
+  // ONE unit box. Inside worldTile → tiles across the 3×3 wrap like every
+  // other prop. Colliders live in COLLIDERS above (kept in sync).
+  {
+    const bldLightMat = new MeshStandardMaterial({ color: 0x565b60, roughness: 0.92 });
+    const bldDarkMat = new MeshStandardMaterial({ color: 0x33383d, roughness: 0.85 });
+    const unitBox = new BoxGeometry(1, 1, 1);
+    for (const b of RAMHATTAN_BUILDINGS) {
+      const bld = new MeshClass(unitBox, b.dark ? bldDarkMat : bldLightMat);
+      bld.scale.set(b.hx * 2, b.h, b.hz * 2);
+      bld.position.set(b.x, b.h / 2, b.z);
+      worldTile.add(bld);
+    }
+    // Street: a dark asphalt strip along the district's east-west spine.
+    const streetMat = new MeshStandardMaterial({ color: 0x2b2e31, roughness: 0.7 });
+    const street = new MeshClass(unitBox, streetMat);
+    street.scale.set(21, 0.04, 3.2);
+    street.position.set(RAMHATTAN.x, 0.02, RAMHATTAN.z);
+    worldTile.add(street);
+    // Signage: three thin emissive strips on street-facing faces — the
+    // district's neon reads through the ASCII pass as glow.
+    const neonCyanMat = new MeshStandardMaterial({
+      color: 0x0a1216,
+      emissive: 0x6cf0ff,
+      emissiveIntensity: 1.5,
+      roughness: 0.4,
+    });
+    const neonEmberMat = new MeshStandardMaterial({
+      color: 0x160c08,
+      emissive: 0xff6a20,
+      emissiveIntensity: 1.4,
+      roughness: 0.4,
+    });
+    const signA = new MeshClass(unitBox, neonCyanMat);
+    signA.scale.set(1.6, 0.35, 0.08);
+    signA.position.set(-25.5, 2.6, -26.45); // over the keeper's storefront
+    worldTile.add(signA);
+    const signB = new MeshClass(unitBox, neonEmberMat);
+    signB.scale.set(0.3, 2.2, 0.08);
+    signB.position.set(-30.2, 2.4, -29.85); // vertical sign, south row
+    worldTile.add(signB);
+    const signC = new MeshClass(unitBox, neonCyanMat);
+    signC.scale.set(1.1, 0.3, 0.08);
+    signC.position.set(-19.5, 3.4, -26.35); // north-east marquee
+    worldTile.add(signC);
+    // The keeper: a static dweller-pattern NPC minding the storefront
+    // (client-local prop, not a server NPC — concept per the design doc).
+    const keeper = buildDweller('dweller.husk');
+    keeper.position.set(RAMHATTAN_KEEPER.x, 0, RAMHATTAN_KEEPER.z);
+    keeper.rotation.y = Math.PI; // face the street (south)
+    worldTile.add(keeper);
+  }
 
   const tuftMaterial = new MeshStandardMaterial({
     color: 0x88c466,
@@ -1272,16 +1435,36 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   composer.addPass(asciiPass);
 
   // CRT/diode finishing pass (scanlines + vignette + faint chromatic split).
-  // On by default; ?crt=off disables it (perf escape hatch on weak devices).
-  const crtEnabled =
-    typeof window === 'undefined' ||
-    new URLSearchParams(window.location.search).get('crt') !== 'off';
-  const crtPass = crtEnabled
-    ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.05 })
-    : null;
+  // On by default; ?crt=off disables it (perf escape hatch on weak devices);
+  // ?crt=strong restores the pre-0145 heavier grade for A/B comparison.
+  const crtParam =
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('crt');
+  const crtPass =
+    crtParam === 'off'
+      ? null
+      : crtParam === 'strong'
+        ? createCrtPass({ scanline: 0.1, vignette: 0.26, aberration: 0.05 })
+        : createCrtPass({ scanline: 0.06, vignette: 0.2, aberration: 0.02 });
   if (crtPass) composer.addPass(crtPass);
 
   composer.addPass(new OutputPass());
+
+  // Dev-only asset viewer (P6, docs/assets/PIPELINE.md): ?asset=<pack>/<name>
+  // drops a manifest .glb a few units in front of spawn so the owner can
+  // eyeball it through the full ASCII pipeline. Dynamic import keeps the
+  // registry + GLTFLoader entirely out of the Game chunk unless the flag is
+  // used; a bad id just warns.
+  const assetParam =
+    typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('asset');
+  if (assetParam) {
+    void import('./assets-registry.js')
+      .then(({ loadModel }) => loadModel(assetParam))
+      .then((model) => {
+        model.position.set(0, 0, 4);
+        scene.add(model);
+      })
+      .catch((err) => console.warn('[bitrunners] asset viewer:', err));
+  }
 
   const fpsEl = document.createElement('div');
   fpsEl.className = 'fps';
@@ -1472,6 +1655,20 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (netSession) netSession.sendIdentity({ level: next });
   });
 
+  // Broadcast equipped cosmetics on change so remotes re-skin (P3). All four
+  // fields go in ONE identity message ('' clears a slot); the initial state
+  // rides the join payload. Wire ids are re-validated on the receiving side.
+  const unsubscribeAppearanceNet = subscribeAppearance(() => {
+    if (!netSession) return;
+    const a = getEquippedAppearance();
+    netSession.sendIdentity({
+      equippedHead: a.head?.itemId ?? '',
+      equippedChest: a.chest?.itemId ?? '',
+      equippedLegs: a.legs?.itemId ?? '',
+      equippedPet: a.pet?.itemId ?? '',
+    });
+  });
+
   // Class string for a REMOTE runner's styled name from the wire values.
   // Remotes that send a non-default style are signed in by construction, so we
   // pass signedIn=true; guests transmit empty strings → no class.
@@ -1530,8 +1727,71 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     /** Last-written tag transform — skips the DOM write when unchanged
      *  (stationary remotes + stationary camera). Perf P2, devlog 0140. */
     lastTagCss: string;
+    // Equipped-cosmetic rendering (P3). null for NPCs (dweller shells have
+    // no skin targets). lastAppearanceKey skips re-applying when an identity
+    // patch didn't touch the four appearance fields.
+    skin: { head: SkinTarget; chest: SkinTarget; legs: SkinTarget } | null;
+    petAnchor: Group | null;
+    petMesh: Mesh | null;
+    petGeom: BufferGeometry | null;
+    petMat: MeshStandardMaterialType | null;
+    petId: string | null;
+    lastAppearanceKey: string;
+    /** Zone presence (P5) — 'cloud' | 'void'. Remotes in a different zone
+     *  than the local runner are hidden (group + tag). */
+    zone: string;
   }
   const remoteAvatars = new Map<string, RemoteAvatar>();
+
+  // ── Remote equipped-cosmetics (P3, devlog 0147) ─────────────────────────
+  // Wire ids are re-validated against the shop catalog by
+  // resolveSlotAppearance (never trust the wire); unknown/invalid ids render
+  // the base shell. Reuses the local applySkin + petGeometryFor helpers.
+  const disposeRemotePet = (ra: RemoteAvatar): void => {
+    if (ra.petMesh && ra.petAnchor) ra.petAnchor.remove(ra.petMesh);
+    ra.petGeom?.dispose();
+    ra.petMat?.dispose();
+    ra.petMesh = null;
+    ra.petGeom = null;
+    ra.petMat = null;
+    ra.petId = null;
+  };
+
+  interface RemoteAppearanceFields {
+    equippedHead: string;
+    equippedChest: string;
+    equippedLegs: string;
+    equippedPet: string;
+  }
+
+  function applyRemoteAppearance(ra: RemoteAvatar, p: RemoteAppearanceFields): void {
+    if (!ra.skin || !ra.petAnchor) return; // NPC shell — no cosmetic targets
+    const key = `${p.equippedHead}|${p.equippedChest}|${p.equippedLegs}|${p.equippedPet}`;
+    if (key === ra.lastAppearanceKey) return; // identity patch didn't touch appearance
+    ra.lastAppearanceKey = key;
+    applySkin(ra.skin.head, resolveSlotAppearance(p.equippedHead, 'head'));
+    applySkin(ra.skin.chest, resolveSlotAppearance(p.equippedChest, 'chest'));
+    applySkin(ra.skin.legs, resolveSlotAppearance(p.equippedLegs, 'legs'));
+    const pet = resolveSlotAppearance(p.equippedPet, 'pet');
+    if (pet) {
+      if (!ra.petMesh || ra.petId !== pet.itemId) {
+        disposeRemotePet(ra);
+        ra.petGeom = petGeometryFor(pet.itemId);
+        ra.petMat = new MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.3 });
+        ra.petMesh = new MeshClass(ra.petGeom, ra.petMat);
+        ra.petMesh.position.set(0.5, 0, 0.1);
+        ra.petAnchor.add(ra.petMesh);
+        ra.petId = pet.itemId;
+      }
+      if (ra.petMat) {
+        setSaturated(ra.petMat.color, paletteHex(pet.palette));
+        setSaturated(ra.petMat.emissive, paletteHex(pet.palette));
+        ra.petMat.emissiveIntensity = pet.texture ? 1.8 : 1.1;
+      }
+    } else if (ra.petMesh) {
+      disposeRemotePet(ra);
+    }
+  }
   // Reusable buffer published to minimap-state once per tick. Lifetime
   // matches the scene; cleared on dispose so the minimap doesn't keep
   // showing ghosts after the user leaves the room.
@@ -1569,6 +1829,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const tapRaycaster = createTargetRaycaster();
   let lockedTarget: LockedTarget | null = null;
   const onCanvasClick = (ev: MouseEvent): void => {
+    // data_base owns canvas taps while open (RegEdit editing; remotes are
+    // hidden in the plot anyway, so tap-lock has nothing to hit).
+    if (plotActive) return;
     const rect = renderer.domElement.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     const ndcX = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
@@ -1601,6 +1864,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     ev.preventDefault();
     const dir = ev.deltaY > 0 ? 1 : -1;
     const factor = dir > 0 ? 1.1 : 1 / 1.1;
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit viewport: wheel zooms the orbit radius, not the follow cam.
+      plotRadius = clampPlotRadius(plotRadius * factor);
+      return;
+    }
     setZoom(cameraZoom * factor);
   };
   renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
@@ -1616,16 +1884,44 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (!a || !b) return 0;
     return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
   };
+  const touchMidX = (t: TouchList): number => {
+    const a = t[0];
+    const b = t[1];
+    return a && b ? (a.clientX + b.clientX) / 2 : 0;
+  };
+  const touchMidY = (t: TouchList): number => {
+    const a = t[0];
+    const b = t[1];
+    return a && b ? (a.clientY + b.clientY) / 2 : 0;
+  };
   const onTouchStart = (ev: TouchEvent): void => {
     if (ev.touches.length < 2) return;
     pinchStartDist = touchDistance(ev.touches);
     pinchStartZoom = cameraZoom;
+    if (plotActive && plotTab === 'regedit') {
+      // Second finger down: the pinch owns the gesture — cancel any orbit
+      // drag and record the baseline for zoom (distance) + pan (midpoint).
+      plotPtrId = -1;
+      plotPinchStartRadius = plotRadius;
+      plotPanLastX = touchMidX(ev.touches);
+      plotPanLastY = touchMidY(ev.touches);
+    }
   };
   const onTouchMove = (ev: TouchEvent): void => {
     if (ev.touches.length < 2 || pinchStartDist <= 0) return;
     ev.preventDefault();
     const d = touchDistance(ev.touches);
     if (d <= 0) return;
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit: pinch zooms the orbit radius, midpoint drift pans the focus.
+      plotRadius = clampPlotRadius(plotPinchStartRadius * (pinchStartDist / d));
+      const mx = touchMidX(ev.touches);
+      const my = touchMidY(ev.touches);
+      plotPan(mx - plotPanLastX, my - plotPanLastY);
+      plotPanLastX = mx;
+      plotPanLastY = my;
+      return;
+    }
     // Pinch CLOSER (fingers spread) zooms IN — i.e. smaller cameraZoom.
     setZoom(pinchStartZoom * (pinchStartDist / d));
   };
@@ -1744,6 +2040,9 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       // a second tab kicks the first instead of leaving an AFK ghost.
       const userId = (await getCurrentUserId()) ?? undefined;
       if (sceneDisposed) return;
+      // Current equipped cosmetics ride the join payload (re-computed per
+      // (re)connect so reconnects carry the latest outfit).
+      const joinAppearance = getEquippedAppearance();
       try {
         const session = await joinSphere(
           serverUrl,
@@ -1756,6 +2055,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             nameWeight: localIdentity.signedIn ? localNameStyle.weight : undefined,
             nameTint: localIdentity.signedIn ? localNameStyle.tint : undefined,
             level: localLevel,
+            equippedHead: joinAppearance.head?.itemId,
+            equippedChest: joinAppearance.chest?.itemId,
+            equippedLegs: joinAppearance.legs?.itemId,
+            equippedPet: joinAppearance.pet?.itemId,
             userId,
           },
           {
@@ -1763,10 +2066,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               if (remoteAvatars.has(p.id)) return;
               // Server NPCs (id "npc:*") get a dweller silhouette routed by
               // className (the server cycles dweller.robot|husk|spirit).
-              // Human remotes get the per-class palette shell.
-              const group = p.id.startsWith('npc:')
-                ? buildDweller(p.className ?? 'dweller.robot')
-                : buildRemoteAvatar(p.className ?? 'bit_spekter');
+              // Human remotes get the per-class palette shell + skin targets
+              // for equipped-cosmetic rendering (P3).
+              const isNpc = p.id.startsWith('npc:');
+              const build = isNpc ? null : buildRemoteAvatar(p.className ?? 'bit_spekter');
+              const group = build ? build.group : buildDweller(p.className ?? 'dweller.robot');
               const dx = wrapDelta(p.x - rig.root.position.x);
               const dz = wrapDelta(p.z - rig.root.position.z);
               group.position.set(rig.root.position.x + dx, 0, rig.root.position.z + dz);
@@ -1783,7 +2087,16 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 tagBadge: tag.badgeSpan,
                 tagLevel: tag.levelSpan,
                 lastTagCss: '',
+                skin: build ? build.skin : null,
+                petAnchor: build ? build.petAnchor : null,
+                petMesh: null,
+                petGeom: null,
+                petMat: null,
+                petId: null,
+                lastAppearanceKey: '',
+                zone: p.zone,
               };
+              if (build) applyRemoteAppearance(ra, p);
               applyTag(
                 ra.tagEl,
                 ra.tagName,
@@ -1803,11 +2116,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
                 ra.tagEl.classList.add('player-tag--npc');
               }
               remoteAvatars.set(p.id, ra);
+              applyRemoteZoneVisibility(ra);
               setNet(`net: connected · ${remoteAvatars.size} other(s)`, 'ok');
             },
             onLeave(id) {
               const ra = remoteAvatars.get(id);
               if (!ra) return;
+              disposeRemotePet(ra);
               // Release tap-lock if the locked target just disconnected.
               if (lockedTarget?.id === id) {
                 releaseLock(lockedTarget);
@@ -1830,6 +2145,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               ra.tx = p.x;
               ra.tz = p.z;
               ra.trotY = p.rotY;
+              if (p.zone !== ra.zone) {
+                ra.zone = p.zone;
+                applyRemoteZoneVisibility(ra);
+              }
             },
             onIdentity(id, p) {
               const ra = remoteAvatars.get(id);
@@ -1845,6 +2164,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
               );
               ra.tagName.className = remoteNameClass(p.nameWeight, p.nameTint);
               applyLevel(ra.tagLevel, p.level);
+              applyRemoteAppearance(ra, p);
             },
             onEmote(id, text) {
               console.info('[bitrunners] remote emote', id.slice(0, 6), text);
@@ -1876,6 +2196,17 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             },
             onTetherRejected(_reason) {
               tetherSystemNotice('// channel rejected');
+            },
+            // data_base plot visits (P7C): the server already moved our zone
+            // on 'ok'; fetch the host build and walk it read-only.
+            onVisitOk(zone, hostUserId) {
+              onVisitGranted(zone, hostUserId);
+            },
+            onVisitDenied(reason) {
+              tetherSystemNotice(`// plot visit denied — ${reason}`);
+            },
+            onVisitEnded(_reason) {
+              onVisitEndedByServer();
             },
             onDisconnect(_code) {
               if (sceneDisposed) return;
@@ -1910,6 +2241,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         );
         reconnectAttempt = 0;
         netSession = session;
+        // If a reconnect landed while the runner is in the void, restore the
+        // zone tag (fresh sessions default to 'cloud' server-side).
+        if (voidActive) session.sendZone('void');
+        // A reconnect may assign a DIFFERENT plot slot, so a mid-plot
+        // reconnect pops the runner back to the cloud instead of restoring a
+        // stale slot origin (the build itself is safe in the store).
+        if (plotActive) exitPlot();
         // Force the first move after (re)connect to send even if stationary —
         // the server scatters spawn coords on join, so remotes would otherwise
         // see this avatar parked at its random spawn point.
@@ -2056,11 +2394,35 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
+  // ── Zone-filtered remote visibility (P5) ─────────────────────────────────
+  // A remote runner renders only when it shares the local runner's zone
+  // ('cloud' vs 'void'); the maze is solo, so everything hides there. Applied
+  // on join, on zone patches, and on local zone transitions — never per frame.
+  function applyRemoteZoneVisibility(ra: RemoteAvatar): void {
+    // A remote renders only when it shares our zone. In a plot, plot-mates
+    // (host + capped visitors, P7C) share 'plot:<idx>'; an offline/local
+    // plot has no net zone, so everything hides (maze-style solo).
+    const localZone = mazeActive ? null : plotActive ? plotNetZone : voidActive ? 'void' : 'cloud';
+    const visible = localZone !== null && ra.zone === localZone;
+    ra.group.visible = visible;
+    ra.tagEl.style.display = visible ? '' : 'none';
+    // Plot zones live on the sky grid — render their occupants at pad height.
+    ra.group.position.y = parsePlotZone(ra.zone) !== null ? PLOT_BASE_Y : 0;
+  }
+  function refreshRemoteZoneVisibility(): void {
+    for (const ra of remoteAvatars.values()) applyRemoteZoneVisibility(ra);
+  }
+
   function setWorldVisibleForMaze(visible: boolean): void {
     for (const o of worldToggle) o.visible = visible;
-    for (const ra of remoteAvatars.values()) {
-      ra.group.visible = visible;
-      ra.tagEl.style.display = visible ? '' : 'none';
+    if (visible) {
+      // Re-showing the world: remotes come back zone-filtered, not en masse.
+      refreshRemoteZoneVisibility();
+    } else {
+      for (const ra of remoteAvatars.values()) {
+        ra.group.visible = false;
+        ra.tagEl.style.display = 'none';
+      }
     }
   }
 
@@ -2171,7 +2533,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     }
   }
 
-  const onCoreRunEnter = (): void => enterMaze();
+  const onCoreRunEnter = (): void => {
+    // Launching core_run from inside data_base: leave the plot first so the
+    // maze's save/restore of the rig position captures cloud coords.
+    if (plotActive) exitPlot();
+    enterMaze();
+  };
   const onCoreRunAbort = (): void => {
     if (mazeActive) {
       exitMaze();
@@ -2219,8 +2586,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   let plateNext = 0;
   let plateOn = -1;
   function setPlateLit(i: number, lit: boolean): void {
+    // Press feedback (P5): on lit the plate flashes bright (2.8, decays to
+    // 1.7 in checkVaultPlates — no timers, no allocation) and depresses.
     const mat = plateMats[i];
-    if (mat) mat.emissiveIntensity = lit ? 1.7 : 0.5;
+    if (mat) mat.emissiveIntensity = lit ? 2.8 : 0.5;
+    const tile = plateTiles[i];
+    if (tile) tile.position.y = lit ? -0.01 : 0.04;
   }
   function resetPlateLights(): void {
     for (let i = 0; i < plateMats.length; i++) setPlateLit(i, false);
@@ -2242,6 +2613,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     skybox.visible = false;
     voidGroup.visible = true;
     voidActive = true;
+    // Zone sync (P5): tell the sphere we moved to the void, then re-filter
+    // remotes — void-mates appear, cloud runners stay hidden.
+    netSession?.sendZone('void');
+    refreshRemoteZoneVisibility();
     fireMaze('bitrunners:void-enter');
   }
   function exitVoid(): void {
@@ -2256,12 +2631,427 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     plateNext = 0;
     plateOn = -1;
     resetPlateLights();
+    netSession?.sendZone('cloud');
     fireMaze('bitrunners:void-exit');
   }
   function updateVoid(): void {
     const dx = rig.root.position.x - VOID_DOOR.x;
     const dz = rig.root.position.z - VOID_DOOR.z;
     if (dx * dx + dz * dz < 1.4 * 1.4) exitVoid();
+  }
+
+  // ── data_base voxel plot (P7 Stage A) ────────────────────────────────────
+  // Player-owned voxel plot rendered in the same scene via the maze/void
+  // pattern: world tiles hide, the plot arena shows, the rig teleports.
+  // Stage A is CLIENT-LOCAL (outbound moves freeze like the maze; Stage C
+  // moves plots to the sky grid + zone wire). Two tabs, driven by the
+  // DataBase.tsx HUD over window events:
+  //   RegEdit   — orbit/pan/zoom editor; rig hidden; taps place/erase voxels
+  //   Corporeal — normal walk mode clamped to the plot, colliding with blocks
+  const PLOT_SPAWN = { x: 0, z: PLOT_HALF_Z - 3 };
+  const plotGroup = new Group();
+  plotGroup.visible = false;
+  scene.add(plotGroup);
+  // Persistence (Stage B): the store owns the ONE grid identity (localStorage
+  // for guests, save_voxel_plot RPC once signed in + migration 0019 applied).
+  initVoxelPlotSync();
+  let plotActive = false;
+  let plotTab: 'regedit' | 'corporeal' = 'regedit';
+  let plotArena: PlotArena | null = null;
+  // Working grid, fetched from the store on entry. Stable identity — remote
+  // adoption copies in place and fires PLOT_RELOADED_EVENT.
+  let plotBlocks: Uint8Array | null = null;
+  // Sky-grid netcode (P7C): the zone we announced ('plot:<idx>'), or null
+  // for an offline/local plot (then remotes stay hidden and moves freeze,
+  // Stage A behavior). plotVisit = walking someone ELSE's plot, read-only.
+  let plotNetZone: string | null = null;
+  let plotVisit = false;
+  let plotTool: 'block' | 'eraser' = 'block';
+  let plotBlockId = 1; // concrete
+  let plotDepth = 0;
+  // RegEdit orbit camera (spherical around a pannable focus). STOP-AND-ASK
+  // defaults — tune the sensitivities freely.
+  let plotYaw = 0.7;
+  let plotPitch = 0.55;
+  let plotRadius = 30;
+  let plotFocusX = 0;
+  const plotFocusY = 3;
+  let plotFocusZ = 0;
+  const PLOT_RADIUS_MIN = 8;
+  const PLOT_RADIUS_MAX = 60;
+  const clampPlotRadius = (r: number): number =>
+    Math.max(PLOT_RADIUS_MIN, Math.min(PLOT_RADIUS_MAX, r));
+  const clampPlotFocus = (): void => {
+    plotFocusX = Math.max(-PLOT_HALF_X - 6, Math.min(PLOT_HALF_X + 6, plotFocusX));
+    plotFocusZ = Math.max(-PLOT_HALF_Z - 6, Math.min(PLOT_HALF_Z + 6, plotFocusZ));
+  };
+
+  function setPlotTab(tab: 'regedit' | 'corporeal'): void {
+    plotTab = tab;
+    const editing = tab === 'regedit';
+    // The editor is a viewport, not a body — hide the rig while editing.
+    rig.root.visible = !editing;
+    if (!editing) plotArena?.hideCursor();
+  }
+
+  function firePlotEdited(): void {
+    if (plotBlocks) fireMaze('bitrunners:plot-edited', { blocks: countBlocks(plotBlocks) });
+  }
+
+  function activatePlot(blocks: Uint8Array, netZone: string | null, visit: boolean): void {
+    plotBlocks = blocks;
+    if (!plotArena) {
+      plotArena = new PlotArena(blocks);
+      plotGroup.add(plotArena.group);
+    } else {
+      plotArena.setBlocks(blocks);
+    }
+    // Sky-grid placement (P7C): with a live zone the plot parks at its slot
+    // origin (y = +120, 8×8 grid) so wire positions are unambiguous;
+    // offline plots stay at the origin like the void.
+    const slotIdx = netZone === null ? null : parsePlotZone(netZone);
+    if (slotIdx !== null) {
+      const origin = plotSlotOrigin(slotIdx);
+      plotGroup.position.set(origin.x, origin.y, origin.z);
+    } else {
+      plotGroup.position.set(0, 0, 0);
+    }
+    savedRigX = rig.root.position.x;
+    savedRigZ = rig.root.position.z;
+    savedFacing = facing;
+    if (lockedTarget) {
+      releaseLock(lockedTarget);
+      lockedTarget = null;
+    }
+    rig.root.position.x = plotGroup.position.x + PLOT_SPAWN.x;
+    rig.root.position.z = plotGroup.position.z + PLOT_SPAWN.z;
+    rig.root.position.y = plotGroup.position.y;
+    facing = Math.PI; // face the pad center (toward −z)
+    setWorldVisibleForMaze(false);
+    skybox.visible = false;
+    plotGroup.visible = true;
+    plotActive = true;
+    plotVisit = visit;
+    plotNetZone = netZone;
+    // Visits are read-only walks — Corporeal only, no editor.
+    setPlotTab(visit ? 'corporeal' : 'regedit');
+    refreshRemoteZoneVisibility();
+    fireMaze('bitrunners:plot-enter', { visit });
+    firePlotEdited(); // seed the HUD block counter
+  }
+
+  function enterPlot(): void {
+    if (plotActive) return;
+    if (mazeActive || voidActive) {
+      // Denied (the cartridge is reachable from anywhere) — answer with the
+      // exit notification so the just-mounted HUD closes instead of
+      // deadlocking over a mode that never engaged.
+      fireMaze('bitrunners:plot-exit');
+      return;
+    }
+    const idx = netSession?.getPlotIndex() ?? -1;
+    const netZone = netSession && idx >= 0 ? plotZone(idx) : null;
+    if (netZone) netSession?.sendZone(netZone);
+    activatePlot(getPlotBlocks(), netZone, false);
+  }
+
+  /** Guest entry after the server granted a 'visit' (zone already moved
+   *  server-side). hostBlocks is the host's fetched build — a separate
+   *  buffer, never the store's own grid. */
+  function enterPlotVisit(zone: string, hostBlocks: Uint8Array): void {
+    if (plotActive || mazeActive || voidActive) return;
+    activatePlot(hostBlocks, zone, true);
+  }
+
+  function exitPlot(): void {
+    if (!plotActive) return;
+    plotActive = false;
+    const wasVisit = plotVisit;
+    plotVisit = false;
+    plotGroup.visible = false;
+    plotArena?.hideCursor();
+    rig.root.visible = true;
+    setWorldVisibleForMaze(true);
+    skybox.visible = true;
+    rig.root.position.x = savedRigX;
+    rig.root.position.z = savedRigZ;
+    rig.root.position.y = 0;
+    facing = savedFacing;
+    if (plotNetZone) netSession?.sendZone('cloud');
+    plotNetZone = null;
+    if (!wasVisit) flushPlotSave(); // persist pending edits (visits never edit)
+    fireMaze('bitrunners:plot-exit');
+  }
+
+  function updatePlot(): void {
+    // Batched remesh: any number of same-frame edits cost one rebuild.
+    plotArena?.update();
+  }
+
+  // Pointer → grid pick. Pointer-event-driven only (never per frame), so the
+  // Raycaster reuse below is thrift, not a hot-path requirement.
+  const plotRaycaster = new Raycaster();
+  const plotNdc = new Vector2();
+  function plotPickAt(clientX: number, clientY: number): VoxelPick | null {
+    if (!plotBlocks) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    plotNdc.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    plotRaycaster.setFromCamera(plotNdc, camera);
+    const o = plotRaycaster.ray.origin;
+    const d = plotRaycaster.ray.direction;
+    return pickVoxel(
+      o.x - plotGroup.position.x,
+      o.y - plotGroup.position.y,
+      o.z - plotGroup.position.z,
+      d.x,
+      d.y,
+      d.z,
+      plotBlocks,
+      plotDepth,
+    );
+  }
+
+  function applyPlotTool(pick: VoxelPick): void {
+    if (!plotBlocks || !plotArena) return;
+    if (plotVisit) return; // guests are read-only (v1)
+    if (plotTool === 'eraser') {
+      const c = pick.erase;
+      if (c && setVoxel(plotBlocks, c.x, c.y, c.z, VOXEL_AIR)) {
+        plotArena.markDirty();
+        notePlotEdited();
+        firePlotEdited();
+      }
+    } else {
+      const c = pick.place;
+      if (c && setVoxel(plotBlocks, c.x, c.y, c.z, plotBlockId)) {
+        plotArena.markDirty();
+        notePlotEdited();
+        firePlotEdited();
+      }
+    }
+  }
+
+  function refreshPlotCursor(clientX: number, clientY: number): void {
+    if (!plotArena) return;
+    const pick = plotPickAt(clientX, clientY);
+    const cell = pick ? (plotTool === 'eraser' ? pick.erase : pick.place) : null;
+    if (cell) plotArena.showCursor(cell, plotTool === 'eraser');
+    else plotArena.hideCursor();
+  }
+
+  // RegEdit gestures on the canvas: one-pointer drag orbits (shift/right-drag
+  // pans on desktop), a tap (<6 px) applies the tool, wheel + pinch zoom the
+  // orbit radius, two-finger drag pans (touch). The joystick element sits
+  // above the canvas, so its touches never reach these handlers.
+  let plotPtrId = -1;
+  let plotPtrLastX = 0;
+  let plotPtrLastY = 0;
+  let plotPtrMoved = 0;
+  let plotPanMode = false;
+  let plotPinchStartRadius = plotRadius;
+  let plotPanLastX = 0;
+  let plotPanLastY = 0;
+
+  function plotPan(dxPix: number, dyPix: number): void {
+    const s = plotRadius * 0.0016;
+    const rightX = Math.cos(plotYaw);
+    const rightZ = -Math.sin(plotYaw);
+    const upX = Math.sin(plotYaw);
+    const upZ = Math.cos(plotYaw);
+    plotFocusX += -dxPix * s * rightX + dyPix * s * upX;
+    plotFocusZ += -dxPix * s * rightZ + dyPix * s * upZ;
+    clampPlotFocus();
+  }
+
+  const plotEditing = (): boolean => plotActive && plotTab === 'regedit';
+
+  const onPlotPointerDown = (ev: PointerEvent): void => {
+    if (!plotEditing()) return;
+    if (ev.pointerType === 'touch' && !ev.isPrimary) return; // pinch owns multi-touch
+    plotPtrId = ev.pointerId;
+    plotPtrLastX = ev.clientX;
+    plotPtrLastY = ev.clientY;
+    plotPtrMoved = 0;
+    plotPanMode = ev.button === 2 || ev.shiftKey;
+    renderer.domElement.setPointerCapture?.(ev.pointerId);
+  };
+  const onPlotPointerMove = (ev: PointerEvent): void => {
+    if (!plotEditing()) return;
+    if (plotPtrId !== ev.pointerId) {
+      // Desktop hover preview while not dragging.
+      if (ev.pointerType === 'mouse' && plotPtrId === -1) {
+        refreshPlotCursor(ev.clientX, ev.clientY);
+      }
+      return;
+    }
+    const dx = ev.clientX - plotPtrLastX;
+    const dy = ev.clientY - plotPtrLastY;
+    plotPtrLastX = ev.clientX;
+    plotPtrLastY = ev.clientY;
+    plotPtrMoved += Math.abs(dx) + Math.abs(dy);
+    if (plotPanMode) {
+      plotPan(dx, dy);
+    } else {
+      plotYaw -= dx * 0.007;
+      plotPitch = Math.max(0.12, Math.min(1.45, plotPitch + dy * 0.007));
+    }
+  };
+  const onPlotPointerUp = (ev: PointerEvent): void => {
+    if (plotPtrId !== ev.pointerId) return;
+    plotPtrId = -1;
+    renderer.domElement.releasePointerCapture?.(ev.pointerId);
+    if (!plotEditing()) return;
+    if (plotPtrMoved < 6 && ev.button !== 2) {
+      const pick = plotPickAt(ev.clientX, ev.clientY);
+      if (pick) applyPlotTool(pick);
+      refreshPlotCursor(ev.clientX, ev.clientY);
+    }
+  };
+  const onPlotContextMenu = (ev: Event): void => {
+    if (plotActive) ev.preventDefault(); // right-drag pans, not menus
+  };
+  renderer.domElement.addEventListener('pointerdown', onPlotPointerDown);
+  renderer.domElement.addEventListener('pointermove', onPlotPointerMove);
+  renderer.domElement.addEventListener('pointerup', onPlotPointerUp);
+  renderer.domElement.addEventListener('pointercancel', onPlotPointerUp);
+  renderer.domElement.addEventListener('contextmenu', onPlotContextMenu);
+
+  const onDataBaseEnter = (): void => enterPlot();
+  const onDataBaseExit = (): void => exitPlot();
+  const onPlotTab = (ev: Event): void => {
+    if (!plotActive) return;
+    if (plotVisit) return; // visits are Corporeal-only
+    const tab = (ev as CustomEvent<{ tab?: string }>).detail?.tab;
+    if (tab === 'regedit' || tab === 'corporeal') setPlotTab(tab);
+  };
+  const onPlotTool = (ev: Event): void => {
+    const d = (ev as CustomEvent<{ tool?: string; blockId?: number }>).detail;
+    if (d?.tool === 'eraser') {
+      plotTool = 'eraser';
+    } else if (d?.tool === 'block') {
+      plotTool = 'block';
+      if (typeof d.blockId === 'number' && d.blockId !== VOXEL_AIR && isValidBlockId(d.blockId)) {
+        plotBlockId = d.blockId;
+      }
+    }
+  };
+  const onPlotDepth = (ev: Event): void => {
+    const n = (ev as CustomEvent<{ depth?: number }>).detail?.depth;
+    if (typeof n === 'number' && Number.isFinite(n)) {
+      plotDepth = Math.max(0, Math.min(12, Math.floor(n)));
+    }
+  };
+  const onPlotReloaded = (): void => {
+    // Remote plot adopted (sign-in on another device's build): the store
+    // copied into the SAME buffer, so a remesh + counter refresh suffices.
+    if (plotArena && plotBlocks) {
+      plotArena.markDirty();
+      firePlotEdited();
+    }
+  };
+  // Visit flow (P7C): UI (TetherChat) asks → server grants/denies → we fetch
+  // the host's build and walk it read-only. The zone was already moved
+  // server-side on 'visit-ok', so a failed fetch still enters (empty pad).
+  const onPlotVisitRequest = (ev: Event): void => {
+    const target = (ev as CustomEvent<{ target?: string }>).detail?.target;
+    if (typeof target !== 'string' || !target) return;
+    if (plotActive || mazeActive || voidActive || !netSession) return;
+    netSession.sendVisit(target);
+  };
+  /** Our ACTUAL zone right now, for restoring after a stale visit grant. */
+  function currentOwnZone(): string {
+    if (plotActive && plotNetZone) return plotNetZone;
+    if (voidActive) return 'void';
+    return 'cloud';
+  }
+  function onVisitGranted(zone: string, hostUserId: string): void {
+    if (plotActive || mazeActive || voidActive) {
+      // Stale grant (mode changed while in flight) — restore our real zone
+      // (own plot included: sending 'cloud' here would ghost us into the
+      // overworld at wrapped sky coords).
+      netSession?.sendZone(currentOwnZone());
+      return;
+    }
+    void fetchPlotBlob(hostUserId).then((blocks) => {
+      if (plotActive || mazeActive || voidActive) {
+        netSession?.sendZone(currentOwnZone());
+        return;
+      }
+      if (!blocks) {
+        // No build data (migration 0019 unapplied, offline, malformed) —
+        // abort rather than walking a pad the host renders as solid.
+        netSession?.sendZone('cloud');
+        tetherSystemNotice('// plot visit aborted — no build data');
+        return;
+      }
+      enterPlotVisit(zone, blocks);
+    });
+  }
+  const onVisitEndedByServer = (): void => {
+    // Host left; our slot-mate context is gone (the slot may be reassigned).
+    if (plotActive && plotVisit) exitPlot();
+  };
+  window.addEventListener('bitrunners:plot-visit', onPlotVisitRequest);
+  window.addEventListener('bitrunners:data-base-enter', onDataBaseEnter);
+  window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
+  window.addEventListener('bitrunners:plot-tab', onPlotTab);
+  window.addEventListener('bitrunners:plot-tool', onPlotTool);
+  window.addEventListener('bitrunners:plot-depth', onPlotDepth);
+  window.addEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
+
+  // ── RAMHATTAN collectables + keeper proximity (P8) ───────────────────────
+  // Shards are scene-root (not tiled) so a collected one vanishes outright;
+  // the pickup distance is wrap-aware, so grabbing one while standing on a
+  // wrap clone still works (the mesh just renders on the canonical tile).
+  const shardGeom = new OctahedronGeometry(0.28);
+  const shardMat = new MeshStandardMaterial({
+    color: 0x0a1a12,
+    emissive: 0x7effc0,
+    emissiveIntensity: 1.6,
+    roughness: 0.4,
+  });
+  const shardMeshes: { id: string; x: number; z: number; mesh: Mesh }[] = [];
+  for (const s of RAMHATTAN_SHARDS) {
+    const mesh = new MeshClass(shardGeom, shardMat);
+    mesh.position.set(s.x, 0.85, s.z);
+    mesh.visible = !isShardCollected(s.id);
+    scene.add(mesh);
+    shardMeshes.push({ id: s.id, x: s.x, z: s.z, mesh });
+  }
+  // Collected-state can change OUTSIDE pickups (economy-sync adopting an
+  // account blob after startScene ran) — refresh on the coalesced economy
+  // events so cross-device shards neither ghost (visible but uncollectable)
+  // nor stay hidden after a revert. Event-driven, never per frame.
+  const refreshShardVisibility = (): void => {
+    for (const s of shardMeshes) s.mesh.visible = !isShardCollected(s.id);
+  };
+  window.addEventListener('bitrunners:economy-changed', refreshShardVisibility);
+  window.addEventListener('bitrunners:economy-synced', refreshShardVisibility);
+  let keeperInRange = false;
+  function checkRamhattan(): void {
+    // Keeper prompt — edge-triggered range event (SAMM pattern).
+    const kdx = wrapDelta(rig.root.position.x - RAMHATTAN_KEEPER.x);
+    const kdz = wrapDelta(rig.root.position.z - RAMHATTAN_KEEPER.z);
+    const near = kdx * kdx + kdz * kdz < RAMHATTAN_KEEPER_TRIGGER * RAMHATTAN_KEEPER_TRIGGER;
+    if (near !== keeperInRange) {
+      keeperInRange = near;
+      fireMaze('bitrunners:ramhattan-keeper-range', { inRange: near });
+    }
+    // Shards: idle spin + bob on the uncollected ones, wrap-aware pickup.
+    for (const s of shardMeshes) {
+      if (!s.mesh.visible) continue;
+      s.mesh.rotation.y = elapsed * 1.3;
+      s.mesh.position.y = 0.85 + Math.sin(elapsed * 2.1) * 0.08;
+      const dx = wrapDelta(rig.root.position.x - s.x);
+      const dz = wrapDelta(rig.root.position.z - s.z);
+      if (dx * dx + dz * dz < RAMHATTAN_SHARD_TRIGGER * RAMHATTAN_SHARD_TRIGGER) {
+        if (pickUpShard(s.id)) s.mesh.visible = false;
+      }
+    }
   }
 
   const GLITCH_TRIGGER = 2.4;
@@ -2277,6 +3067,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   }
 
   function checkVaultPlates(): void {
+    // Settle the press flash: any plate above the lit resting intensity
+    // (1.7) eases back down. Scalar math on ≤4 materials — no allocation.
+    for (const m of plateMats) {
+      if (m.emissiveIntensity > 1.7)
+        m.emissiveIntensity = Math.max(1.7, m.emissiveIntensity - 0.05);
+    }
     let on = -1;
     for (let i = 0; i < VAULT_PLATES.length; i++) {
       const plate = VAULT_PLATES[i];
@@ -2355,6 +3151,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   ];
 
   function updateFeetArrow(): void {
+    if (plotActive) {
+      // The plot has no landmarks (exit lives in the HUD) — no arrow.
+      feetArrow.visible = false;
+      return;
+    }
     let dx = 0;
     let dz = 0;
     let show = false;
@@ -2362,7 +3163,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       dx = mazeArena.centerWorld.x - rig.root.position.x;
       dz = mazeArena.centerWorld.z - rig.root.position.z;
       show = true;
-    } else if (!voidActive) {
+    } else if (voidActive) {
+      // In the void the only landmark is the exit door — point straight at it
+      // (no wrap; the void room is bounded). Hide when standing on it.
+      dx = VOID_DOOR.x - rig.root.position.x;
+      dz = VOID_DOOR.z - rig.root.position.z;
+      show = dx * dx + dz * dz > 0.36;
+    } else {
       const cp = activeCheckpointXZ();
       feetArrowTargets.length = 4;
       if (cp) feetArrowTargets.push(cp);
@@ -2397,7 +3204,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     elapsed += dt;
 
     const m = input.intent();
-    const moving = m.x !== 0 || m.y !== 0;
+    // RegEdit is a viewport, not a walk mode — movement input is ignored there.
+    const moving = (m.x !== 0 || m.y !== 0) && !(plotActive && plotTab === 'regedit');
 
     if (moving) {
       tempFwd.subVectors(rig.root.position, camera.position).setY(0).normalize();
@@ -2406,24 +3214,41 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       if (tempMove.lengthSq() > 1) tempMove.normalize();
       // Obstacle collision: try the candidate XZ position; slide along walls.
       const speed = (runEnabled ? RUN_SPEED : WALK_SPEED) * dt;
-      slideMoveInto(
-        rig.root.position,
-        rig.root.position.x + tempMove.x * speed,
-        rig.root.position.z + tempMove.z * speed,
-        PLAYER_RADIUS,
-        mazeActive ? mazeColliders : voidActive ? voidColliders : COLLIDERS,
-      );
-      if (mazeActive) {
-        // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
-        clampToMaze(rig.root.position);
-      } else if (voidActive) {
-        // Void room is a bounded dark area (no wrap); clamp to its extent.
-        clampToVoid(rig.root.position);
+      if (plotActive) {
+        // Corporeal mode: grid-sampled voxel collision + plot AABB clamp
+        // (no torus wrap — the plot is bounded like the void). The pad may
+        // sit at a sky-grid slot (P7C), so pass its origin.
+        if (plotBlocks) {
+          slideMoveVoxel(
+            rig.root.position,
+            rig.root.position.x + tempMove.x * speed,
+            rig.root.position.z + tempMove.z * speed,
+            PLAYER_RADIUS,
+            plotBlocks,
+            plotGroup.position.x,
+            plotGroup.position.z,
+          );
+        }
       } else {
-        if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
-        else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
-        if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
-        else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+        slideMoveInto(
+          rig.root.position,
+          rig.root.position.x + tempMove.x * speed,
+          rig.root.position.z + tempMove.z * speed,
+          PLAYER_RADIUS,
+          mazeActive ? mazeColliders : voidActive ? voidColliders : COLLIDERS,
+        );
+        if (mazeActive) {
+          // Maze arena is bounded (no torus wrap); clamp to the shrinking region.
+          clampToMaze(rig.root.position);
+        } else if (voidActive) {
+          // Void room is a bounded dark area (no wrap); clamp to its extent.
+          clampToVoid(rig.root.position);
+        } else {
+          if (rig.root.position.x > PLATFORM_HALF) rig.root.position.x -= PLATFORM_SIZE;
+          else if (rig.root.position.x < -PLATFORM_HALF) rig.root.position.x += PLATFORM_SIZE;
+          if (rig.root.position.z > PLATFORM_HALF) rig.root.position.z -= PLATFORM_SIZE;
+          else if (rig.root.position.z < -PLATFORM_HALF) rig.root.position.z += PLATFORM_SIZE;
+        }
       }
       facing = Math.atan2(tempMove.x, tempMove.z);
     }
@@ -2462,12 +3287,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       updateMaze();
     } else if (voidActive) {
       updateVoid();
+    } else if (plotActive) {
+      updatePlot();
     } else {
       checkObeliskApproach();
       checkSammApproach();
       checkMissionApproach();
       checkGlitchSwitch();
       checkVaultPlates();
+      checkRamhattan();
       // Pulse the active checkpoint's emissive intensity so the runner reads
       // the "next" target without staring. Cheap — one material mutation per
       // active checkpoint per frame.
@@ -2509,44 +3337,64 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     updateFeetArrow();
 
-    // Camera follow target: locked avatar if any (auto-release on distance),
-    // otherwise the local rig. The remote avatar's group.position is already
-    // wrapped near the local player in the remote-interpolation block below,
-    // so following it is seamless across the seam.
-    let followX = rig.root.position.x;
-    let followY = rig.root.position.y;
-    let followZ = rig.root.position.z;
-    if (lockedTarget) {
-      const ra = remoteAvatars.get(lockedTarget.id);
-      if (!ra) {
-        releaseLock(lockedTarget);
-        lockedTarget = null;
-      } else {
-        const ldx = wrapDelta(ra.tx - rig.root.position.x);
-        const ldz = wrapDelta(ra.tz - rig.root.position.z);
-        if (Math.hypot(ldx, ldz) > LOCK_RELEASE_DISTANCE) {
+    if (plotActive && plotTab === 'regedit') {
+      // RegEdit viewport: free orbit around the pannable plot focus. The
+      // follow camera (and tap-lock) resumes the moment the tab flips back.
+      const cosP = Math.cos(plotPitch);
+      camera.position.set(
+        plotGroup.position.x + plotFocusX + Math.sin(plotYaw) * cosP * plotRadius,
+        plotGroup.position.y + plotFocusY + Math.sin(plotPitch) * plotRadius,
+        plotGroup.position.z + plotFocusZ + Math.cos(plotYaw) * cosP * plotRadius,
+      );
+      camera.lookAt(
+        plotGroup.position.x + plotFocusX,
+        plotGroup.position.y + plotFocusY,
+        plotGroup.position.z + plotFocusZ,
+      );
+    } else {
+      // Camera follow target: locked avatar if any (auto-release on distance),
+      // otherwise the local rig. The remote avatar's group.position is already
+      // wrapped near the local player in the remote-interpolation block below,
+      // so following it is seamless across the seam.
+      let followX = rig.root.position.x;
+      let followY = rig.root.position.y;
+      let followZ = rig.root.position.z;
+      if (lockedTarget) {
+        const ra = remoteAvatars.get(lockedTarget.id);
+        if (!ra) {
           releaseLock(lockedTarget);
           lockedTarget = null;
         } else {
-          tickLock(lockedTarget, elapsed);
-          followX = ra.group.position.x;
-          followY = 0;
-          followZ = ra.group.position.z;
+          const ldx = wrapDelta(ra.tx - rig.root.position.x);
+          const ldz = wrapDelta(ra.tz - rig.root.position.z);
+          if (Math.hypot(ldx, ldz) > LOCK_RELEASE_DISTANCE) {
+            releaseLock(lockedTarget);
+            lockedTarget = null;
+          } else {
+            tickLock(lockedTarget, elapsed);
+            followX = ra.group.position.x;
+            followY = 0;
+            followZ = ra.group.position.z;
+          }
         }
       }
+      camera.position.set(
+        followX + cameraOffset.x * cameraZoom,
+        followY + cameraOffset.y * cameraZoom,
+        followZ + cameraOffset.z * cameraZoom,
+      );
+      camera.lookAt(followX, followY + 0.9, followZ);
     }
-    camera.position.set(
-      followX + cameraOffset.x * cameraZoom,
-      followY + cameraOffset.y * cameraZoom,
-      followZ + cameraOffset.z * cameraZoom,
-    );
-    camera.lookAt(followX, followY + 0.9, followZ);
 
     // Remote avatars: draw at the periodic image nearest the local player,
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
     // bigger than half the board is a seam wrap by either player — snap, since
-    // the 3x3 tiles are visually identical there anyway.
-    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
+    // the 3x3 tiles are visually identical there anyway. Runs in EVERY mode
+    // except the (solo) maze: void-mates and plot-mates move live too — the
+    // old !voidActive gate froze void-mates in place (P5 gap, fixed in P7C).
+    // Zone-hidden remotes still interpolate; cheap, and they're ready the
+    // moment a zone flips. Y is zone-owned (applyRemoteZoneVisibility).
+    if (!mazeActive && remoteAvatars.size > 0) {
       const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
       for (const ra of remoteAvatars.values()) {
         const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
@@ -2554,7 +3402,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         const ddx = desX - ra.group.position.x;
         const ddz = desZ - ra.group.position.z;
         if (Math.abs(ddx) > PLATFORM_HALF || Math.abs(ddz) > PLATFORM_HALF) {
-          ra.group.position.set(desX, 0, desZ);
+          ra.group.position.set(desX, ra.group.position.y, desZ);
         } else {
           ra.group.position.x += ddx * lerpA;
           ra.group.position.z += ddz * lerpA;
@@ -2567,7 +3415,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // In maze mode we freeze outbound moves so the avatar stays parked in the
     // shared world (the rig is off in the maze arena's coordinate space).
-    if (!mazeActive && !voidActive && netSession && now - lastNetSend >= NET_SEND_MS) {
+    // Void moves DO send (P5): the void is shared space now — void-mates see
+    // each other via the zone filter; cloud runners hide void coords anyway.
+    // Plot moves send once the zone wire is live (P7C — plot-mates need
+    // them); an offline/local plot stays frozen like the maze.
+    const modeFrozen = mazeActive || (plotActive && plotNetZone === null);
+    if (modeFrozen && netSession && now - lastNetSend >= MOVE_KEEPALIVE_MS) {
+      // Frozen ≠ silent: the server's idle sweep counts only inbound messages
+      // as liveness (decisions.md 2026-07-11), and a build session is
+      // open-ended — so ping the PARKED coords every 10 s. The avatar stays
+      // put for everyone else; lastSeen stays fresh.
+      netSession.sendMove(savedRigX, savedRigZ, savedFacing);
+      lastNetSend = now;
+      lastSentX = savedRigX;
+      lastSentZ = savedRigZ;
+      lastSentRotY = savedFacing;
+    }
+    if (!modeFrozen && netSession && now - lastNetSend >= NET_SEND_MS) {
       const sx = rig.root.position.x;
       const sz = rig.root.position.z;
       const moved =
@@ -2589,7 +3453,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Position tick for the starmap minimap. Emits at NET_SEND_HZ so the
     // HUD updates at the same cadence as outbound moves — once per ~67 ms.
-    if (!mazeActive && !voidActive && now - lastMinimapEmit >= NET_SEND_MS) {
+    if (!mazeActive && !plotActive && !voidActive && now - lastMinimapEmit >= NET_SEND_MS) {
       publishMinimapTick(rig.root.position.x, rig.root.position.z, facing);
       // Push live remote positions for the minimap dots. Re-using one
       // scratch array — at a full sphere we publish at most 40 entries
@@ -2673,9 +3537,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
-    if (!mazeActive && !voidActive && remoteAvatars.size > 0) {
+    // Every mode except the solo maze — void/plot-mates need live tags (the
+    // old gate left void tags frozen at stale positions, fixed in P7C).
+    // Zone-hidden avatars are skipped (their tag is display:none anyway).
+    if (!mazeActive && remoteAvatars.size > 0) {
       for (const ra of remoteAvatars.values()) {
-        tempTag.set(ra.group.position.x, 2.55, ra.group.position.z);
+        if (!ra.group.visible) continue;
+        tempTag.set(ra.group.position.x, ra.group.position.y + 2.55, ra.group.position.z);
         tempTag.project(camera);
         const rx = (tempTag.x * 0.5 + 0.5) * hostW;
         const ry = (-tempTag.y * 0.5 + 0.5) * hostH;
@@ -2700,7 +3568,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         trackedEmotes.splice(i, 1);
         continue;
       }
-      tempEmote.set(te.group.position.x, 2.35, te.group.position.z);
+      tempEmote.set(te.group.position.x, te.group.position.y + 2.35, te.group.position.z);
       tempEmote.project(camera);
       const ex = (tempEmote.x * 0.5 + 0.5) * hostW;
       const ey = (-tempEmote.y * 0.5 + 0.5) * hostH;
@@ -2750,6 +3618,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
     window.removeEventListener('bitrunners:core-run-enter', onCoreRunEnter);
     window.removeEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+    window.removeEventListener('bitrunners:plot-visit', onPlotVisitRequest);
+    window.removeEventListener('bitrunners:data-base-enter', onDataBaseEnter);
+    window.removeEventListener('bitrunners:data-base-exit', onDataBaseExit);
+    window.removeEventListener('bitrunners:plot-tab', onPlotTab);
+    window.removeEventListener('bitrunners:plot-tool', onPlotTool);
+    window.removeEventListener('bitrunners:plot-depth', onPlotDepth);
+    window.removeEventListener(PLOT_RELOADED_EVENT, onPlotReloaded);
+    flushPlotSave();
+    renderer.domElement.removeEventListener('pointerdown', onPlotPointerDown);
+    renderer.domElement.removeEventListener('pointermove', onPlotPointerMove);
+    renderer.domElement.removeEventListener('pointerup', onPlotPointerUp);
+    renderer.domElement.removeEventListener('pointercancel', onPlotPointerUp);
+    renderer.domElement.removeEventListener('contextmenu', onPlotContextMenu);
+    if (plotArena) {
+      plotArena.dispose();
+      plotArena = null;
+    }
     if (mazeArena) {
       mazeArena.dispose();
       mazeArena = null;
@@ -2786,6 +3671,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // scene instance.
     publishMinimapRemotes([]);
     unsubscribeIdentity();
+    unsubscribeAppearanceNet();
     unsubscribeNameStyle();
     unsubscribeLevel();
     unsubscribeMission();
@@ -2805,6 +3691,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // intentionally not disposed here. See getGlyphAtlases().
     tendrilGeom.dispose();
     for (const t of tendrils) t.mat.dispose();
+    shardGeom.dispose();
+    shardMat.dispose();
+    window.removeEventListener('bitrunners:economy-changed', refreshShardVisibility);
+    window.removeEventListener('bitrunners:economy-synced', refreshShardVisibility);
     if (fpsEl.parentNode === host) host.removeChild(fpsEl);
     if (netEl.parentNode === host) host.removeChild(netEl);
     if (playerTagEl.parentNode === host) host.removeChild(playerTagEl);

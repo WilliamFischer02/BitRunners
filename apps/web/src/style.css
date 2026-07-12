@@ -4064,6 +4064,9 @@ dialog.panel::backdrop {
 /* ── SCRAPE press flourish: green glow + circuit-trace tendrils ── */
 .scrape-stage {
   position: relative;
+  /* The glow is a 320x200 absolute sibling; clip it to the stage so its
+     grid never paints over the section borders / sibling UI. */
+  overflow: hidden;
 }
 .scrape-btn {
   position: relative;
@@ -6156,5 +6159,241 @@ dialog.panel::backdrop {
   .protocols-launch {
     /* directly beneath the profile: minimap offset + one button height */
     top: calc(12px + clamp(120px, 18vw, 156px) + 10px + clamp(56px, 8.4vw, 72px));
+  }
+}
+
+/* ── The Admin transmission face (overlay card while dialogue is open) ── */
+.transmission-face {
+  position: fixed;
+  top: 52px;
+  left: 8vw;
+  z-index: 39; /* under .dialogue-root (40) — never covers the text box */
+  pointer-events: none;
+  background: rgba(4, 3, 10, 0.88);
+  border: 1px solid #4a3a78;
+  border-radius: 4px;
+  padding: 6px 10px 8px;
+  box-shadow: 0 0 0 1px rgba(180, 139, 255, 0.2), 0 0 22px rgba(180, 139, 255, 0.25);
+  animation: transmission-face-in 240ms ease-out;
+}
+@keyframes transmission-face-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.transmission-face-head {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #b48bff;
+  margin-bottom: 4px;
+}
+.transmission-face-pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace;
+  font-size: min(9px, 1.9vw);
+  line-height: 1.02;
+  color: #d4ecdd;
+  text-shadow: 0 0 6px rgba(180, 139, 255, 0.35);
+  white-space: pre;
+}
+@media (max-width: 640px) {
+  .transmission-face {
+    top: 44px;
+    left: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .transmission-face {
+    animation: none;
+  }
+}
+
+/* ════════ data_scrape guided tour (devlog 0148) ════════
+   Reuses the .tutorial-card / .tutorial-btn typography, but the scrape panel
+   backdrop sits at z 50 — so the tour card (52) and its highlight ring (51)
+   get their own layer above it. Fixed to the bottom edge so it never covers
+   the SCRAPE button or the tabulate rows at the top of the panel. */
+.tutorial-card.scrape-tutorial {
+  position: fixed;
+  bottom: 10px;
+  top: auto;
+  z-index: 52;
+}
+.scrape-tutorial-wait {
+  margin-top: 6px;
+  font-size: var(--ui-text-sm, 11px);
+  color: #93e0b1;
+  opacity: 0.85;
+}
+.scrape-tutorial-highlight {
+  position: fixed;
+  pointer-events: none;
+  z-index: 51;
+  border: 2px dashed #93e0b1;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px rgba(147, 224, 177, 0.18), 0 0 14px rgba(147, 224, 177, 0.42);
+  transition: top 140ms ease, left 140ms ease, width 140ms ease, height 140ms ease;
+  animation: tutorial-highlight-pulse 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .scrape-tutorial-highlight {
+    animation: none;
+    transition: none;
+    opacity: 0.85;
+  }
+}
+
+/* ── data_base voxel-plot HUD (mega-batch 3 · P7A) ──────────────────────────
+   Slim top bar over the scene's plot mode: mode tabs + (RegEdit only) the
+   block palette, eraser and selection-depth slider. Same fixed-wrap /
+   pointer-events split as the core_run HUD. */
+.plot-hud-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+}
+.plot-hud {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: min(560px, calc(100vw - 16px));
+  padding: 6px 8px;
+  background: rgba(7, 10, 9, 0.88);
+  border: 1px solid #2a3340;
+  border-radius: 4px;
+  color: #d4ecdd;
+}
+.plot-hud-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.plot-title {
+  color: #b48bff;
+  font-size: var(--ui-text-sm, 12px);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.plot-tabs {
+  display: flex;
+  gap: 4px;
+}
+.plot-count {
+  margin-left: auto;
+  font-size: var(--ui-text-xs, 10px);
+  color: #93e0b1;
+  white-space: nowrap;
+}
+.plot-exit {
+  font: inherit;
+  font-size: var(--ui-text-sm, 11px);
+  color: #ff9c6b;
+  background: none;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  padding: 4px 8px;
+  min-height: 32px;
+  cursor: pointer;
+}
+.plot-exit:hover {
+  border-color: #ff9c6b;
+}
+.plot-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.plot-palette {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.plot-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: var(--ui-tap-min, 44px);
+  min-height: var(--ui-tap-min, 44px);
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 9px;
+  color: #8fa79b;
+  background: #0b0e0d;
+  border: 1px solid #2a3340;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.plot-block.is-on {
+  color: #d4ecdd;
+  background: #12201a;
+  border-color: #93e0b1;
+}
+.plot-swatch {
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+}
+.plot-swatch-eraser {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #ff9c6b;
+  background: #1a0f0c;
+}
+.plot-block-label {
+  font-size: 9px;
+  line-height: 1;
+}
+.plot-depth {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.plot-depth-label {
+  font-size: var(--ui-text-xs, 10px);
+  color: #8fa79b;
+  white-space: nowrap;
+}
+.plot-depth input[type="range"] {
+  width: 110px;
+  accent-color: #93e0b1;
+}
+.plot-hint {
+  font-size: var(--ui-text-xs, 10px);
+  color: #5d7267;
+  text-align: center;
+}
+@media (max-width: 540px) {
+  .plot-hud {
+    width: calc(100vw - 12px);
+    padding: 5px 6px;
+  }
+  .plot-depth input[type="range"] {
+    width: 80px;
+  }
+  .plot-hint {
+    display: none;
   }
 }

@@ -46,6 +46,15 @@ export function AdminDialogue({ onClose }: AdminDialogueProps): JSX.Element {
 
   const doClose = useCallback(() => setClosing(true), []);
 
+  // Broadcast the speaking state for the TransmissionFace overlay (decoupled
+  // — the face component only knows this event, not this component's state).
+  useEffect(() => {
+    const speaking = typing && (phase === 'opening' || phase === 'response') && !closing;
+    window.dispatchEvent(
+      new CustomEvent('bitrunners:admin-typing', { detail: { typing: speaking } }),
+    );
+  }, [typing, phase, closing]);
+
   // The line to currently reveal, computed from phase + lineIdx + chosen.
   const targetLine = (() => {
     if (phase === 'opening') return getLines('admin.opening')[lineIdx] ?? '';

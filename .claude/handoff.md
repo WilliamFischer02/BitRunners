@@ -1,3 +1,108 @@
+# Handoff — 2026-07-12, Mega-batch 3 (P0–P8 + review hardening)
+
+Fully-autonomous run against the mega-batch-3 launch prompt on
+**`claude/mega3-2026-07-11`** (branched off `main` @ `01b9afc`). Twelve
+atomic commits, one per tier (P7 staged A/B/C + a hardening commit), each
+with a devlog (0144–0155). Gates green on every commit: biome (targeted) ·
+typecheck 8/8 · test **85/85** (baseline 48; +27 voxel-core, +10
+voxel-scene) · build 5/5 · `check-bundle` OK. **No new dependencies**
+(GLTFLoader is `three/addons`, part of the existing `three` dep — devlog
+0150). **One migration AUTHORED, NOT applied** (0019, below). `gh`
+unauthed → no PRs opened (standing precedent); compare URL:
+`https://github.com/WilliamFischer02/BitRunners/compare/main...claude/mega3-2026-07-11`
+
+| Tier | Commit | Devlog | What |
+|---|---|---|---|
+| P0 scrape-glow clip | `6af02be` | 0144 | overflow:hidden on .scrape-stage |
+| P1 VFX soften + finer ASCII | `ff427ca` | 0145 | CRT 0.02/0.06/0.2, `?crt=strong` A/B; cellSize → see devlog for the resolution call |
+| P2 transmission face | `bcb71e1` | 0146 | 5-frame authored ASCII face, `<pre>` textContent swap, admin-typing CustomEvent |
+| P3 remote appearance sync | `b95660f` | 0147 | equipped head/chest/legs/pet on the wire (appended fields) |
+| P4 scrape tutorial | `7ac1ea5` | 0148 | 6-step action-advancing tour, `scrapeTutorialSeen` blob flag |
+| P5 void netcode | `7c7e19a` | 0149 | zone wire ('cloud'/'void'), plate press polish |
+| P6 asset pipeline | `81f2c08` | 0150 | PIPELINE.md, assets-registry, `?asset=<id>` viewer (awaiting owner drops) |
+| P7A voxel editor | `19db032` | 0151 | data_base cartridge, 24×16×24 plot, RegEdit orbit editor + Corporeal walk, InstancedMesh meshing, DDA depth picking |
+| P7B persistence | `fe2f6ba` | 0152 | localStorage + migration **0019** (authored only), 3s-debounced saves, denser-build-wins merge, 'plot' account nudge |
+| P7C sky-grid MP | `56c77f9` | 0153 | plotIndex wire, `plot:<idx>` zones, slot origins y=+120, capped read-only visits via TetherChat; fixes P5 void interp/tag freeze |
+| P8 RAMHATTAN | `d5428c9` | 0154 | docs/design/ramhattan.md + SW-quadrant blockout, keeper NPC prompt, 3 shards (`ramhattanFound` blob array) |
+| Hardening | `37e069d` | 0155 | 10 fixes from a multi-agent adversarial review (see below) |
+
+## Owner actions required
+
+1. **Open the PR** from the compare URL (gh unauthed here). **Merging
+   triggers a Fly redeploy** — P3/P5/P7C/hardening touch `apps/server` +
+   `packages/shared`. No PROTOCOL_VERSION bump (appended schema fields
+   only); usual coordinated-deploy window.
+2. **Apply migration 0019** (see proposed migrations below). Until then:
+   plots persist locally per device, account sync + plot visits degrade
+   gracefully (visits abort with a tether notice).
+3. **Visual verify** — each devlog lists concrete steps. Highest value:
+   0151 (editor feel on phone), 0153 (two-browser plot visit + void
+   moving-remotes regression), 0145 (ASCII resolution on a mid phone,
+   `?crt=strong` A/B), 0154 (district + shard toasts).
+4. **P1 resolution STOP-AND-ASK** — see devlog 0145's tradeoff note; flip
+   the cellSize constant back if mobile fps reads badly on real hardware.
+
+## proposed migrations
+
+**`supabase/migrations/0019_voxel_plots.sql` — AUTHORED IN-REPO this
+session, NOT applied to prod.** Contents: `voxel_plots` table (user_id PK →
+auth.users, JSONB RLE envelope + version + updated_at; RLS own-row SELECT
+in the 0015 initplan form; direct client writes revoked) +
+`save_voxel_plot` (SECURITY DEFINER, auth gate, jsonb shape check, 256 KB
+`pg_column_size` cap — sized to JSONB's ~12 B/number so every legal grid
+fits, devlog 0155) + `get_voxel_plot(p_user)` (STABLE SECURITY DEFINER;
+deliberately readable cross-user by authenticated callers — plot visits
+render the host's build; content is block ids only, no free text).
+Follows the 0013/0014 EXECUTE-lockdown pattern (PUBLIC + anon revoked).
+Idempotent-ish (`CREATE TABLE IF NOT EXISTS`, `CREATE OR REPLACE`,
+`DROP POLICY IF EXISTS`). **No other migrations needed** — every other
+persisted flag/array this batch rides the additive economy blob
+(`scrapeTutorialSeen`, `ramhattanFound`).
+
+## Review coverage note (be honest with yourself, next session)
+
+The post-implementation adversarial review ran 4 dimensions; **netcode
+and persistence completed** (13 findings → 10 fixed in `37e069d`, 3
+accepted-as-designed and documented in code), but the **state-machine and
+render-perf reviewers died to a session token limit** and were covered by
+implementation-time reasoning only. A fresh-context pass over scene.ts's
+four-mode state machine (cloud/maze/void/plot × regedit/corporeal ×
+own/visit) would be the highest-value review still outstanding.
+
+## STOP-AND-ASK defaults shipped (tune freely)
+
+- Voxel plot 24×16×24, VOXEL_SIZE 1.0, palette of 5 launch blocks
+  (voxel-core.ts), shard reward **250 cr** (`RAMHATTAN_SHARD_CREDITS`),
+  orbit sensitivities/radius clamp/depth max in scene.ts's plot block.
+- Plot sky grid: 8×8, y=+120, 64-unit spacing, guest cap 3 (shared).
+- data_base plot floor = bare pad (no starter slab — it would collide with
+  Corporeal walking; slab templates are a Stage-B-follow-up option).
+- RAMHATTAN keeper copy is PLACEHOLDER; district lore is an **open owner
+  Q&A** — four questions in docs/design/ramhattan.md. Don't name canon
+  without answers.
+
+## What P8 needs next batch (specced in docs/design/ramhattan.md)
+
+Cross street + alleys + street furniture (client-only) · `dweller.thug`
+wander NPCs with district-clamped bounds (server change) · keeper shop UI
+on the existing catalog plumbing · P6 `.glb` placements as the owner drops
+CC0 models per docs/assets/PIPELINE.md.
+
+## Known gaps / cautions
+
+- **Reconnect mid-plot pops you to the cloud** (deliberate — a fresh
+  session may assign a different slot; build is safe in the store).
+- **Visits are read-only and static** (snapshot at entry; no live
+  co-editing — that's a future stage, don't promise it in copy).
+- Equal-block-count local rework loses to the account row on sign-in
+  (countBlocks can't see rearrangement — commented in voxel-plot-store).
+- Shard meshes don't render on wrap clones (pickup is wrap-aware; noted
+  in devlog 0154).
+- Case-collision caution stands: never add two src files differing only
+  by case (DataBase.tsx coexists with data— nothing today; keep it so).
+
+---
+
 # Handoff — 2026-07-11, Performance pass (baseline → P0–P3 → guardrails)
 
 Fully-autonomous perf pass on **`claude/perf-pass-2026-07-11`** (branched off

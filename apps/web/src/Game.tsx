@@ -11,11 +11,13 @@ import { MissionDialogue } from './MissionDialogue.js';
 import { Objectives } from './Objectives.js';
 import { ProfileIcon } from './ProfileIcon.js';
 import { Protocols } from './Protocols.js';
+import { RamhattanKeeper } from './RamhattanKeeper.js';
 import { Samm } from './Samm.js';
 import { ScrapeMenu } from './ScrapeMenu.js';
 import { ShopInventoryModal, openShopInventory } from './ShopInventoryModal.js';
 import { Starmap } from './Starmap.js';
 import { TetherChat } from './TetherChat.js';
+import { TransmissionFace } from './TransmissionFace.js';
 import { Tutorial } from './Tutorial.js';
 import { UsernameEditor } from './UsernameEditor.js';
 import { startAccountNudge } from './account-nudge.js';
@@ -27,6 +29,7 @@ import { startIdentity } from './profile.js';
 import {
   CIRCUIT_PATCH_OPEN_EVENT,
   CORE_RUN_OPEN_EVENT,
+  DATA_BASE_OPEN_EVENT,
   FREQ_LOCK_OPEN_EVENT,
 } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
@@ -58,6 +61,8 @@ const FreqLock = lazy(() => import('./FreqLock.js'));
 const CircuitPatch = lazy(() => import('./CircuitPatch.js'));
 // core_run shrinking-maze minigame overlay — lazy chunk (mega-batch 2 · 4.5).
 const CoreRun = lazy(() => import('./CoreRun.js'));
+// data_base voxel-plot HUD — lazy chunk (mega-batch 3 · P7A).
+const DataBase = lazy(() => import('./DataBase.js'));
 // Admin console — heavy panel (dialogue editor, user table, grants). Only
 // admins ever see it, so non-admins never download the chunk (perf pass P1).
 const AdminConsole = lazy(() =>
@@ -105,6 +110,8 @@ export function Game({ className }: GameProps): JSX.Element {
   const [freqLockOpen, setFreqLockOpen] = useState(false);
   const [circuitOpen, setCircuitOpen] = useState(false);
   const [coreRunOpen, setCoreRunOpen] = useState(false);
+  const [dataBaseOpen, setDataBaseOpen] = useState(false);
+  const [dataBaseVisit, setDataBaseVisit] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -123,6 +130,27 @@ export function Game({ className }: GameProps): JSX.Element {
     const onOpen = (): void => setCoreRunOpen(true);
     window.addEventListener(CORE_RUN_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(CORE_RUN_OPEN_EVENT, onOpen);
+  }, []);
+
+  useEffect(() => {
+    const onOpen = (): void => {
+      setDataBaseVisit(false);
+      setDataBaseOpen(true);
+    };
+    window.addEventListener(DATA_BASE_OPEN_EVENT, onOpen);
+    // Plot visits (P7C) are scene-initiated (server grant → fetch → enter);
+    // mount the HUD in read-only visit mode when the scene reports one.
+    const onPlotEnter = (e: Event): void => {
+      if ((e as CustomEvent<{ visit?: boolean }>).detail?.visit === true) {
+        setDataBaseVisit(true);
+        setDataBaseOpen(true);
+      }
+    };
+    window.addEventListener('bitrunners:plot-enter', onPlotEnter);
+    return () => {
+      window.removeEventListener(DATA_BASE_OPEN_EVENT, onOpen);
+      window.removeEventListener('bitrunners:plot-enter', onPlotEnter);
+    };
   }, []);
 
   useEffect(() => {
@@ -189,7 +217,13 @@ export function Game({ className }: GameProps): JSX.Element {
           <CoreRun onClose={() => setCoreRunOpen(false)} />
         </Suspense>
       )}
+      {dataBaseOpen && (
+        <Suspense fallback={null}>
+          <DataBase visit={dataBaseVisit} onClose={() => setDataBaseOpen(false)} />
+        </Suspense>
+      )}
       <Samm inRange={sammInRange} />
+      <RamhattanKeeper />
       <AccountNudge />
       <GreedGlow />
       <Landmarks />
@@ -201,6 +235,7 @@ export function Game({ className }: GameProps): JSX.Element {
       <TetherChat />
       <BadgeToast />
       <MissionDialogue />
+      {adminDialogueOpen && <TransmissionFace />}
       {adminDialogueOpen && <AdminDialogue onClose={() => setAdminDialogueOpen(false)} />}
       {grantToast && (
         <output className="grant-toast">
