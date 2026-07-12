@@ -4,7 +4,14 @@ import {
   createCrtPass,
   setAsciiPassResolution,
 } from '@bitrunners/ascii';
-import { PLATFORM_HALF, PLATFORM_SIZE } from '@bitrunners/shared';
+import {
+  PLATFORM_HALF,
+  PLATFORM_SIZE,
+  PLOT_BASE_Y,
+  parsePlotZone,
+  plotSlotOrigin,
+  plotZone,
+} from '@bitrunners/shared';
 import {
   BackSide,
   BoxGeometry,
@@ -94,9 +101,10 @@ import {
 } from './tether-chat.js';
 import { applyThemeToPass } from './themes.js';
 import { STANDBY_ENTER_EVENT, STANDBY_EXIT_EVENT } from './visibility.js';
-import { VOXEL_AIR, countBlocks, isValidBlockId, setVoxel } from './voxel-core.js';
+import { VOXEL_AIR, countBlocks, createEmptyPlot, isValidBlockId, setVoxel } from './voxel-core.js';
 import {
   PLOT_RELOADED_EVENT,
+  fetchPlotBlob,
   flushPlotSave,
   getPlotBlocks,
   initVoxelPlotSync,
@@ -2091,6 +2099,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             onTetherRejected(_reason) {
               tetherSystemNotice('// channel rejected');
             },
+            // data_base plot visits (P7C): the server already moved our zone
+            // on 'ok'; fetch the host build and walk it read-only.
+            onVisitOk(zone, hostUserId) {
+              onVisitGranted(zone, hostUserId);
+            },
+            onVisitDenied(reason) {
+              tetherSystemNotice(`// plot visit denied — ${reason}`);
+            },
             onDisconnect(_code) {
               if (sceneDisposed) return;
               netSession = null;
@@ -2127,6 +2143,10 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         // If a reconnect landed while the runner is in the void, restore the
         // zone tag (fresh sessions default to 'cloud' server-side).
         if (voidActive) session.sendZone('void');
+        // A reconnect may assign a DIFFERENT plot slot, so a mid-plot
+        // reconnect pops the runner back to the cloud instead of restoring a
+        // stale slot origin (the build itself is safe in the store).
+        if (plotActive) exitPlot();
         // Force the first move after (re)connect to send even if stationary —
         // the server scatters spawn coords on join, so remotes would otherwise
         // see this avatar parked at its random spawn point.
@@ -2278,11 +2298,15 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // ('cloud' vs 'void'); the maze is solo, so everything hides there. Applied
   // on join, on zone patches, and on local zone transitions — never per frame.
   function applyRemoteZoneVisibility(ra: RemoteAvatar): void {
-    // The plot is solo in Stage A (like the maze); Stage C swaps this for a
-    // zone comparison so plot-mates render.
-    const visible = !mazeActive && !plotActive && ra.zone === (voidActive ? 'void' : 'cloud');
+    // A remote renders only when it shares our zone. In a plot, plot-mates
+    // (host + capped visitors, P7C) share 'plot:<idx>'; an offline/local
+    // plot has no net zone, so everything hides (maze-style solo).
+    const localZone = mazeActive ? null : plotActive ? plotNetZone : voidActive ? 'void' : 'cloud';
+    const visible = localZone !== null && ra.zone === localZone;
     ra.group.visible = visible;
     ra.tagEl.style.display = visible ? '' : 'none';
+    // Plot zones live on the sky grid — render their occupants at pad height.
+    ra.group.position.y = parsePlotZone(ra.zone) !== null ? PLOT_BASE_Y : 0;
   }
   function refreshRemoteZoneVisibility(): void {
     for (const ra of remoteAvatars.values()) applyRemoteZoneVisibility(ra);
@@ -2536,6 +2560,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   // Working grid, fetched from the store on entry. Stable identity — remote
   // adoption copies in place and fires PLOT_RELOADED_EVENT.
   let plotBlocks: Uint8Array | null = null;
+  // Sky-grid netcode (P7C): the zone we announced ('plot:<idx>'), or null
+  // for an offline/local plot (then remotes stay hidden and moves freeze,
+  // Stage A behavior). plotVisit = walking someone ELSE's plot, read-only.
+  let plotNetZone: string | null = null;
+  let plotVisit = false;
   let plotTool: 'block' | 'eraser' = 'block';
   let plotBlockId = 1; // concrete
   let plotDepth = 0;
@@ -2568,14 +2597,23 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     if (plotBlocks) fireMaze('bitrunners:plot-edited', { blocks: countBlocks(plotBlocks) });
   }
 
-  function enterPlot(): void {
-    if (plotActive || mazeActive || voidActive) return;
-    plotBlocks = getPlotBlocks();
+  function activatePlot(blocks: Uint8Array, netZone: string | null, visit: boolean): void {
+    plotBlocks = blocks;
     if (!plotArena) {
-      plotArena = new PlotArena(plotBlocks);
+      plotArena = new PlotArena(blocks);
       plotGroup.add(plotArena.group);
     } else {
-      plotArena.setBlocks(plotBlocks);
+      plotArena.setBlocks(blocks);
+    }
+    // Sky-grid placement (P7C): with a live zone the plot parks at its slot
+    // origin (y = +120, 8×8 grid) so wire positions are unambiguous;
+    // offline plots stay at the origin like the void.
+    const slotIdx = netZone === null ? null : parsePlotZone(netZone);
+    if (slotIdx !== null) {
+      const origin = plotSlotOrigin(slotIdx);
+      plotGroup.position.set(origin.x, origin.y, origin.z);
+    } else {
+      plotGroup.position.set(0, 0, 0);
     }
     savedRigX = rig.root.position.x;
     savedRigZ = rig.root.position.z;
@@ -2584,21 +2622,44 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       releaseLock(lockedTarget);
       lockedTarget = null;
     }
-    rig.root.position.x = PLOT_SPAWN.x;
-    rig.root.position.z = PLOT_SPAWN.z;
+    rig.root.position.x = plotGroup.position.x + PLOT_SPAWN.x;
+    rig.root.position.z = plotGroup.position.z + PLOT_SPAWN.z;
+    rig.root.position.y = plotGroup.position.y;
     facing = Math.PI; // face the pad center (toward −z)
     setWorldVisibleForMaze(false);
     skybox.visible = false;
     plotGroup.visible = true;
     plotActive = true;
-    setPlotTab('regedit');
-    fireMaze('bitrunners:plot-enter');
+    plotVisit = visit;
+    plotNetZone = netZone;
+    // Visits are read-only walks — Corporeal only, no editor.
+    setPlotTab(visit ? 'corporeal' : 'regedit');
+    refreshRemoteZoneVisibility();
+    fireMaze('bitrunners:plot-enter', { visit });
     firePlotEdited(); // seed the HUD block counter
+  }
+
+  function enterPlot(): void {
+    if (plotActive || mazeActive || voidActive) return;
+    const idx = netSession?.getPlotIndex() ?? -1;
+    const netZone = netSession && idx >= 0 ? plotZone(idx) : null;
+    if (netZone) netSession?.sendZone(netZone);
+    activatePlot(getPlotBlocks(), netZone, false);
+  }
+
+  /** Guest entry after the server granted a 'visit' (zone already moved
+   *  server-side). hostBlocks is the host's fetched build — a separate
+   *  buffer, never the store's own grid. */
+  function enterPlotVisit(zone: string, hostBlocks: Uint8Array): void {
+    if (plotActive || mazeActive || voidActive) return;
+    activatePlot(hostBlocks, zone, true);
   }
 
   function exitPlot(): void {
     if (!plotActive) return;
     plotActive = false;
+    const wasVisit = plotVisit;
+    plotVisit = false;
     plotGroup.visible = false;
     plotArena?.hideCursor();
     rig.root.visible = true;
@@ -2606,8 +2667,11 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     skybox.visible = true;
     rig.root.position.x = savedRigX;
     rig.root.position.z = savedRigZ;
+    rig.root.position.y = 0;
     facing = savedFacing;
-    flushPlotSave(); // persist any pending edits the debounce hasn't flushed
+    if (plotNetZone) netSession?.sendZone('cloud');
+    plotNetZone = null;
+    if (!wasVisit) flushPlotSave(); // persist pending edits (visits never edit)
     fireMaze('bitrunners:plot-exit');
   }
 
@@ -2645,6 +2709,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
   function applyPlotTool(pick: VoxelPick): void {
     if (!plotBlocks || !plotArena) return;
+    if (plotVisit) return; // guests are read-only (v1)
     if (plotTool === 'eraser') {
       const c = pick.erase;
       if (c && setVoxel(plotBlocks, c.x, c.y, c.z, VOXEL_AIR)) {
@@ -2751,6 +2816,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
   const onDataBaseExit = (): void => exitPlot();
   const onPlotTab = (ev: Event): void => {
     if (!plotActive) return;
+    if (plotVisit) return; // visits are Corporeal-only
     const tab = (ev as CustomEvent<{ tab?: string }>).detail?.tab;
     if (tab === 'regedit' || tab === 'corporeal') setPlotTab(tab);
   };
@@ -2779,6 +2845,30 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       firePlotEdited();
     }
   };
+  // Visit flow (P7C): UI (TetherChat) asks → server grants/denies → we fetch
+  // the host's build and walk it read-only. The zone was already moved
+  // server-side on 'visit-ok', so a failed fetch still enters (empty pad).
+  const onPlotVisitRequest = (ev: Event): void => {
+    const target = (ev as CustomEvent<{ target?: string }>).detail?.target;
+    if (typeof target !== 'string' || !target) return;
+    if (plotActive || mazeActive || voidActive || !netSession) return;
+    netSession.sendVisit(target);
+  };
+  function onVisitGranted(zone: string, hostUserId: string): void {
+    if (plotActive || mazeActive || voidActive) {
+      // Stale grant (mode changed while in flight) — restore our real zone.
+      netSession?.sendZone(voidActive ? 'void' : 'cloud');
+      return;
+    }
+    void fetchPlotBlob(hostUserId).then((blocks) => {
+      if (plotActive || mazeActive || voidActive) {
+        netSession?.sendZone(voidActive ? 'void' : 'cloud');
+        return;
+      }
+      enterPlotVisit(zone, blocks ?? createEmptyPlot());
+    });
+  }
+  window.addEventListener('bitrunners:plot-visit', onPlotVisitRequest);
   window.addEventListener('bitrunners:data-base-enter', onDataBaseEnter);
   window.addEventListener('bitrunners:data-base-exit', onDataBaseExit);
   window.addEventListener('bitrunners:plot-tab', onPlotTab);
@@ -2948,7 +3038,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
       const speed = (runEnabled ? RUN_SPEED : WALK_SPEED) * dt;
       if (plotActive) {
         // Corporeal mode: grid-sampled voxel collision + plot AABB clamp
-        // (no torus wrap — the plot is bounded like the void).
+        // (no torus wrap — the plot is bounded like the void). The pad may
+        // sit at a sky-grid slot (P7C), so pass its origin.
         if (plotBlocks) {
           slideMoveVoxel(
             rig.root.position,
@@ -2956,6 +3047,8 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
             rig.root.position.z + tempMove.z * speed,
             PLAYER_RADIUS,
             plotBlocks,
+            plotGroup.position.x,
+            plotGroup.position.z,
           );
         }
       } else {
@@ -3117,8 +3210,12 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // Remote avatars: draw at the periodic image nearest the local player,
     // then exponential-smooth toward it (server only sends ~15 Hz). A jump
     // bigger than half the board is a seam wrap by either player — snap, since
-    // the 3x3 tiles are visually identical there anyway.
-    if (!mazeActive && !plotActive && !voidActive && remoteAvatars.size > 0) {
+    // the 3x3 tiles are visually identical there anyway. Runs in EVERY mode
+    // except the (solo) maze: void-mates and plot-mates move live too — the
+    // old !voidActive gate froze void-mates in place (P5 gap, fixed in P7C).
+    // Zone-hidden remotes still interpolate; cheap, and they're ready the
+    // moment a zone flips. Y is zone-owned (applyRemoteZoneVisibility).
+    if (!mazeActive && remoteAvatars.size > 0) {
       const lerpA = 1 - Math.exp(-REMOTE_LERP_K * dt);
       for (const ra of remoteAvatars.values()) {
         const desX = rig.root.position.x + wrapDelta(ra.tx - rig.root.position.x);
@@ -3126,7 +3223,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         const ddx = desX - ra.group.position.x;
         const ddz = desZ - ra.group.position.z;
         if (Math.abs(ddx) > PLATFORM_HALF || Math.abs(ddz) > PLATFORM_HALF) {
-          ra.group.position.set(desX, 0, desZ);
+          ra.group.position.set(desX, ra.group.position.y, desZ);
         } else {
           ra.group.position.x += ddx * lerpA;
           ra.group.position.z += ddz * lerpA;
@@ -3141,9 +3238,14 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     // shared world (the rig is off in the maze arena's coordinate space).
     // Void moves DO send (P5): the void is shared space now — void-mates see
     // each other via the zone filter; cloud runners hide void coords anyway.
-    // Plot moves freeze like the maze for Stage A (client-local plot); Stage C
-    // unfreezes them behind the plot zone wire.
-    if (!mazeActive && !plotActive && netSession && now - lastNetSend >= NET_SEND_MS) {
+    // Plot moves send once the zone wire is live (P7C — plot-mates need
+    // them); an offline/local plot stays frozen like the maze.
+    if (
+      !mazeActive &&
+      (!plotActive || plotNetZone !== null) &&
+      netSession &&
+      now - lastNetSend >= NET_SEND_MS
+    ) {
       const sx = rig.root.position.x;
       const sz = rig.root.position.z;
       const moved =
@@ -3249,9 +3351,13 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
 
     // Project each remote avatar's name tag above its head. NPCs included
     // (their tag was set to the className earlier and reads as a faint label).
-    if (!mazeActive && !plotActive && !voidActive && remoteAvatars.size > 0) {
+    // Every mode except the solo maze — void/plot-mates need live tags (the
+    // old gate left void tags frozen at stale positions, fixed in P7C).
+    // Zone-hidden avatars are skipped (their tag is display:none anyway).
+    if (!mazeActive && remoteAvatars.size > 0) {
       for (const ra of remoteAvatars.values()) {
-        tempTag.set(ra.group.position.x, 2.55, ra.group.position.z);
+        if (!ra.group.visible) continue;
+        tempTag.set(ra.group.position.x, ra.group.position.y + 2.55, ra.group.position.z);
         tempTag.project(camera);
         const rx = (tempTag.x * 0.5 + 0.5) * hostW;
         const ry = (-tempTag.y * 0.5 + 0.5) * hostH;
@@ -3276,7 +3382,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
         trackedEmotes.splice(i, 1);
         continue;
       }
-      tempEmote.set(te.group.position.x, 2.35, te.group.position.z);
+      tempEmote.set(te.group.position.x, te.group.position.y + 2.35, te.group.position.z);
       tempEmote.project(camera);
       const ex = (tempEmote.x * 0.5 + 0.5) * hostW;
       const ey = (-tempEmote.y * 0.5 + 0.5) * hostH;
@@ -3326,6 +3432,7 @@ export function startScene(host: HTMLElement, classNameArg: string): SceneContro
     window.removeEventListener('bitrunners:settings-changed', onRunSettingChanged);
     window.removeEventListener('bitrunners:core-run-enter', onCoreRunEnter);
     window.removeEventListener('bitrunners:core-run-abort', onCoreRunAbort);
+    window.removeEventListener('bitrunners:plot-visit', onPlotVisitRequest);
     window.removeEventListener('bitrunners:data-base-enter', onDataBaseEnter);
     window.removeEventListener('bitrunners:data-base-exit', onDataBaseExit);
     window.removeEventListener('bitrunners:plot-tab', onPlotTab);

@@ -39,10 +39,13 @@ export class PlayerState extends Schema {
   @type('string') equippedChest = '';
   @type('string') equippedLegs = '';
   @type('string') equippedPet = '';
-  // Zone presence (mega-batch 3 P5) — 'cloud' | 'void' (isValidZone
-  // allowlist). Appended field = no protocol bump. Clients hide remote
-  // runners whose zone differs from their own; NPCs stay 'cloud'.
+  // Zone presence (mega-batch 3 P5) — 'cloud' | 'void' | 'plot:<idx>'
+  // (isValidZone allowlist). Appended field = no protocol bump. Clients hide
+  // remote runners whose zone differs from their own; NPCs stay 'cloud'.
   @type('string') zone = 'cloud';
+  // data_base sky-grid slot (mega-batch 3 P7C) — assigned per human at join
+  // (lowest free of PLOT_SLOTS), -1 for NPCs. Appended = no protocol bump.
+  @type('number') plotIndex = -1;
 }
 
 export class SphereState extends Schema {

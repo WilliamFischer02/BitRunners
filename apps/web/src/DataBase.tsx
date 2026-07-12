@@ -29,25 +29,29 @@ function fire(name: string, detail?: unknown): void {
 
 interface DataBaseProps {
   onClose(): void;
+  /** Visiting someone ELSE's plot (P7C): read-only Corporeal walk — no
+   *  editor toolbar, no tab switch, and the scene already entered. */
+  visit?: boolean;
 }
 
-export function DataBase({ onClose }: DataBaseProps): JSX.Element {
-  const [tab, setTab] = useState<PlotTab>('regedit');
+export function DataBase({ onClose, visit = false }: DataBaseProps): JSX.Element {
+  const [tab, setTab] = useState<PlotTab>(visit ? 'corporeal' : 'regedit');
   // Active tool: a block id from the launch palette, or the eraser.
   const [tool, setTool] = useState<number | 'eraser'>(1);
   const [depth, setDepth] = useState(0);
   const [blockCount, setBlockCount] = useState(0);
   const closedRef = useRef(false);
 
-  // Enter the plot on mount; if the overlay unmounts without the scene
-  // having exited (route change, class switch), request the exit so the
-  // world is never left hidden.
+  // Enter the plot on mount (visits are scene-initiated — it already
+  // entered); if the overlay unmounts without the scene having exited
+  // (route change, class switch), request the exit so the world is never
+  // left hidden.
   useEffect(() => {
-    fire('bitrunners:data-base-enter');
+    if (!visit) fire('bitrunners:data-base-enter');
     return () => {
       if (!closedRef.current) fire('bitrunners:data-base-exit');
     };
-  }, []);
+  }, [visit]);
 
   useEffect(() => {
     const onExit = (): void => {
@@ -99,33 +103,35 @@ export function DataBase({ onClose }: DataBaseProps): JSX.Element {
     <div className="plot-hud-wrap">
       <div className="plot-hud">
         <div className="plot-hud-top">
-          <span className="plot-title">{'// data_base'}</span>
-          <div className="plot-tabs" role="tablist" aria-label="data_base mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'regedit'}
-              className={tab === 'regedit' ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
-              onClick={() => pickTab('regedit')}
-            >
-              RegEdit
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={tab === 'corporeal'}
-              className={tab === 'corporeal' ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
-              onClick={() => pickTab('corporeal')}
-            >
-              Corporeal
-            </button>
-          </div>
+          <span className="plot-title">{visit ? '// data_base · visiting' : '// data_base'}</span>
+          {!visit && (
+            <div className="plot-tabs" role="tablist" aria-label="data_base mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'regedit'}
+                className={tab === 'regedit' ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+                onClick={() => pickTab('regedit')}
+              >
+                RegEdit
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'corporeal'}
+                className={tab === 'corporeal' ? 'scrape-tabbtn is-on' : 'scrape-tabbtn'}
+                onClick={() => pickTab('corporeal')}
+              >
+                Corporeal
+              </button>
+            </div>
+          )}
           <span className="plot-count">{blockCount} blk</span>
           <button type="button" className="plot-exit" onClick={exit} aria-label="exit data_base">
             [ exit ]
           </button>
         </div>
-        {tab === 'regedit' && (
+        {!visit && tab === 'regedit' && (
           <div className="plot-toolbar">
             <fieldset className="plot-palette" aria-label="block palette">
               {VOXEL_BLOCKS.map((b) => (
@@ -177,9 +183,11 @@ export function DataBase({ onClose }: DataBaseProps): JSX.Element {
           </div>
         )}
         <div className="plot-hint">
-          {tab === 'regedit'
-            ? 'drag orbit · two-finger/shift-drag pan · pinch/wheel zoom · tap to place'
-            : 'walk your build · stick / wasd'}
+          {visit
+            ? 'walking their build · read-only'
+            : tab === 'regedit'
+              ? 'drag orbit · two-finger/shift-drag pan · pinch/wheel zoom · tap to place'
+              : 'walk your build · stick / wasd'}
         </div>
       </div>
     </div>

@@ -62,6 +62,10 @@ export interface NetworkCallbacks {
   onTetherEnded?(from: string): void;
   /** Fired after the server drops our outbound message during moderation. */
   onTetherRejected?(reason: string): void;
+  // data_base plot visits (P7C) — the server moved our zone to the host's
+  // plot (ok) or refused (denied: 'unavailable' | 'full').
+  onVisitOk?(zone: string, hostUserId: string): void;
+  onVisitDenied?(reason: string): void;
 }
 
 export interface JoinOptions {
@@ -87,8 +91,13 @@ export interface NetworkSession {
   sendEmote(text: string): void;
   setClass(name: string): void;
   sendIdentity(update: IdentityUpdate): void;
-  /** Zone presence (P5) — 'cloud' | 'void'. Server allowlists. */
+  /** Zone presence (P5/P7C) — 'cloud' | 'void' | 'plot:<idx>'. Server
+   *  allowlists, and only accepts our OWN plot index directly. */
   sendZone(zone: string): void;
+  /** Ask the server to move our zone into another runner's plot (P7C). */
+  sendVisit(target: string): void;
+  /** Our server-assigned data_base sky-grid slot; -1 if unassigned. */
+  getPlotIndex(): number;
   sendTetherRequest(target: string): void;
   sendTetherAccept(from: string): void;
   sendTetherDecline(from: string): void;
@@ -123,6 +132,7 @@ interface PlayerSchema {
   equippedLegs?: string;
   equippedPet?: string;
   zone?: string;
+  plotIndex?: number;
 }
 
 function snapshot(p: PlayerSchema): RemotePlayer {
@@ -306,6 +316,15 @@ export async function joinSphere(
     callbacks.onTetherRejected?.(msg?.reason ?? 'moderation');
   });
 
+  // data_base plot visits (P7C).
+  room.onMessage('visit-ok', (msg: { zone?: string; hostUserId?: string }) => {
+    if (typeof msg?.zone !== 'string') return;
+    callbacks.onVisitOk?.(msg.zone, typeof msg.hostUserId === 'string' ? msg.hostUserId : '');
+  });
+  room.onMessage('visit-denied', (msg: { reason?: string }) => {
+    callbacks.onVisitDenied?.(msg?.reason ?? 'unavailable');
+  });
+
   // A newer tab for the same account just connected — the server is closing
   // this socket. Flag it so the close below doesn't trigger a reconnect loop.
   let superseded = false;
@@ -358,6 +377,17 @@ export async function joinSphere(
     },
     sendZone(zone) {
       room.send('zone', { zone });
+    },
+    sendVisit(target) {
+      room.send('visit', { target });
+    },
+    getPlotIndex() {
+      // Own PlayerState (state is opaque to the client compiler — see the
+      // getStateCallbacks cast above for the same reason).
+      const players = (room.state as { players?: Map<string, PlayerSchema> }).players;
+      const self = players?.get?.(room.sessionId);
+      const idx = self?.plotIndex;
+      return typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 ? idx : -1;
     },
     sendTetherRequest(target) {
       room.send('tether-request', { target });

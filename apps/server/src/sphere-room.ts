@@ -4,6 +4,9 @@ import {
   EMOTE_GLYPHS,
   PLATFORM_HALF,
   PLATFORM_SIZE,
+  PLOT_COORD_MAX,
+  PLOT_GUEST_CAP,
+  PLOT_SLOTS,
   TETHER_RATE_LIMIT_PER_MIN,
   TETHER_REQUEST_RATE_LIMIT_PER_MIN,
   WS_CLOSE_SESSION_SUPERSEDED,
@@ -18,6 +21,8 @@ import {
   isValidThemeKey,
   isValidUserId,
   isValidZone,
+  parsePlotZone,
+  plotZone,
 } from '@bitrunners/shared';
 import { type Client, Room } from '@colyseus/core';
 import { recordAudit } from './audit.js';
@@ -188,8 +193,16 @@ export class SphereRoom extends Room<SphereState> {
       const p = this.state.players.get(client.sessionId);
       if (!p) return;
       if (typeof msg?.x !== 'number' || typeof msg?.z !== 'number') return;
-      p.x = wrapAxis(msg.x);
-      p.z = wrapAxis(msg.z);
+      if (!Number.isFinite(msg.x) || !Number.isFinite(msg.z)) return;
+      if (p.zone.startsWith('plot:')) {
+        // Sky-grid plots (P7C) sit far outside the torus — wrapping would
+        // corrupt their coords, so clamp to the grid extent instead.
+        p.x = Math.max(-PLOT_COORD_MAX, Math.min(PLOT_COORD_MAX, msg.x));
+        p.z = Math.max(-PLOT_COORD_MAX, Math.min(PLOT_COORD_MAX, msg.z));
+      } else {
+        p.x = wrapAxis(msg.x);
+        p.z = wrapAxis(msg.z);
+      }
       p.rotY = typeof msg.rotY === 'number' ? msg.rotY : p.rotY;
     });
 
@@ -291,15 +304,56 @@ export class SphereRoom extends Room<SphereState> {
       },
     );
 
-    // Zone presence (P5): which sub-space the runner occupies ('cloud' or
-    // 'void'). Allowlist only — the server never trusts an arbitrary string.
-    // Clients filter remote visibility by zone; positions keep flowing on
-    // the same delta path regardless of zone.
+    // Zone presence (P5 + P7C): 'cloud', 'void', or 'plot:<idx>'. Allowlist
+    // only — the server never trusts an arbitrary string. A runner may claim
+    // only its OWN plot zone directly; someone else's plot is reachable only
+    // through the guest-capped 'visit' message below. Clients filter remote
+    // visibility by zone; positions keep flowing on the same delta path.
     this.onMessage('zone', (client: Client, msg: { zone?: unknown }) => {
       this.lastSeen.set(client.sessionId, Date.now());
       const p = this.state.players.get(client.sessionId);
       if (!p) return;
-      if (isValidZone(msg?.zone)) p.zone = msg.zone;
+      if (!isValidZone(msg?.zone)) return;
+      const idx = parsePlotZone(msg.zone);
+      if (idx !== null && idx !== p.plotIndex) return;
+      p.zone = msg.zone;
+    });
+
+    // data_base plot visit (P7C): teleports the sender's PRESENCE (zone) to
+    // the target's plot, capped at PLOT_GUEST_CAP guests. The visiting
+    // client renders the host's build by fetching it via get_voxel_plot
+    // (migration 0019) with the host user id echoed back here — user ids are
+    // opaque UUIDs already readable through that authenticated RPC surface.
+    // V1 guests are read-only (client-enforced; the plot data never flows
+    // through the room, so there is nothing writable here anyway).
+    this.onMessage('visit', (client: Client, msg: { target?: unknown }) => {
+      this.lastSeen.set(client.sessionId, Date.now());
+      const p = this.state.players.get(client.sessionId);
+      if (!p) return;
+      const targetId = typeof msg?.target === 'string' ? msg.target : '';
+      if (!targetId || targetId === client.sessionId || isNpcId(targetId)) {
+        client.send('visit-denied', { reason: 'unavailable' });
+        return;
+      }
+      const host = this.state.players.get(targetId);
+      if (!host || host.plotIndex < 0) {
+        client.send('visit-denied', { reason: 'unavailable' });
+        return;
+      }
+      const zone = plotZone(host.plotIndex);
+      let guests = 0;
+      for (const [id, q] of this.state.players.entries()) {
+        if (q.zone === zone && id !== targetId) guests++;
+      }
+      if (guests >= PLOT_GUEST_CAP) {
+        client.send('visit-denied', { reason: 'full' });
+        return;
+      }
+      p.zone = zone;
+      client.send('visit-ok', {
+        zone,
+        hostUserId: this.userIdBySession.get(targetId) ?? '',
+      });
     });
 
     // ── Tether chat (PR 87) ────────────────────────────────────────────────
@@ -647,8 +701,23 @@ export class SphereRoom extends Room<SphereState> {
     const spawn = randomSpawn();
     p.x = spawn.x;
     p.z = spawn.z;
+    // data_base sky-grid slot (P7C): lowest free index. 64 slots ≥ the
+    // 40-human cap, so this never fails; indexes free up implicitly when a
+    // player leaves (the scan below only sees current occupants).
+    p.plotIndex = this.assignPlotIndex();
     this.state.players.set(client.sessionId, p);
     this.lastSeen.set(client.sessionId, Date.now());
+  }
+
+  private assignPlotIndex(): number {
+    const used = new Set<number>();
+    for (const q of this.state.players.values()) {
+      if (q.plotIndex >= 0) used.add(q.plotIndex);
+    }
+    for (let i = 0; i < PLOT_SLOTS; i++) {
+      if (!used.has(i)) return i;
+    }
+    return -1; // unreachable at current caps — client degrades to local plot
   }
 
   override onLeave(client: Client): void {

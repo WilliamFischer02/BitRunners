@@ -109,12 +109,59 @@ export function isValidItemId(id: unknown): id is string {
 
 // Zone presence (mega-batch 3 P5): which sub-space a runner currently
 // occupies. 'cloud' = the shared overworld, 'void' = the pressure-plate
-// vault's dark room. Sky-grid plots (P7C) will extend this to 'plot:<idx>'.
+// vault's dark room, 'plot:<idx>' = a data_base sky-grid plot (P7C).
 // Server stores only allowlisted values; clients filter remote visibility
 // by zone so runners in the void vanish from the cloud and vice versa.
 export const ZONES = ['cloud', 'void'] as const;
 export function isValidZone(z: unknown): z is string {
-  return typeof z === 'string' && (ZONES as readonly string[]).includes(z);
+  return (
+    (typeof z === 'string' && (ZONES as readonly string[]).includes(z)) || parsePlotZone(z) !== null
+  );
+}
+
+// ── data_base sky-grid plots (mega-batch 3 · P7C) ──────────────────────────
+//
+// Every plot lives in the SAME Colyseus room, physically parked on an 8×8
+// grid floating above the cloud (y = +120, 64 units apart) so wire positions
+// stay unambiguous. The server assigns each joining human the lowest free
+// slot (PlayerState.plotIndex, appended — no protocol bump); entering
+// data_base teleports the rig to the slot origin and sends zone
+// 'plot:<idx>'. The P5 zone filter then gives plot isolation for free —
+// only the host + up to PLOT_GUEST_CAP visitors share a plot zone.
+export const PLOT_GRID_COLS = 8;
+export const PLOT_SLOTS = PLOT_GRID_COLS * PLOT_GRID_COLS; // 64 ≥ 40-human cap
+export const PLOT_SPACING = 64;
+export const PLOT_BASE_Y = 120;
+/** Max simultaneous visitors per plot, host excluded. */
+export const PLOT_GUEST_CAP = 3;
+/** |x|/|z| bound for positions while in a plot zone: the outermost slot
+ *  center (±224) plus generous pad margin. The server clamps (instead of
+ *  torus-wrapping) plot-zone moves to this. */
+export const PLOT_COORD_MAX = ((PLOT_GRID_COLS - 1) / 2) * PLOT_SPACING + 24;
+
+export function plotZone(idx: number): string {
+  return `plot:${idx}`;
+}
+
+/** Parse 'plot:<idx>' → idx, or null for anything malformed / out of range. */
+export function parsePlotZone(z: unknown): number | null {
+  if (typeof z !== 'string' || !z.startsWith('plot:')) return null;
+  const digits = z.slice(5);
+  if (!/^\d{1,2}$/.test(digits)) return null;
+  const n = Number(digits);
+  return n < PLOT_SLOTS ? n : null;
+}
+
+/** World-space origin (pad center) of a plot slot. */
+export function plotSlotOrigin(idx: number): { x: number; y: number; z: number } {
+  const col = idx % PLOT_GRID_COLS;
+  const row = Math.floor(idx / PLOT_GRID_COLS);
+  const center = (PLOT_GRID_COLS - 1) / 2;
+  return {
+    x: (col - center) * PLOT_SPACING,
+    y: PLOT_BASE_Y,
+    z: (row - center) * PLOT_SPACING,
+  };
 }
 
 // Name-tag styling (weight + tint). Mirrors the curated vocabulary in

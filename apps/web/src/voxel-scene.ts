@@ -385,6 +385,7 @@ export function pickVoxel(
 const BODY_LAYERS = 2;
 
 function circleBlockedAt(blocks: Uint8Array, wx: number, wz: number, r: number): boolean {
+  // wx/wz are already plot-local here (origin subtracted by the caller).
   const minX = Math.floor((wx - r + PLOT_HALF_X) / VOXEL_SIZE);
   const maxX = Math.floor((wx + r + PLOT_HALF_X) / VOXEL_SIZE);
   const minZ = Math.floor((wz - r + PLOT_HALF_Z) / VOXEL_SIZE);
@@ -409,20 +410,24 @@ function circleBlockedAt(blocks: Uint8Array, wx: number, wz: number, r: number):
 }
 
 /** Axis-separated slide against solid voxels + the plot AABB, mirroring
- *  colliders.ts slideMoveInto. Mutates pos in place; allocation-free. */
+ *  colliders.ts slideMoveInto. Mutates pos in place; allocation-free.
+ *  originX/originZ = the arena group's world position (sky-grid slot, P7C)
+ *  — pos/next are world coords, the grid math runs plot-local. */
 export function slideMoveVoxel(
   pos: { x: number; z: number },
   nextX: number,
   nextZ: number,
   r: number,
   blocks: Uint8Array,
+  originX = 0,
+  originZ = 0,
 ): void {
-  const loX = -PLOT_HALF_X + r;
-  const hiX = PLOT_HALF_X - r;
-  const loZ = -PLOT_HALF_Z + r;
-  const hiZ = PLOT_HALF_Z - r;
+  const loX = originX - PLOT_HALF_X + r;
+  const hiX = originX + PLOT_HALF_X - r;
+  const loZ = originZ - PLOT_HALF_Z + r;
+  const hiZ = originZ + PLOT_HALF_Z - r;
   const cx = Math.max(loX, Math.min(hiX, nextX));
   const cz = Math.max(loZ, Math.min(hiZ, nextZ));
-  if (!circleBlockedAt(blocks, cx, pos.z, r)) pos.x = cx;
-  if (!circleBlockedAt(blocks, pos.x, cz, r)) pos.z = cz;
+  if (!circleBlockedAt(blocks, cx - originX, pos.z - originZ, r)) pos.x = cx;
+  if (!circleBlockedAt(blocks, pos.x - originX, cz - originZ, r)) pos.z = cz;
 }

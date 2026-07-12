@@ -110,6 +110,7 @@ export function Game({ className }: GameProps): JSX.Element {
   const [circuitOpen, setCircuitOpen] = useState(false);
   const [coreRunOpen, setCoreRunOpen] = useState(false);
   const [dataBaseOpen, setDataBaseOpen] = useState(false);
+  const [dataBaseVisit, setDataBaseVisit] = useState(false);
   const grantDismissRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -131,9 +132,24 @@ export function Game({ className }: GameProps): JSX.Element {
   }, []);
 
   useEffect(() => {
-    const onOpen = (): void => setDataBaseOpen(true);
+    const onOpen = (): void => {
+      setDataBaseVisit(false);
+      setDataBaseOpen(true);
+    };
     window.addEventListener(DATA_BASE_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(DATA_BASE_OPEN_EVENT, onOpen);
+    // Plot visits (P7C) are scene-initiated (server grant → fetch → enter);
+    // mount the HUD in read-only visit mode when the scene reports one.
+    const onPlotEnter = (e: Event): void => {
+      if ((e as CustomEvent<{ visit?: boolean }>).detail?.visit === true) {
+        setDataBaseVisit(true);
+        setDataBaseOpen(true);
+      }
+    };
+    window.addEventListener('bitrunners:plot-enter', onPlotEnter);
+    return () => {
+      window.removeEventListener(DATA_BASE_OPEN_EVENT, onOpen);
+      window.removeEventListener('bitrunners:plot-enter', onPlotEnter);
+    };
   }, []);
 
   useEffect(() => {
@@ -202,7 +218,7 @@ export function Game({ className }: GameProps): JSX.Element {
       )}
       {dataBaseOpen && (
         <Suspense fallback={null}>
-          <DataBase onClose={() => setDataBaseOpen(false)} />
+          <DataBase visit={dataBaseVisit} onClose={() => setDataBaseOpen(false)} />
         </Suspense>
       )}
       <Samm inRange={sammInRange} />
