@@ -31,6 +31,7 @@ import {
   CORE_RUN_OPEN_EVENT,
   DATA_BASE_OPEN_EVENT,
   FREQ_LOCK_OPEN_EVENT,
+  openDataBase,
 } from './protocols-registry.js';
 import { type SceneControls, startScene } from './scene.js';
 import { startSignupGrant } from './signup-grant.js';
@@ -194,10 +195,22 @@ export function Game({ className }: GameProps): JSX.Element {
 
   return (
     <div ref={hostRef} className="canvas-host">
-      <div className="hint">{className} · arrows / wasd / stick</div>
+      <div className="hint">{className} · arrows / wasd / stick · space = jump</div>
       <CreditsHud />
       <ProfileIcon className={className} />
       <Protocols />
+      {/* Data Base rail chip (devlog 0156) — replaces the data_base
+          cartridge. Sits at the bottom of the top-left indicator stack
+          (admin-launch → fps → net → auth), same left offset. */}
+      <button
+        type="button"
+        className="database-launch"
+        onClick={() => openDataBase()}
+        title="open data base"
+        aria-label="open data base"
+      >
+        DATA BASE
+      </button>
       <ScrapeMenu />
       <ShopInventoryModal />
       <Objectives />

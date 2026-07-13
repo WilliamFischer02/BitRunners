@@ -10,31 +10,34 @@ import {
   acceptTetherTos,
   blockCurrentPeer,
   declineIncomingTether,
-  enterTargeting,
   getTetherState,
   hasAcceptedTetherTos,
   leaveTether,
+  requestTether,
   subscribeTether,
   tetherSend,
 } from './tether-chat.js';
 
-// React surface for the tether_chat protocol (PR 83).
+// React surface for tether chat (PR 83; tap-to-tether rework devlog 0156).
 //
-// Three sub-components, all driven by tether-chat.ts state:
-//   1. TetherChat — root, mounts the cartridge panel + chat overlay.
-//   2. TosGate — first-time acceptance: verified-account + age confirm.
-//   3. ChatOverlay — sticky chat bubble shown while status === 'tethered'.
+// Sub-components, all driven by tether-chat.ts state:
+//   1. TetherChat — root, mounts the tap driver + panel + chat overlay.
+//   2. TetherHub — listens for the scene's avatar-tap event. Gated taps
+//      (guest / unapproved handle / ToS missing) open the status panel;
+//      gated-in taps fire the request directly and show its progress.
+//   3. TosGate — first-time acceptance: verified-account + age confirm.
+//   4. ChatOverlay — sticky chat bubble shown while status === 'tethered'.
 //
-// The scene's remote-avatar click handler (added in PR 83 scene edit) calls
-// isTargeting() before firing a tether request, so this UI doesn't need
-// any global listeners beyond subscribeTether.
+// The scene's remote-avatar click handler dispatches TAP_EVENT for every
+// un-blocked avatar tap while no tether is live — no cartridge, no
+// targeting arm step.
 
-const OPEN_EVENT = 'bitrunners:open-tether-chat';
+const TAP_EVENT = 'bitrunners:tether-tap';
 
 export function TetherChat(): JSX.Element {
   return (
     <>
-      <TetherCartridge />
+      <TetherHub />
       <ChatOverlay />
       <IncomingRequestModal />
       <BlockedListPanel />
@@ -42,8 +45,11 @@ export function TetherChat(): JSX.Element {
   );
 }
 
-function TetherCartridge(): JSX.Element | null {
+function TetherHub(): JSX.Element | null {
   const [open, setOpen] = useState(false);
+  // The runner tapped while a gate (sign-in / approval / ToS) was still
+  // closed — held so accepting the ToS can fire their request immediately.
+  const [pendingPeer, setPendingPeer] = useState<TetherPeer | null>(null);
   const [tether, setTether] = useState(getTetherState());
   const [id, setId] = useState(getIdentity());
 
@@ -51,17 +57,36 @@ function TetherCartridge(): JSX.Element | null {
   useEffect(() => subscribeIdentity(setId), []);
 
   useEffect(() => {
-    const onOpen = (): void => setOpen(true);
-    window.addEventListener(OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_EVENT, onOpen);
+    const onTap = (e: Event): void => {
+      const peer = (e as CustomEvent<{ peer?: TetherPeer }>).detail?.peer;
+      if (!peer?.id) return;
+      const status = getTetherState().status;
+      if (status === 'pending' || status === 'tethered') return; // one pair at a time
+      const ident = getIdentity();
+      if (!ident.signedIn || !ident.approved || !hasAcceptedTetherTos()) {
+        // Gate first: the panel explains sign-in/approval or shows the ToS.
+        setPendingPeer(peer);
+        setOpen(true);
+        return;
+      }
+      requestTether(peer);
+      setOpen(true); // show the pending state (with cancel) right away
+    };
+    window.addEventListener(TAP_EVENT, onTap);
+    return () => window.removeEventListener(TAP_EVENT, onTap);
   }, []);
 
   if (!open) return null;
   return (
     <TetherPanel
-      onClose={() => setOpen(false)}
+      onClose={() => {
+        setOpen(false);
+        setPendingPeer(null);
+      }}
       tetherStatus={tether.status}
       peer={tether.peer}
+      pendingPeer={pendingPeer}
+      onPendingPeerConsumed={() => setPendingPeer(null)}
       signedIn={id.signedIn}
       approved={id.approved}
     />
@@ -72,12 +97,17 @@ function TetherPanel({
   onClose,
   tetherStatus,
   peer,
+  pendingPeer,
+  onPendingPeerConsumed,
   signedIn,
   approved,
 }: {
   onClose(): void;
   tetherStatus: TetherStatus;
   peer: TetherPeer | null;
+  /** Runner tapped before the gates were cleared — ToS accept requests them. */
+  pendingPeer: TetherPeer | null;
+  onPendingPeerConsumed(): void;
   signedIn: boolean;
   approved: boolean;
 }): JSX.Element {
@@ -85,7 +115,11 @@ function TetherPanel({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
-  const [showTos, setShowTos] = useState(false);
+  const tosAccepted = hasAcceptedTetherTos();
+  const eligible = signedIn && approved;
+
+  // A gated tap from an eligible runner goes straight to the ToS.
+  const [showTos, setShowTos] = useState(() => eligible && !tosAccepted);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -103,18 +137,16 @@ function TetherPanel({
     };
   }, []);
 
-  const tosAccepted = hasAcceptedTetherTos();
-  const eligible = signedIn && approved;
-
-  const onTether = useCallback((): void => {
-    if (!eligible) return;
-    if (!tosAccepted) {
-      setShowTos(true);
-      return;
+  const onTosAccepted = useCallback((): void => {
+    acceptTetherTos();
+    setShowTos(false);
+    if (pendingPeer) {
+      // Fire the request the original tap asked for; the panel stays open
+      // showing the pending state.
+      requestTether(pendingPeer);
+      onPendingPeerConsumed();
     }
-    enterTargeting();
-    onClose();
-  }, [eligible, tosAccepted, onClose]);
+  }, [pendingPeer, onPendingPeerConsumed]);
 
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: backdrop close is pointer-only; keyboard close routes through the native cancel event
@@ -137,15 +169,7 @@ function TetherPanel({
       </header>
 
       {showTos ? (
-        <TosGate
-          onAccepted={() => {
-            acceptTetherTos();
-            setShowTos(false);
-            enterTargeting();
-            onClose();
-          }}
-          onDecline={() => setShowTos(false)}
-        />
+        <TosGate onAccepted={onTosAccepted} onDecline={() => setShowTos(false)} />
       ) : (
         <section className="panel-section">
           <div className="panel-section-title">$ status</div>
@@ -162,34 +186,21 @@ function TetherPanel({
           {eligible && tetherStatus === 'idle' && (
             <>
               <div className="panel-stub">
-                ─── tap a remote runner after launching to offer a tether. {TETHER_MAX_CHARS}-char
-                replies + emote bubbles. profanity policy + audit log apply.
+                ─── tap a runner out in the world to offer a tether. {TETHER_MAX_CHARS}-char replies
+                + emote bubbles. profanity policy + audit log apply.
               </div>
-              <div className="panel-row">
-                <span className="panel-key">{tosAccepted ? 'ready' : 'accept terms to begin'}</span>
-                <button type="button" className="panel-toggle is-on" onClick={onTether}>
-                  [ {tosAccepted ? 'enter tether mode' : 'review terms'} ]
-                </button>
-              </div>
-            </>
-          )}
-          {eligible && tetherStatus === 'targeting' && (
-            <>
-              <div className="panel-stub">
-                ─── targeting mode: tap a remote runner to send a request. close to cancel.
-              </div>
-              <div className="panel-row">
-                <span className="panel-key">in targeting…</span>
-                <button
-                  type="button"
-                  className="panel-toggle"
-                  onClick={() => {
-                    leaveTether();
-                  }}
-                >
-                  [ cancel ]
-                </button>
-              </div>
+              {!tosAccepted && (
+                <div className="panel-row">
+                  <span className="panel-key">accept terms to begin</span>
+                  <button
+                    type="button"
+                    className="panel-toggle is-on"
+                    onClick={() => setShowTos(true)}
+                  >
+                    [ review terms ]
+                  </button>
+                </div>
+              )}
             </>
           )}
           {eligible && tetherStatus === 'pending' && peer && (

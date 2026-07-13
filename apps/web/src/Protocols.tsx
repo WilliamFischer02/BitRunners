@@ -6,23 +6,22 @@ import {
   openProtocols,
 } from './protocols-registry.js';
 
-// Protocols carousel — a Nintendo-DS-style cartridge picker (mega-batch 4.14).
+// Protocols rack — the PROTOCOLS button morphs in place (devlog 0156).
 //
-// Stage 1 (scaffold): cartridge cards on a drag-scrollable rail (pointer +
-//   touch), snapping to the nearest cartridge on release. The centred
-//   cartridge is scaled up + lifted so it reads as the focus.
-// Stage 2 (visual): worn-tape / peeled-label cartridge art via CSS gradients
-//   + an inline CC0 SVG fractal-noise texture (no external asset). Each
-//   protocol gets a colour band + a 3-letter glyph code.
-// Stage 3 (drop): selecting a cartridge plays an eased descent into a slot,
-//   a stepped "click-in", then launches the protocol. prefers-reduced-motion
-//   skips the animation and launches immediately.
+// The old separate carousel window is gone. Tapping PROTOCOLS keeps the
+// SAME element and grows it (CSS height/width transition ~250ms ease) into
+// a tall panel anchored at the button's position, below the minimap. The
+// cap text + "(Minigames)" banner fade out and a compact VERTICAL cartridge
+// rack renders inside the expanded area — the narrow column fits rows far
+// better than the old 150px-wide horizontal cards.
 //
-// FEEL is a STOP-AND-ASK default (devlog 0102): descent 600ms
-// cubic-bezier(0.5,0,0.7,1), click-in 80ms steps(4), slot offset ~62px.
+// Nav: ↑/↓ move focus, enter/space inserts, esc (or the header / ✕)
+// contracts back to button form. Touch drags scroll natively (pan-y);
+// mouse drag-to-scroll is wired on the list. Insert plays a short click-in
+// flash before launching; prefers-reduced-motion skips every animation and
+// launches immediately.
 
-const CART_W = 150; // cartridge box width incl. inner margin (px); drives snap
-const DROP_MS = 700; // total descent + click-in before launch
+const INSERT_MS = 380; // click-in flash before the protocol launches
 
 const REDUCED_MOTION =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
@@ -37,12 +36,13 @@ function code(label: string): string {
 export function Protocols(): JSX.Element {
   const [open, setOpen] = useState(false);
   const [idx, setIdx] = useState(0);
-  const [dragDelta, setDragDelta] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [dropping, setDropping] = useState<ProtocolEntry | null>(null);
-  const railRef = useRef<HTMLDivElement>(null);
-  const dragStart = useRef<{ x: number; idx: number } | null>(null);
-  const dropTimer = useRef<number | null>(null);
+  const [inserting, setInserting] = useState<ProtocolEntry | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const insertTimer = useRef<number | null>(null);
+  // Mouse drag-to-scroll bookkeeping (touch scrolls natively via pan-y).
+  const dragStart = useRef<{ y: number; top: number } | null>(null);
+  const dragMoved = useRef(false);
   const len = PROTOCOLS.length;
 
   useEffect(() => {
@@ -53,44 +53,47 @@ export function Protocols(): JSX.Element {
 
   useEffect(
     () => () => {
-      if (dropTimer.current !== null) window.clearTimeout(dropTimer.current);
+      if (insertTimer.current !== null) window.clearTimeout(insertTimer.current);
     },
     [],
   );
 
-  const clampIdx = useCallback((i: number) => Math.max(0, Math.min(len - 1, i)), [len]);
+  // Move focus into the panel on expand so esc/enter act on the rack.
+  useEffect(() => {
+    if (open) closeRef.current?.focus();
+  }, [open]);
 
-  // The cartridge currently nearest the centre (accounts for an in-progress
-  // drag) — drives the focus scaling.
-  const focused = clampIdx(idx - Math.round(dragDelta / CART_W));
+  const clampIdx = useCallback((i: number) => Math.max(0, Math.min(len - 1, i)), [len]);
 
   const insert = useCallback(
     (entry: ProtocolEntry) => {
-      if (!entry.available || dropping) return;
+      if (!entry.available || inserting) return;
       if (REDUCED_MOTION) {
         entry.launch();
         setOpen(false);
         return;
       }
-      setDropping(entry);
-      dropTimer.current = window.setTimeout(() => {
+      setInserting(entry);
+      insertTimer.current = window.setTimeout(() => {
         entry.launch();
         setOpen(false);
-        setDropping(null);
-      }, DROP_MS);
+        setInserting(null);
+      }, INSERT_MS);
     },
-    [dropping],
+    [inserting],
   );
 
-  // Keyboard navigation while open.
+  // Keyboard navigation while expanded. Capture phase so preventDefault is
+  // visible to the scene's window-level space-to-jump listener (which checks
+  // e.defaultPrevented before jumping).
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent): void => {
-      if (dropping) return;
-      if (e.key === 'ArrowLeft') {
+      if (inserting) return;
+      if (e.key === 'ArrowUp') {
         e.preventDefault();
         setIdx((i) => clampIdx(i - 1));
-      } else if (e.key === 'ArrowRight') {
+      } else if (e.key === 'ArrowDown') {
         e.preventDefault();
         setIdx((i) => clampIdx(i + 1));
       } else if (e.key === 'Escape') {
@@ -103,65 +106,66 @@ export function Protocols(): JSX.Element {
         }
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, idx, dropping, clampIdx, insert]);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, idx, inserting, clampIdx, insert]);
 
-  // Pointer drag (mouse + touch via Pointer Events).
+  // Keep the keyboard-focused row in view.
+  useEffect(() => {
+    if (!open) return;
+    const list = listRef.current;
+    const row = list?.children[idx] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: 'nearest', behavior: REDUCED_MOTION ? 'auto' : 'smooth' });
+  }, [idx, open]);
+
+  // No pointer capture here — capturing on the list would retarget the
+  // follow-up click away from the row, killing mouse insertion.
   const onPointerDown = (e: React.PointerEvent): void => {
-    if (dropping) return;
-    dragStart.current = { x: e.clientX, idx };
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    if (e.pointerType !== 'mouse' || !listRef.current) return;
+    dragStart.current = { y: e.clientY, top: listRef.current.scrollTop };
+    dragMoved.current = false;
   };
   const onPointerMove = (e: React.PointerEvent): void => {
-    if (!dragStart.current) return;
-    setDragDelta(e.clientX - dragStart.current.x);
+    if (!dragStart.current || !listRef.current) return;
+    const dy = e.clientY - dragStart.current.y;
+    if (Math.abs(dy) > 4) dragMoved.current = true;
+    listRef.current.scrollTop = dragStart.current.top - dy;
   };
-  const endDrag = (e: React.PointerEvent): void => {
-    if (!dragStart.current) return;
-    const moved = e.clientX - dragStart.current.x;
-    const next = clampIdx(dragStart.current.idx - Math.round(moved / CART_W));
+  const endDrag = (): void => {
     dragStart.current = null;
-    setDragging(false);
-    setDragDelta(0);
-    setIdx(next);
-    // A tap (negligible movement) on the centred cartridge inserts it.
-    if (Math.abs(moved) < 6 && next === focused) {
-      const entry = PROTOCOLS[next];
-      if (entry?.available) insert(entry);
-    }
-  };
-
-  const trackStyle = {
-    transform: `translateX(${-idx * CART_W + dragDelta}px)`,
-    transition: dragging ? 'none' : 'transform 0.28s cubic-bezier(0.22, 1, 0.36, 1)',
   };
 
   return (
-    <>
-      <button
-        type="button"
-        className="protocols-launch"
-        onClick={() => openProtocols()}
-        title="open protocols"
-        aria-label="open protocols"
-        aria-expanded={open}
-      >
-        <span className="protocols-launch-glyph">⌬</span>
-        <span className="protocols-launch-cap">PROTOCOLS</span>
-        <span className="protocols-launch-banner" aria-hidden="true">
-          (Minigames)
-        </span>
-      </button>
+    <div className={`protocols-launch${open ? ' is-expanded' : ''}`}>
+      {!open && (
+        <button
+          type="button"
+          className="protocols-launch-hit"
+          onClick={() => openProtocols()}
+          title="open protocols"
+          aria-label="open protocols"
+          aria-expanded={false}
+        />
+      )}
+      <span className="protocols-launch-glyph" aria-hidden="true">
+        ⌬
+      </span>
+      <span className="protocols-launch-cap" aria-hidden={open}>
+        PROTOCOLS
+      </span>
+      <span className="protocols-launch-banner" aria-hidden="true">
+        (Minigames)
+      </span>
       {open && (
-        <div className="protocols-carousel" aria-label="protocols carousel">
-          <div className="protocols-head">
+        <div className="protocols-panel" aria-label="protocols rack">
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: header tap-to-close is pointer sugar; keyboard close routes through esc + the ✕ button */}
+          <div className="protocols-head" onClick={() => setOpen(false)} title="close protocols">
             <span className="protocols-title">{'// protocols'}</span>
             <span className="protocols-sub">
-              {focused + 1} / {len}
+              {idx + 1} / {len}
             </span>
             <button
+              ref={closeRef}
               type="button"
               className="protocols-close"
               onClick={() => setOpen(false)}
@@ -171,50 +175,51 @@ export function Protocols(): JSX.Element {
             </button>
           </div>
           <div
-            className={`protocols-rail${dragging ? ' is-dragging' : ''}`}
-            ref={railRef}
+            className="protolist"
+            ref={listRef}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
           >
-            <div className="protocols-track" style={trackStyle}>
-              {PROTOCOLS.map((entry, i) => {
-                const isFocus = i === focused;
-                const isDrop = dropping?.key === entry.key;
-                const cls = [
-                  'protocol-cartridge',
-                  `cart-tint--${entry.tint}`,
-                  isFocus ? 'is-focused' : '',
-                  entry.available ? '' : 'is-locked',
-                  isDrop ? 'is-dropping' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ');
-                return (
-                  <div key={entry.key} className="protocol-cartridge-cell">
-                    <div className={cls} aria-label={`${entry.label} cartridge`}>
-                      <span className="cart-noise" aria-hidden="true" />
-                      <span className="cart-band">
-                        <span className="cart-code">{code(entry.label)}</span>
-                      </span>
-                      <span className="cart-label">{entry.label}</span>
-                      <span className="cart-flavor">{entry.flavor}</span>
-                      {entry.available ? (
-                        isFocus && <span className="cart-insert">[ insert ]</span>
-                      ) : (
-                        <span className="cart-lock">{'// LOCKED'}</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="protocols-slot" aria-hidden="true" />
+            {PROTOCOLS.map((entry, i) => {
+              const cls = [
+                'protolist-row',
+                `cart-tint--${entry.tint}`,
+                i === idx ? 'is-focused' : '',
+                entry.available ? '' : 'is-locked',
+                inserting?.key === entry.key ? 'is-inserting' : '',
+              ]
+                .filter(Boolean)
+                .join(' ');
+              return (
+                <button
+                  key={entry.key}
+                  type="button"
+                  className={cls}
+                  aria-label={`${entry.label} cartridge`}
+                  onFocus={() => setIdx(i)}
+                  onClick={() => {
+                    if (dragMoved.current) return; // drag-scroll release, not a pick
+                    setIdx(i);
+                    if (entry.available) insert(entry);
+                  }}
+                >
+                  <span className="cart-band protolist-band" aria-hidden="true">
+                    <span className="cart-code">{code(entry.label)}</span>
+                  </span>
+                  <span className="protolist-meta">
+                    <span className="protolist-label">{entry.label}</span>
+                    <span className="protolist-flavor">{entry.flavor}</span>
+                  </span>
+                  {!entry.available && <span className="protolist-lock">{'// LOCKED'}</span>}
+                </button>
+              );
+            })}
           </div>
-          <div className="protocols-foot">─── drag to browse · tap the centre cartridge ───</div>
+          <div className="protocols-foot">─── ↑/↓ + enter · tap to insert ───</div>
         </div>
       )}
-    </>
+    </div>
   );
 }

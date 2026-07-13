@@ -1,15 +1,16 @@
-// Tether chat state — gating, lifecycle, and message buffer for the
-// "tether_chat" protocol (PR 83 of the polish push).
+// Tether chat state — gating, lifecycle, and message buffer for tether
+// chat (PR 83 of the polish push; tap-to-tether rework in devlog 0156).
 //
 // Lifecycle:
-//   idle → targeting (cartridge open, tap a remote avatar)
-//        → pending (we sent a request, waiting on accept)
+//   idle → pending (tapped a runner in the world; request sent, waiting
+//        on accept — no separate "targeting" arm step anymore)
 //        → tethered (both runners agreed; chat panel visible)
 //   any state can flip back to 'idle' on close / decline / drop.
 //
 // ToS gating: a verified-account flag + an age-confirmation flag must
-// both be set before the cartridge becomes usable. Both ride one
-// versioned localStorage blob alongside the timestamp of acceptance.
+// both be set before a tap fires a request (TetherChat.tsx surfaces the
+// gate UI on the first tap). Both ride one versioned localStorage blob
+// alongside the timestamp of acceptance.
 //
 // Network seam (PR 87): scene.ts installs a TetherSink that routes the
 // outbound side through the live Colyseus session. Inbound events arrive
@@ -22,7 +23,7 @@
 
 import { addBlock, isBlocked } from './block-list.js';
 
-export type TetherStatus = 'idle' | 'targeting' | 'pending' | 'tethered';
+export type TetherStatus = 'idle' | 'pending' | 'tethered';
 
 export interface TetherPeer {
   /** Network/sessionId of the remote runner. */
@@ -131,15 +132,7 @@ export function subscribeTether(cb: (snap: Readonly<TetherState>) => void): () =
   return () => window.removeEventListener(STATE_EVENT, handler);
 }
 
-/** Cartridge launch → enter targeting mode. No-op if already past idle. */
-export function enterTargeting(): void {
-  if (!hasAcceptedTetherTos()) return;
-  if (state.status === 'tethered' || state.status === 'pending') return;
-  state = { ...state, status: 'targeting' };
-  emit();
-}
-
-/** End the current tether or leave targeting mode. */
+/** End the current tether or cancel a pending request. */
 export function leaveTether(): void {
   const prev = state.peer;
   state = { status: 'idle', peer: null, messages: [] };
@@ -147,18 +140,17 @@ export function leaveTether(): void {
   if (prev && sink) sink.leave(prev.id);
 }
 
-/** Local-side: this runner taps a remote avatar while in targeting mode.
- *  Refuses if the target is on the block list (defense-in-depth — the
- *  caller in scene.ts already drops these, but the state machine never
- *  trusts callers it doesn't own). */
-export function sendTetherRequest(peer: TetherPeer): void {
-  if (state.status !== 'targeting') return;
-  if (isBlocked(peer.id)) {
-    state = { status: 'idle', peer: null, messages: [] };
-    emit();
-    return;
-  }
-  state = { ...state, status: 'pending', peer, messages: [] };
+/** Tap-to-tether (devlog 0156): tapping a remote avatar fires the request
+ *  directly — no targeting arm step. Refuses without accepted ToS (the
+ *  caller surfaces the gate UI), while a tether is already live/pending,
+ *  or when the target is on the block list (defense-in-depth — the caller
+ *  in scene.ts already drops those, but the state machine never trusts
+ *  callers it doesn't own). */
+export function requestTether(peer: TetherPeer): void {
+  if (!hasAcceptedTetherTos()) return;
+  if (state.status === 'pending' || state.status === 'tethered') return;
+  if (isBlocked(peer.id)) return;
+  state = { status: 'pending', peer, messages: [] };
   emit();
   sink?.request(peer.id);
 }
@@ -273,12 +265,6 @@ export function tetherSystemNotice(body: string): void {
     isEmote: false,
     ts: Date.now(),
   });
-}
-
-/** Tap-to-tether targeting — the scene's remote-avatar click handler asks
- *  this module whether a tap should fire a tether request. */
-export function isTargeting(): boolean {
-  return state.status === 'targeting';
 }
 
 export const TETHER_EVENTS = {
