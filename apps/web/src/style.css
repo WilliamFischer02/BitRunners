@@ -6569,3 +6569,21 @@ dialog.panel::backdrop {
     width: clamp(88px, 26vw, 140px);
   }
 }
+
+/* ──────── Data Base plot mode: hide world HUD until exit (devlog 0157) ──────── */
+.canvas-host[data-plot="1"] .profile,
+.canvas-host[data-plot="1"] .protocols-launch,
+.canvas-host[data-plot="1"] .database-launch,
+.canvas-host[data-plot="1"] .emote {
+  display: none;
+}
+/* Emote wheel clipped offscreen at the bottom on some mobile browsers
+   (dynamic URL bars shrink the visual viewport below 100vh). Raise it. */
+.emote {
+  bottom: 46px;
+}
+@media (max-width: 720px) {
+  .emote {
+    bottom: max(44px, calc(env(safe-area-inset-bottom, 0px) + 44px));
+  }
+}
