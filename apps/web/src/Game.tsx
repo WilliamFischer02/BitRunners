@@ -142,15 +142,19 @@ export function Game({ className }: GameProps): JSX.Element {
     // Plot visits (P7C) are scene-initiated (server grant → fetch → enter);
     // mount the HUD in read-only visit mode when the scene reports one.
     const onPlotEnter = (e: Event): void => {
+      setInPlot(true); // hide world HUD until the exit button fires plot-exit
       if ((e as CustomEvent<{ visit?: boolean }>).detail?.visit === true) {
         setDataBaseVisit(true);
         setDataBaseOpen(true);
       }
     };
+    const onPlotExit = (): void => setInPlot(false);
     window.addEventListener('bitrunners:plot-enter', onPlotEnter);
+    window.addEventListener('bitrunners:plot-exit', onPlotExit);
     return () => {
       window.removeEventListener(DATA_BASE_OPEN_EVENT, onOpen);
       window.removeEventListener('bitrunners:plot-enter', onPlotEnter);
+      window.removeEventListener('bitrunners:plot-exit', onPlotExit);
     };
   }, []);
 
@@ -189,12 +193,16 @@ export function Game({ className }: GameProps): JSX.Element {
     return () => window.removeEventListener('bitrunners:grant-received', onGrant);
   }, []);
 
+  // While inside the Data Base plot the world HUD (menu/protocols buttons,
+  // DATA BASE chip, emote wheel) hides via a data attribute + CSS (0157).
+  const [inPlot, setInPlot] = useState(false);
+
   const onEmote = useCallback((glyph: string) => {
     controlsRef.current?.triggerEmote(glyph);
   }, []);
 
   return (
-    <div ref={hostRef} className="canvas-host">
+    <div ref={hostRef} className="canvas-host" data-plot={inPlot ? '1' : undefined}>
       <div className="hint">{className} · arrows / wasd / stick · space = jump</div>
       <CreditsHud />
       <ProfileIcon className={className} />
